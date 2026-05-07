@@ -1,0 +1,102 @@
+# docker-compose.prod.yml — produzione (server on-premise)
+#
+# PRIMA DI USARE:
+#   1. Copia .env.prod.example → .env.prod e compila tutte le variabili
+#   2. Scegli SSL: vedi sezione nginx (OPZIONE A / OPZIONE B)
+#   3. Scegli storage file: vedi sezione backend volumes (OPZIONE A / OPZIONE B)
+#   4. Avvio: docker compose -f docker-compose.prod.yml --env-file .env.prod up -d
+
+services:
+
+  db:
+    image: postgres:16
+    restart: always
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    expose:
+      - "5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    restart: always
+    environment:
+      DATABASE_URL: postgresql://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRE_MINUTES: ${JWT_EXPIRE_MINUTES:-480}
+      LDAP_URL: ${LDAP_URL:-}
+      LDAP_BASE_DN: ${LDAP_BASE_DN:-}
+      LDAP_BIND_DN: ${LDAP_BIND_DN:-}
+      LDAP_BIND_PASSWORD: ${LDAP_BIND_PASSWORD:-}
+      UPLOAD_DIR: ${UPLOAD_DIR:-/app/uploads}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
+    volumes:
+      # OPZIONE A (default): volume Docker locale
+      - uploads_data:/app/uploads
+      # OPZIONE B: NAS montato sul server — decommentare e commentare la riga sopra
+      # - ${NAS_MOUNT_PATH}:/app/uploads
+    expose:
+      - "8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+    restart: always
+    expose:
+      - "80"
+    depends_on:
+      - backend
+
+  nginx:
+    image: nginx:alpine
+    restart: always
+    ports:
+      # OPZIONE A — Nessun SSL (rete interna protetta da firewall di ateneo)
+      - "80:80"
+      # OPZIONE B — SSL (decommentare e commentare la riga sopra)
+      # - "80:80"
+      # - "443:443"
+    volumes:
+      # OPZIONE A: no SSL
+      - ./nginx/nginx.prod.conf:/etc/nginx/nginx.conf:ro
+      # OPZIONE B: SSL (decommentare)
+      # - ./nginx/nginx.prod.ssl.conf:/etc/nginx/nginx.conf:ro
+      # - ./nginx/certs:/etc/nginx/certs:ro
+    depends_on:
+      - frontend
+      - backend
+
+  backup:
+    image: postgres:16
+    restart: always
+    environment:
+      PGPASSWORD: ${DB_PASSWORD}
+      DB_USER: ${DB_USER}
+      DB_NAME: ${DB_NAME}
+    volumes:
+      - backup_data:/backups
+      - ./scripts/backup.sh:/backup.sh:ro
+      - ./scripts/crontab:/etc/crontabs/root:ro
+    entrypoint: ["sh", "-c", "chmod +x /backup.sh && crond -f"]
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  uploads_data:
+  backup_data:

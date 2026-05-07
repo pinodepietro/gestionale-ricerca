@@ -1,0 +1,43 @@
+import { createBrowserRouter, Navigate } from 'react-router-dom';
+import { AppLayout } from './components/layout/AppLayout';
+import { DashboardPage } from './pages/dashboard/DashboardPage';
+import { ProgettiPage } from './pages/progetti/ProgettiPage';
+import { ProgettoPage } from './pages/progetti/ProgettoPage';
+import { ConfigurazionePage } from './pages/configurazione/ConfigurazionePage';
+import { WizardProgetto } from './pages/configurazione/WizardProgetto/WizardProgetto';
+import { PersonalePage } from './pages/personale/PersonalePage';
+import { PersonaPage } from './pages/personale/PersonaPage';
+import { PartnerPage } from './pages/partner/PartnerPage';
+import { TimesheetPage } from './pages/timesheet/TimesheetPage';
+import { TimesheetEditor } from './pages/timesheet/TimesheetEditor';
+import { SalPage } from './pages/sal/SalPage';
+import { AdminPage } from './pages/admin/AdminPage';
+import { SalDettaglioPage } from './pages/sal/SalDettaglioPage';
+import { LoginPage } from './pages/auth/LoginPage';
+import { CambioPasswordPage } from './pages/auth/CambioPasswordPage';
+
+export const router = createBrowserRouter([
+  { path: '/login', element: <LoginPage /> },
+  { path: '/cambia-password', element: <CambioPasswordPage /> },
+  {
+    path: '/',
+    element: <AppLayout />,
+    children: [
+      { index: true, element: <Navigate to="/dashboard" replace /> },
+      { path: 'dashboard', element: <DashboardPage /> },
+      { path: 'progetti', element: <ProgettiPage /> },
+      { path: 'progetti/:id', element: <ProgettoPage /> },
+      { path: 'configurazione', element: <ConfigurazionePage /> },
+      { path: 'configurazione/nuovo', element: <WizardProgetto /> },
+      { path: 'configurazione/:id', element: <WizardProgetto /> },
+      { path: 'personale', element: <PersonalePage /> },
+      { path: 'personale/:id', element: <PersonaPage /> },
+      { path: 'partner', element: <PartnerPage /> },
+      { path: 'timesheet', element: <TimesheetPage /> },
+      { path: 'timesheet/:id', element: <TimesheetEditor /> },
+      { path: 'sal', element: <SalPage /> },
+      { path: 'sal/:id', element: <SalDettaglioPage /> },
+      { path: 'admin', element: <AdminPage /> },
+    ],
+  },
+]);

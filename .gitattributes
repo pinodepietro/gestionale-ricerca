@@ -1,0 +1,3 @@
+# Normalizza i fine riga a LF su tutti i sistemi (Mac, Windows, Linux)
+* text=auto eol=lf
+*.sh text eol=lf
