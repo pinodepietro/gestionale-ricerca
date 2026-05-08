@@ -5,6 +5,7 @@ import type { Progetto, DocumentoProgetto, CruscottoProgetto } from '../types/pr
 export interface ProgettoFilters {
   stato?: string; tipo?: string; anno?: number;
   search?: string; page?: number; page_size?: number;
+  includi_bozze?: boolean;
 }
 
 export const progettiApi = {

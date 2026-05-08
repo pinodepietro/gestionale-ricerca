@@ -26,6 +26,9 @@ export interface TimesheetTestata {
   stato: StatoTimesheet;
   inviato_at?: string;
   approvato_at?: string;
+  motivazione_rifiuto?: string;
+  granularita?: 'mensile' | 'giornaliero';
+  righe?: TimesheetRiga[];
   // campi calcolati per la UI
   ore_totali_progetto?: number;
   ore_totali?: number;

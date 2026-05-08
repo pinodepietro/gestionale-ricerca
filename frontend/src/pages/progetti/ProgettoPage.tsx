@@ -1,7 +1,9 @@
 // frontend/src/pages/progetti/ProgettoPage.tsx
 import { useState } from 'react';
-import { Tabs, Typography, Spin, Button, Space, Modal, Alert, List, App, Popconfirm } from 'antd';
-import { ArrowLeftOutlined, RocketOutlined, EditOutlined } from '@ant-design/icons';
+import { Tabs, Typography, Spin, Button, Space, Modal, Alert, List, App, Popconfirm, Dropdown } from 'antd';
+import { ArrowLeftOutlined, RocketOutlined, EditOutlined, FileExcelOutlined, FilePdfOutlined, DownloadOutlined } from '@ant-design/icons';
+import { useAuthStore } from '../../store/useAuthStore';
+import { env } from '../../config/env';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import type { AxiosError } from 'axios';
@@ -17,6 +19,7 @@ import { TabPersonale } from './tabs/TabPersonale';
 import { TabDocumenti } from './tabs/TabDocumenti';
 import { TabTimesheet } from './tabs/TabTimesheet';
 import { TabSpese } from './tabs/TabSpese';
+import { TabPartner } from './tabs/TabPartner';
 import { ModificaProgettoDrawer } from './ModificaProgettoDrawer';
 
 const { Title, Text } = Typography;
@@ -42,6 +45,24 @@ export function ProgettoPage() {
 
   const attivaProgetto = useAttivaProgetto();
   const chiudiProgetto = useChiudiProgetto();
+  const user = useAuthStore(s => s.user);
+
+  const downloadReport = async (formato: 'pdf' | 'xlsx') => {
+    const token = localStorage.getItem('access_token');
+    const response = await fetch(
+      `${env.apiUrl}/api/v1/progetti/${id}/report/${formato}`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    if (!response.ok) { notification.error({ message: 'Errore generazione report' }); return; }
+    const blob = await response.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    const oggi = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const nomeProgetto = data?.acronimo || data?.codice || data?.titolo?.slice(0, 30) || id;
+    a.download = `Report_${nomeProgetto}_${oggi}.${formato}`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
 
   const apriModal = () => {
     setErroriPreAttivazione([]);
@@ -71,6 +92,7 @@ export function ProgettoPage() {
 
   const eBozza = data.stato === 'bozza';
   const eAttivo = data.stato === 'attivo';
+  const puoGenerareReport = user?.ruolo === 'superadmin' || user?.id === data.amministrativo_id;
 
   return (
     <div>
@@ -122,10 +144,38 @@ export function ProgettoPage() {
               </Button>
             )}
           </RbacGuard>
+
+          {puoGenerareReport && (
+            <Dropdown
+              menu={{
+                items: [
+                  { key: 'pdf', label: 'Scarica PDF', icon: <FilePdfOutlined /> },
+                  { key: 'xlsx', label: 'Scarica Excel', icon: <FileExcelOutlined /> },
+                ],
+                onClick: ({ key }) => downloadReport(key as 'pdf' | 'xlsx'),
+              }}
+            >
+              <Button icon={<DownloadOutlined />}>Genera Report</Button>
+            </Dropdown>
+          )}
         </Space>
         <div style={{ marginTop: 4 }}>
           <Text>{data.titolo}</Text>
         </div>
+        <Space style={{ marginTop: 6 }} size={24}>
+          {data.pi_nome && (
+            <Text style={{ fontSize: 13 }}>
+              <Text type="secondary">PI: </Text>
+              <Text strong>{data.pi_nome}</Text>
+            </Text>
+          )}
+          {data.amministrativo_nome && (
+            <Text style={{ fontSize: 13 }}>
+              <Text type="secondary">Amministrativo: </Text>
+              <Text strong>{data.amministrativo_nome}</Text>
+            </Text>
+          )}
+        </Space>
       </div>
 
       <Tabs
@@ -133,11 +183,12 @@ export function ProgettoPage() {
         items={[
           { key: 'gantt', label: 'Struttura / Gantt', children: <TabGantt progettoId={id!} /> },
           { key: 'budget', label: 'Budget', children: <TabBudget progettoId={id!} /> },
-          { key: 'sal', label: 'SAL', children: <TabSal progettoId={id!} /> },
+          { key: 'sal', label: 'SAL', children: <TabSal progettoId={id!} stato={data.stato} /> },
           { key: 'personale', label: 'Personale', children: <TabPersonale progettoId={id!} /> },
           { key: 'documenti', label: 'Documenti', children: <TabDocumenti progettoId={id!} /> },
-          { key: 'timesheet', label: 'Timesheet', children: <TabTimesheet progettoId={id!} /> },
-          { key: 'spese', label: 'Spese', children: <TabSpese progettoId={id!} /> },
+          { key: 'timesheet', label: 'Timesheet', children: <TabTimesheet progettoId={id!} stato={data.stato} /> },
+          { key: 'spese', label: 'Spese', children: <TabSpese progettoId={id!} stato={data.stato} /> },
+          { key: 'partner', label: 'Partner', children: <TabPartner progettoId={id!} /> },
         ]}
       />
 

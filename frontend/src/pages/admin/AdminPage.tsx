@@ -11,15 +11,15 @@ const { Title, Text } = Typography;
 
 const RUOLI = [
   { value: 'amministrativo', label: 'Amministrativo' },
-  { value: 'pi', label: 'PI' },
   { value: 'ricercatore', label: 'Ricercatore' },
   { value: 'management', label: 'Management' },
+  { value: 'monitor', label: 'Monitor' },
   { value: 'superadmin', label: 'Super Admin' },
 ];
 
 const COLORI_RUOLO: Record<string, string> = {
-  amministrativo: 'blue', pi: 'green', ricercatore: 'default',
-  management: 'orange', superadmin: 'red',
+  amministrativo: 'blue', ricercatore: 'default',
+  management: 'orange', monitor: 'purple', superadmin: 'red',
 };
 
 function TabUtenti() {
@@ -128,7 +128,7 @@ function TabUtenti() {
             </Col>
           </Row>
           <Form.Item name="livello_contratto" label="Livello contratto"><Input /></Form.Item>
-          {inModifica?.id && (
+          {!!inModifica?.id && (
             <Form.Item name="attivo" label="Attivo" valuePropName="checked"><Switch /></Form.Item>
           )}
         </Form>
@@ -675,6 +675,7 @@ export function AdminPage() {
         { key: 'tutti-progetti', label: 'Tutti i progetti', children: <TabTuttiProgetti /> },
         { key: 'statistiche', label: 'Statistiche', children: <TabStatistiche /> },
         { key: 'log', label: 'Log operazioni', children: <TabLog /> },
+        { key: 'tabelle', label: 'DB Tabelle', children: <TabTabelleDB /> },
       ]} />
     </div>
   );

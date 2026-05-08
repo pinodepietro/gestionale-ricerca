@@ -4,12 +4,13 @@ import { Table, Input, Select, Space, Typography, Button, Row, Col } from 'antd'
 import { PlusOutlined, SearchOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { useAuthStore } from '../../store/useAuthStore';
 import { progettiApi } from '../../api/progetti';
 import { queryKeys } from '../../utils/queryKeys';
 import { StatoBadge } from '../../components/common/StatoBadge';
 import { RbacGuard } from '../../components/common/RbacGuard';
 import { formatData, formatEuro } from '../../utils/formatters';
-import { TIPI_PROGETTO } from '../../config/constants';
+import { configApi } from '../../api/config';
 import type { Progetto } from '../../types/progetto';
 import type { StatoProgetto } from '../../config/constants';
 
@@ -17,12 +18,24 @@ const { Title } = Typography;
 
 export function ProgettiPage() {
   const navigate = useNavigate();
+  const user = useAuthStore(s => s.user);
   const [search, setSearch] = useState('');
   const [stato, setStato] = useState<StatoProgetto | undefined>();
   const [tipo, setTipo] = useState<string | undefined>();
   const [page, setPage] = useState(1);
 
-  const filters = { search, stato, tipo, page, page_size: 20 };
+  const isAdmin = user?.ruolo === 'amministrativo' || user?.ruolo === 'superadmin';
+
+  const { data: tipiProgetto } = useQuery({
+    queryKey: queryKeys.config.tipiProgetto,
+    queryFn: () => configApi.tipiProgetto().then(r => r.data.data),
+  });
+
+  const filters = {
+    search, tipo, page, page_size: 20,
+    stato,
+    includi_bozze: isAdmin ? true : undefined,
+  };
 
   const { data, isLoading } = useQuery({
     queryKey: queryKeys.progetti.list(filters),
@@ -74,7 +87,7 @@ export function ProgettiPage() {
           <Title level={2} style={{ margin: 0 }}>Progetti</Title>
         </Col>
         <Col>
-          <RbacGuard azione="configurazione:accedi">
+          <RbacGuard azione="progetto:crea">
             <Button
               type="primary"
               icon={<PlusOutlined />}
@@ -102,6 +115,7 @@ export function ProgettiPage() {
           style={{ width: 150 }}
           onChange={(v) => { setStato(v); setPage(1); }}
           options={[
+            { value: 'bozza', label: 'Da attivare' },
             { value: 'attivo', label: 'Attivo' },
             { value: 'chiuso', label: 'Chiuso' },
             { value: 'rendicontato', label: 'Rendicontato' },
@@ -112,7 +126,7 @@ export function ProgettiPage() {
           allowClear
           style={{ width: 200 }}
           onChange={(v) => { setTipo(v); setPage(1); }}
-          options={TIPI_PROGETTO.map((t) => ({ value: t, label: t }))}
+          options={(tipiProgetto ?? []).map((t: { nome: string }) => ({ value: t.nome, label: t.nome }))}
         />
       </Space>
 

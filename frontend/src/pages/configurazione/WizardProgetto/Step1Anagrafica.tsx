@@ -2,9 +2,10 @@ import { useEffect } from 'react';
 import { Form, Input, Select, DatePicker, InputNumber, Row, Col, Button, Typography } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { progettiApi } from '../../../api/progetti';
+import { personaleApi } from '../../../api/personale';
 import { configApi } from '../../../api/config';
 import { queryKeys } from '../../../utils/queryKeys';
-import { TIPI_PROGETTO } from '../../../config/constants';
+import { CreaTipoProgettoButton } from '../../../components/common/CreaTipoProgettoButton';
 import dayjs from 'dayjs';
 
 const { Title } = Typography;
@@ -24,9 +25,14 @@ export function Step1Anagrafica({ progettoId, onCompletato }: Props) {
     enabled: !!progettoId,
   });
 
-  const { data: tipiFin } = useQuery({
-    queryKey: queryKeys.config.tipiFinanziamento,
-    queryFn: () => configApi.tipiFinanziamento().then(r => r.data.data),
+  const { data: amministrativi } = useQuery({
+    queryKey: ['persone', { ruolo: 'amministrativo', attivo: true }],
+    queryFn: () => personaleApi.list({ ruolo: 'amministrativo', attivo: true }).then(r => r.data.data),
+  });
+
+  const { data: tipiProgetto } = useQuery({
+    queryKey: queryKeys.config.tipiProgetto,
+    queryFn: () => configApi.tipiProgetto().then(r => r.data.data),
   });
 
   useEffect(() => {
@@ -48,7 +54,7 @@ export function Step1Anagrafica({ progettoId, onCompletato }: Props) {
         data_inizio: dayjs(values.data_inizio as string).format('YYYY-MM-DD'),
         data_fine: dayjs(values.data_fine as string).format('YYYY-MM-DD'),
         data_fine_rendicontazione: values.data_fine_rendicontazione
-          ? dayjs(values.data_fine_rendicontazione as string).format('YYYY-MM-DD') : null,
+          ? dayjs(values.data_fine_rendicontazione as string).format('YYYY-MM-DD') : undefined,
       };
       if (progettoId) {
         return progettiApi.update(progettoId, payload).then(r => r.data.data);
@@ -60,6 +66,11 @@ export function Step1Anagrafica({ progettoId, onCompletato }: Props) {
       onCompletato(String(data.id));
     },
   });
+
+  const opzioniAmministrativi = (amministrativi ?? []).map(p => ({
+    value: p.id,
+    label: `${p.cognome} ${p.nome}`,
+  }));
 
   return (
     <Form form={form} layout="vertical" onFinish={salva}>
@@ -89,8 +100,17 @@ export function Step1Anagrafica({ progettoId, onCompletato }: Props) {
       </Form.Item>
       <Row gutter={16}>
         <Col span={8}>
-          <Form.Item name="tipo" label="Tipo progetto" rules={[{ required: true, message: 'Obbligatorio' }]}>
-            <Select options={TIPI_PROGETTO.map(t => ({ value: t, label: t }))} />
+          <Form.Item name="tipo" label={
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              Tipo progetto <CreaTipoProgettoButton />
+            </span>
+          } rules={[{ required: true, message: 'Obbligatorio' }]}>
+            <Select
+              options={(tipiProgetto ?? []).map((t: { nome: string }) => ({ value: t.nome, label: t.nome }))}
+              showSearch
+              filterOption={(input, option) =>
+                (option?.label as string)?.toLowerCase().includes(input.toLowerCase())}
+            />
           </Form.Item>
         </Col>
         <Col span={8}>
@@ -122,6 +142,21 @@ export function Step1Anagrafica({ progettoId, onCompletato }: Props) {
         </Col>
       </Row>
       <Row gutter={16}>
+        <Col span={12}>
+          <Form.Item
+            name="amministrativo_id"
+            label="Amministratore di progetto"
+            rules={[{ required: true, message: 'Obbligatorio' }]}
+          >
+            <Select
+              placeholder="Seleziona l'amministratore responsabile"
+              options={opzioniAmministrativi}
+              showSearch
+              filterOption={(input, option) =>
+                (option?.label as string)?.toLowerCase().includes(input.toLowerCase())}
+            />
+          </Form.Item>
+        </Col>
         <Col span={12}>
           <Form.Item name="budget_per_partner" label="Budget per partner" initialValue={false}>
             <Select options={[

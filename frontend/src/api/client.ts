@@ -52,7 +52,10 @@ apiClient.interceptors.response.use(
     }
 
     if (status === 409) {
-      notify('warning', error.response?.data?.error?.message ?? 'Operazione non consentita nello stato attuale');
+      const msg = error.response?.data?.detail?.error?.message
+        ?? error.response?.data?.error?.message
+        ?? 'Operazione non consentita nello stato attuale';
+      notify('warning', msg);
       return Promise.reject(error);
     }
 

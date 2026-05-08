@@ -1,6 +1,6 @@
 // frontend/src/pages/configurazione/ConfigurazioneTabella.tsx
 import { useState } from 'react';
-import { Table, Button, Space, Modal, Form, Input, Select, Switch, InputNumber,
+import { Table, Button, Space, Modal, Form, Input, Select, Switch,
          Typography, App, Popconfirm, Tag, Divider, Upload, Tooltip } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, UploadOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -133,6 +133,107 @@ export function VociDiCostoPage() {
               <Switch />
             </Form.Item>
           </Space>
+        </Form>
+      </Modal>
+    </div>
+  );
+}
+
+export function TipiProgettaPage() {
+  const { notification } = App.useApp();
+  const queryClient = useQueryClient();
+  const [modalAperta, setModalAperta] = useState(false);
+  const [inModifica, setInModifica] = useState<Record<string, unknown> | null>(null);
+  const [form] = Form.useForm();
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['config', 'tipi-progetto'],
+    queryFn: () => apiClient.get<{ data: unknown[] }>('/tipi-progetto').then(r => r.data.data),
+  });
+
+  const salva = useMutation({
+    mutationFn: (values: Record<string, unknown>) =>
+      inModifica?.id
+        ? apiClient.patch(`/tipi-progetto/${inModifica.id}`, values)
+        : apiClient.post('/tipi-progetto', values),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['config', 'tipi-progetto'] });
+      notification.success({ message: inModifica?.id ? 'Tipo aggiornato' : 'Tipo creato' });
+      setModalAperta(false);
+      setInModifica(null);
+      form.resetFields();
+    },
+    onError: (error: unknown) => {
+      const err = (error as { response?: { data?: { detail?: { error?: { message?: string } } } } })
+        ?.response?.data?.detail?.error;
+      notification.error({ message: err?.message ?? 'Errore' });
+    },
+  });
+
+  const elimina = useMutation({
+    mutationFn: (id: string) => apiClient.delete(`/tipi-progetto/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['config', 'tipi-progetto'] });
+      notification.success({ message: 'Tipo eliminato' });
+    },
+    onError: (error: unknown) => {
+      const err = (error as { response?: { data?: { detail?: { error?: { message?: string } } } } })
+        ?.response?.data?.detail?.error;
+      notification.error({ message: err?.message ?? 'Impossibile eliminare: probabilmente usato da un progetto' });
+    },
+  });
+
+  const apriModifica = (r: Record<string, unknown>) => {
+    setInModifica(r);
+    form.setFieldsValue(r);
+    setModalAperta(true);
+  };
+
+  const colonne = [
+    { title: 'Nome', dataIndex: 'nome', ellipsis: true },
+    {
+      title: '', key: 'azioni', width: 80,
+      render: (_: unknown, r: Record<string, unknown>) => (
+        <Space>
+          <Button size="small" icon={<EditOutlined />} type="text" onClick={() => apriModifica(r)} />
+          <Popconfirm title="Eliminare questo tipo?" onConfirm={() => elimina.mutate(r.id as string)}
+            okText="Elimina" cancelText="No" okButtonProps={{ danger: true }}>
+            <Button size="small" icon={<DeleteOutlined />} type="text" danger />
+          </Popconfirm>
+        </Space>
+      ),
+    },
+  ];
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
+        <div>
+          <Title level={3} style={{ margin: 0 }}>Tipologie di progetto</Title>
+          <Text type="secondary">Tipi di finanziamento/progetto selezionabili durante la configurazione</Text>
+        </div>
+        <Button type="primary" icon={<PlusOutlined />}
+          onClick={() => { setInModifica(null); form.resetFields(); setModalAperta(true); }}>
+          Nuovo tipo
+        </Button>
+      </div>
+
+      <Table columns={colonne} dataSource={data as Record<string, unknown>[] ?? []}
+        rowKey="id" loading={isLoading} pagination={false} size="small" />
+
+      <Modal
+        title={inModifica?.id ? 'Modifica tipologia' : 'Nuova tipologia di progetto'}
+        open={modalAperta}
+        onCancel={() => { setModalAperta(false); form.resetFields(); }}
+        onOk={() => form.submit()}
+        confirmLoading={salva.isPending}
+        okText="Salva"
+        width={400}
+      >
+        <Form form={form} layout="vertical" onFinish={v => salva.mutate(v)} style={{ marginTop: 16 }}>
+          <Form.Item name="nome" label="Nome" rules={[{ required: true, message: 'Obbligatorio' }]}>
+            <Input placeholder="es. PON, FESR, Contratto conto terzi" />
+          </Form.Item>
         </Form>
       </Modal>
     </div>

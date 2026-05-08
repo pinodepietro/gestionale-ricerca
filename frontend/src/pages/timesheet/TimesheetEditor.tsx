@@ -5,8 +5,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Typography, Spin, Button, Space, Table, InputNumber, Tag, App, Popconfirm, Alert } from 'antd';
 import { ArrowLeftOutlined, SaveOutlined, SendOutlined, CheckOutlined, CloseOutlined, DeleteOutlined, FileExcelOutlined } from '@ant-design/icons';
 import { timesheetApi } from '../../api/timesheet';
-import { apiClient } from '../../api/client';
+import { progettiApi } from '../../api/progetti';
 import { queryKeys } from '../../utils/queryKeys';
+import { env } from '../../config/env';
 import { useAuthStore } from '../../store/useAuthStore';
 import type { TimesheetRiga, TimesheetRigaPayload } from '../../types/timesheet';
 
@@ -41,6 +42,12 @@ export function TimesheetEditor() {
     queryKey: queryKeys.timesheet.detail(id!),
     queryFn: () => timesheetApi.get(id!).then(r => r.data.data),
     enabled: !!id,
+  });
+
+  const { data: allocazioni } = useQuery({
+    queryKey: queryKeys.progetti.allocazioni(ts?.progetto_id ?? ''),
+    queryFn: () => progettiApi.allocazioni.list(ts!.progetto_id).then(r => r.data.data),
+    enabled: !!ts?.progetto_id,
   });
 
   // Inizializza ore locali dai dati server
@@ -139,10 +146,10 @@ export function TimesheetEditor() {
   const isGiornaliero = ts.granularita === 'giornaliero';
   const isModificabile = ts.stato === 'bozza' || ts.stato === 'rifiutato';
   const puoEliminare = isModificabile || user?.ruolo === 'amministrativo';
-  const isPIoAdmin = user?.ruolo === 'pi' || user?.ruolo === 'amministrativo';
-  // Il PI può approvare solo i timesheet di altri, non i propri
-  const puoApprovare = user?.ruolo === 'amministrativo' || user?.ruolo === 'pi';
-  const eMioTimesheet = ts?.persona_id === user?.id;
+  // PI del progetto specifico può approvare — ma non il proprio timesheet
+  const ePI = (allocazioni as { persona_id: string; is_pi?: boolean }[] | undefined)
+    ?.some(a => a.persona_id === user?.id && a.is_pi) ?? false;
+  const puoApprovare = ePI && ts?.persona_id !== user?.id;
 
   // Calcola giorni del mese per granularità giornaliera
   const giorni = isGiornaliero
@@ -299,7 +306,7 @@ export function TimesheetEditor() {
               <Button
                 icon={<FileExcelOutlined />}
                 onClick={() => downloadExcel(
-                  `http://localhost:8000/api/v1/timesheet/${id}/export/xlsx`,
+                  `${env.apiUrl}/api/v1/timesheet/${id}/export/xlsx`,
                   `timesheet_${id}.xlsx`
                 )}
               >
@@ -309,7 +316,7 @@ export function TimesheetEditor() {
                 icon={<FileExcelOutlined />}
                 type="dashed"
                 onClick={() => downloadExcel(
-                  `http://localhost:8000/api/v1/timesheet/${id}/export/template`,
+                  `${env.apiUrl}/api/v1/timesheet/${id}/export/template`,
                   `timesheet_template_${id}.xlsx`
                 )}
               >

@@ -15,6 +15,7 @@ export const queryKeys = {
     allocazioni: (id: string) => ['progetti', id, 'allocazioni'] as const,
     budget: (id: string) => ['progetti', id, 'budget'] as const,
     spese: (id: string, params?: object) => ['progetti', id, 'spese', params] as const,
+    partner: (id: string) => ['progetti', id, 'partner'] as const,
   },
 
   sal: {
@@ -40,6 +41,7 @@ export const queryKeys = {
 
   config: {
     tipiFinanziamento: ['config', 'tipi-finanziamento'] as const,
+    tipiProgetto: ['config', 'tipi-progetto'] as const,
     vociDiCosto: ['config', 'voci-di-costo'] as const,
     partner: ['config', 'partner'] as const,
     templateTimesheet: ['config', 'template-timesheet'] as const,

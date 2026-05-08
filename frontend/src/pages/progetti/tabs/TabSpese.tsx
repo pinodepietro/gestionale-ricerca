@@ -1,27 +1,30 @@
 // frontend/src/pages/progetti/tabs/TabSpese.tsx
 import { useState } from 'react';
 import { Table, Button, Tag, Space, Modal, Form, Input, InputNumber, DatePicker,
-         Select, Typography, App, Popconfirm, Upload, Divider } from 'antd';
+         Select, Typography, App, Upload, Divider, Alert } from 'antd';
 import { PlusOutlined, StopOutlined, PaperClipOutlined, UploadOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { budgetApi } from '../../../api/budget';
 import { configApi } from '../../../api/config';
 import { queryKeys } from '../../../utils/queryKeys';
+import { apiErrorMessage } from '../../../utils/apiError';
 import { RbacGuard } from '../../../components/common/RbacGuard';
 import { formatEuro, formatData } from '../../../utils/formatters';
 import type { Spesa } from '../../../types/budget';
 
 const { Text } = Typography;
 
-interface Props { progettoId: string; }
+interface Props { progettoId: string; stato?: string; }
 
-export function TabSpese({ progettoId }: Props) {
-  const { notification, modal } = App.useApp();
+export function TabSpese({ progettoId, stato }: Props) {
+  const { notification } = App.useApp();
   const queryClient = useQueryClient();
   const [modalAperta, setModalAperta] = useState(false);
   const [filtroVoce, setFiltroVoce] = useState<string | undefined>();
   const [form] = Form.useForm();
+  const [spesaDaAnnullare, setSpesaDaAnnullare] = useState<Spesa | null>(null);
+  const [confermaStep, setConfermaStep] = useState<1 | 2>(1);
 
   const { data, isLoading } = useQuery({
     queryKey: queryKeys.progetti.spese(progettoId, { voce_id: filtroVoce }),
@@ -47,8 +50,7 @@ export function TabSpese({ progettoId }: Props) {
         data: values.data ? dayjs(values.data as dayjs.Dayjs).format('YYYY-MM-DD') : undefined,
       }).then(r => r.data.data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.progetti.spese(progettoId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.progetti.spese(progettoId, { voce_id: filtroVoce }) });
+      queryClient.invalidateQueries({ queryKey: ['progetti', progettoId, 'spese'] });
       queryClient.invalidateQueries({ queryKey: queryKeys.progetti.budget(progettoId) });
       notification.success({ message: 'Spesa registrata' });
       setModalAperta(false);
@@ -64,10 +66,11 @@ export function TabSpese({ progettoId }: Props) {
   const annullaSpesa = useMutation({
     mutationFn: (id: string) => budgetApi.spese.annulla(id).then(r => r.data.data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.progetti.spese(progettoId) });
+      queryClient.invalidateQueries({ queryKey: ['progetti', progettoId, 'spese'] });
       queryClient.invalidateQueries({ queryKey: queryKeys.progetti.budget(progettoId) });
       notification.success({ message: 'Spesa annullata' });
     },
+    onError: (e: unknown) => notification.error({ message: apiErrorMessage(e, 'Errore durante l\'annullamento') }),
   });
 
   // Voci disponibili nel budget del progetto
@@ -82,8 +85,8 @@ export function TabSpese({ progettoId }: Props) {
       label: bv.voce ? `${bv.voce.codice} — ${bv.voce.descrizione}` : bv.voce_id,
     })) ?? [];
 
-  const spese: Spesa[] = (data?.data ?? []).filter((s: Spesa) => s.stato !== 'annullata');
-  const totale = spese.filter(s => s.stato === 'registrata').reduce((s, r) => s + r.importo, 0);
+  const spese: Spesa[] = data?.data ?? [];
+  const totale = spese.filter(s => s.stato === 'registrata').reduce((acc, r) => acc + r.importo, 0);
 
   const colonne = [
     { title: 'Data', dataIndex: 'data', width: 110, render: formatData },
@@ -114,31 +117,30 @@ export function TabSpese({ progettoId }: Props) {
           )}
           {r.stato === 'registrata' && (
             <RbacGuard azione="spesa:annulla">
-              <Button size="small" danger onClick={() => {
-                modal.confirm({
-                  title: 'Annullare questa spesa?',
-                  content: `Importo: ${Number(r.importo).toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}. L'importo verra stornato dal budget rendicontato.`,
-                  okText: 'Si, annulla',
-                  okType: 'danger',
-                  cancelText: 'No',
-                  onOk() {
-                    modal.confirm({
-                      title: 'Conferma definitiva',
-                      content: 'Sei sicuro? La spesa verra annullata definitivamente.',
-                      okText: 'Annulla spesa',
-                      okType: 'danger',
-                      cancelText: 'Indietro',
-                      onOk() { annullaSpesa.mutate(r.id); },
-                    });
-                  },
-                });
-              }}>Annulla</Button>
+              <Button size="small" danger icon={<StopOutlined />}
+                onClick={() => { setSpesaDaAnnullare(r); setConfermaStep(1); }}>
+                Annulla
+              </Button>
             </RbacGuard>
           )}
         </Space>
       ),
     },
   ];
+
+  const chiudiAnnulla = () => { setSpesaDaAnnullare(null); setConfermaStep(1); };
+
+  if (stato === 'bozza') {
+    return (
+      <Alert
+        type="warning"
+        showIcon
+        message="Progetto non ancora attivo"
+        description="Attiva il progetto per poter registrare le spese."
+        style={{ marginTop: 8 }}
+      />
+    );
+  }
 
   return (
     <div>
@@ -222,6 +224,45 @@ export function TabSpese({ progettoId }: Props) {
             </Upload>
           </Form.Item>
         </Form>
+      </Modal>
+
+      {/* Modal doppia conferma annullamento */}
+      <Modal
+        open={!!spesaDaAnnullare && confermaStep === 1}
+        title="Annullare questa spesa?"
+        onCancel={chiudiAnnulla}
+        onOk={() => setConfermaStep(2)}
+        okText="Sì, continua"
+        okButtonProps={{ danger: true }}
+        cancelText="No, torna indietro"
+        width={440}
+      >
+        {spesaDaAnnullare && (
+          <>
+            <p>Stai per annullare la seguente spesa:</p>
+            <p><strong>Importo:</strong> {formatEuro(spesaDaAnnullare.importo)}</p>
+            <p><strong>Data:</strong> {formatData(spesaDaAnnullare.data)}</p>
+            {spesaDaAnnullare.descrizione && <p><strong>Descrizione:</strong> {spesaDaAnnullare.descrizione}</p>}
+            <p>L&apos;importo verrà stornato dal budget rendicontato.</p>
+          </>
+        )}
+      </Modal>
+
+      <Modal
+        open={!!spesaDaAnnullare && confermaStep === 2}
+        title="Conferma definitiva"
+        onCancel={chiudiAnnulla}
+        onOk={() => {
+          if (spesaDaAnnullare) annullaSpesa.mutate(spesaDaAnnullare.id);
+          chiudiAnnulla();
+        }}
+        okText="Annulla spesa definitivamente"
+        okButtonProps={{ danger: true, loading: annullaSpesa.isPending }}
+        cancelText="Indietro"
+        width={400}
+      >
+        <p>Sei sicuro? <strong>L&apos;operazione è irreversibile.</strong></p>
+        <p>La spesa passerà in stato &quot;annullata&quot; e rimarrà visibile nello storico.</p>
       </Modal>
     </div>
   );

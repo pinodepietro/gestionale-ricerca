@@ -1,12 +1,14 @@
 // frontend/src/pages/sal/SalPage.tsx
 import { useState } from 'react';
-import { Table, Tag, Typography, Select, Space, Button } from 'antd';
+import { Table, Tag, Typography, Select, Space, Button, Result } from 'antd';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { salApi } from '../../api/sal';
 import { progettiApi } from '../../api/progetti';
 import { queryKeys } from '../../utils/queryKeys';
-import { formatData, formatEuro } from '../../utils/formatters';
+import { formatData } from '../../utils/formatters';
+import { useAuthStore } from '../../store/useAuthStore';
+import { canDo } from '../../utils/rbac';
 
 const { Title, Text } = Typography;
 
@@ -17,7 +19,14 @@ const COLORI_STATO: Record<string, string> = {
 
 export function SalPage() {
   const navigate = useNavigate();
+  const user = useAuthStore(s => s.user);
   const [filtroProgetto, setFiltroProgetto] = useState<string | undefined>();
+
+  if (!user || !canDo(user.ruolo, 'sal:visualizza')) {
+    return <Result status="403" title="Accesso non consentito"
+      subTitle="Non hai i permessi per accedere alla rendicontazione."
+      extra={<Button onClick={() => navigate('/progetti')}>Torna ai progetti</Button>} />;
+  }
 
   const { data: progetti } = useQuery({
     queryKey: queryKeys.progetti.list({ stato: 'attivo' }),

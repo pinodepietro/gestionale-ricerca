@@ -9,7 +9,6 @@ import { timesheetApi } from '../../api/timesheet';
 import { queryKeys } from '../../utils/queryKeys';
 import { formatData, formatEuro, formatOre } from '../../utils/formatters';
 import { RbacGuard } from '../../components/common/RbacGuard';
-import type { CostoOrarioPersona, MonteOreAnnuale } from '../../types/personale';
 import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
@@ -94,11 +93,6 @@ export function PersonaPage() {
     },
   });
 
-  const { data: allocazioni } = useQuery({
-    queryKey: ['persone', id, 'allocazioni'],
-    queryFn: () => progettiApi.allocazioni.list('').then(() => []).catch(() => []),
-    enabled: false, // disabilitato - usiamo endpoint dedicato sotto
-  });
 
   const { data: progettiPersona } = useQuery({
     queryKey: ['progetti', 'tutti'],
@@ -301,9 +295,10 @@ export function PersonaPage() {
               <Form.Item name="ruolo" label="Ruolo sistema" rules={[{ required: true }]}>
                 <Select options={[
                   { value: 'amministrativo', label: 'Amministrativo' },
-                  { value: 'pi', label: 'PI' },
                   { value: 'ricercatore', label: 'Ricercatore' },
                   { value: 'management', label: 'Management' },
+                  { value: 'monitor', label: 'Monitor' },
+                  { value: 'superadmin', label: 'Super Admin' },
                 ]} />
               </Form.Item>
             </Col>

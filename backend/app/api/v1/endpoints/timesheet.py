@@ -9,7 +9,8 @@ from app.models.timesheet import (
     TimesheetTestata, TimesheetRiga, TimesheetCella,
     TemplateTimesheet, ApprovazioneTimesheet
 )
-from app.models.personale import CostoOrarioPersona
+from app.models.personale import CostoOrarioPersona, Allocazione
+from app.services.notifiche import crea_notifica, invia_email
 from app.models.struttura import WorkPackage
 from app.models.progetto import Progetto
 from datetime import date, datetime, timezone
@@ -101,9 +102,17 @@ def lista_timesheet(
     utente: Persona = Depends(tutti_i_ruoli),
 ):
     q = db.query(TimesheetTestata)
-    # Ricercatore/PI vede solo i propri; admin e management vedono tutti
-    if utente.ruolo in ("ricercatore", "pi"):
-        q = q.filter(TimesheetTestata.persona_id == utente.id)
+    if utente.ruolo == "ricercatore":
+        # Ricercatore vede i propri + tutti i timesheet dei progetti in cui è PI
+        progetti_pi_sq = db.query(Allocazione.progetto_id).filter(
+            Allocazione.persona_id == utente.id,
+            Allocazione.is_pi == True,
+        ).subquery()
+        from sqlalchemy import or_
+        q = q.filter(or_(
+            TimesheetTestata.persona_id == utente.id,
+            TimesheetTestata.progetto_id.in_(progetti_pi_sq),
+        ))
     if persona_id:
         q = q.filter(TimesheetTestata.persona_id == persona_id)
     if progetto_id:
@@ -153,9 +162,14 @@ def crea_timesheet(
         raise HTTPException(status_code=422, detail={"error": {"code": "CAMPI_MANCANTI",
             "message": "progetto_id, anno e mese sono obbligatori"}})
 
-    # Il ricercatore può creare solo per sé stesso
+    # Solo i ricercatori creano timesheet — non amministrativo/management/monitor
+    if utente.ruolo in ("amministrativo", "management", "monitor"):
+        raise HTTPException(status_code=403, detail={"error": {"code": "FORBIDDEN",
+            "message": "Solo i ricercatori possono creare timesheet"}})
+
+    # I ricercatori possono creare solo per sé stessi
     persona_id = body.get("persona_id", str(utente.id))
-    if utente.ruolo in ("ricercatore", "pi") and persona_id != str(utente.id):
+    if utente.ruolo == "ricercatore" and persona_id != str(utente.id):
         raise HTTPException(status_code=403, detail={"error": {"code": "FORBIDDEN",
             "message": "Puoi creare timesheet solo per te stesso"}})
 
@@ -336,6 +350,24 @@ def invia_timesheet(
             "message": "Il timesheet deve avere almeno un'ora di attività progettuale"}})
     t.stato = "inviato"
     t.inviato_at = datetime.now(timezone.utc)
+
+    # Notifica il PI del progetto
+    pi_alloc = db.query(Allocazione).filter(
+        Allocazione.progetto_id == t.progetto_id,
+        Allocazione.is_pi == True,
+    ).first()
+    if pi_alloc:
+        autore = db.query(Persona).filter(Persona.id == t.persona_id).first()
+        autore_nome = f"{autore.nome} {autore.cognome}" if autore else "Un membro del team"
+        mese_label = MESI.get(t.mese, str(t.mese))
+        titolo = f"Nuovo timesheet da approvare"
+        messaggio = f"{autore_nome} ha inviato il timesheet di {mese_label} {t.anno}"
+        crea_notifica(db, pi_alloc.persona_id, "timesheet_pendente", titolo, messaggio,
+                      link=f"/timesheet/{t.id}", riferimento_id=str(t.id))
+        pi_persona = db.query(Persona).filter(Persona.id == pi_alloc.persona_id).first()
+        if pi_persona and pi_persona.email:
+            invia_email(pi_persona.email, titolo, messaggio)
+
     db.commit()
     db.refresh(t)
     return {"data": _testata_dict(t, db)}
@@ -347,10 +379,19 @@ def approva_timesheet(
     db: Session = Depends(get_db),
     utente: Persona = Depends(tutti_i_ruoli),
 ):
-    if utente.ruolo not in ("pi", "amministrativo"):
-        raise HTTPException(status_code=403, detail={"error": {"code": "FORBIDDEN",
-            "message": "Solo PI e amministrativi possono approvare i timesheet"}})
     t = _get_testata_or_404(id, db)
+    # Solo il PI del progetto specifico può approvare (non il proprio timesheet)
+    e_pi_del_progetto = db.query(Allocazione).filter(
+        Allocazione.persona_id == utente.id,
+        Allocazione.progetto_id == t.progetto_id,
+        Allocazione.is_pi == True,
+    ).first()
+    if not e_pi_del_progetto:
+        raise HTTPException(status_code=403, detail={"error": {"code": "FORBIDDEN",
+            "message": "Solo il PI del progetto può approvare i timesheet"}})
+    if str(t.persona_id) == str(utente.id):
+        raise HTTPException(status_code=403, detail={"error": {"code": "FORBIDDEN",
+            "message": "Il PI non può approvare il proprio timesheet"}})
     if t.stato != "inviato":
         raise HTTPException(status_code=409, detail={"error": {"code": "TRANSIZIONE_NON_VALIDA",
             "message": "Solo i timesheet inviati possono essere approvati"}})
@@ -405,6 +446,17 @@ def approva_timesheet(
 
     t.stato = "approvato"
     t.approvato_at = datetime.now(timezone.utc)
+
+    # Notifica l'autore del timesheet
+    mese_label = MESI.get(t.mese, str(t.mese))
+    titolo_esito = f"Timesheet approvato — {mese_label} {t.anno}"
+    messaggio_esito = f"Il tuo timesheet di {mese_label} {t.anno} è stato approvato."
+    crea_notifica(db, t.persona_id, "timesheet_approvato", titolo_esito, messaggio_esito,
+                  link=f"/timesheet/{t.id}", riferimento_id=str(t.id))
+    autore = db.query(Persona).filter(Persona.id == t.persona_id).first()
+    if autore and autore.email:
+        invia_email(autore.email, titolo_esito, messaggio_esito)
+
     db.commit()
     db.refresh(t)
     return {"data": _testata_dict(t, db)}
@@ -417,10 +469,18 @@ def rifiuta_timesheet(
     db: Session = Depends(get_db),
     utente: Persona = Depends(tutti_i_ruoli),
 ):
-    if utente.ruolo not in ("pi", "amministrativo"):
-        raise HTTPException(status_code=403, detail={"error": {"code": "FORBIDDEN",
-            "message": "Solo PI e amministrativi possono rifiutare i timesheet"}})
     t = _get_testata_or_404(id, db)
+    e_pi_del_progetto = db.query(Allocazione).filter(
+        Allocazione.persona_id == utente.id,
+        Allocazione.progetto_id == t.progetto_id,
+        Allocazione.is_pi == True,
+    ).first()
+    if not e_pi_del_progetto:
+        raise HTTPException(status_code=403, detail={"error": {"code": "FORBIDDEN",
+            "message": "Solo il PI del progetto può rifiutare i timesheet"}})
+    if str(t.persona_id) == str(utente.id):
+        raise HTTPException(status_code=403, detail={"error": {"code": "FORBIDDEN",
+            "message": "Il PI non può rifiutare il proprio timesheet"}})
     if t.stato != "inviato":
         raise HTTPException(status_code=409, detail={"error": {"code": "TRANSIZIONE_NON_VALIDA",
             "message": "Solo i timesheet inviati possono essere rifiutati"}})
@@ -436,6 +496,20 @@ def rifiuta_timesheet(
     )
     db.add(approvazione)
     t.stato = "rifiutato"
+
+    # Notifica l'autore del timesheet
+    mese_label = MESI.get(t.mese, str(t.mese))
+    note_testo = body.get("note", "")
+    titolo_rif = f"Timesheet rifiutato — {mese_label} {t.anno}"
+    messaggio_rif = f"Il tuo timesheet di {mese_label} {t.anno} è stato rifiutato."
+    if note_testo:
+        messaggio_rif += f" Motivazione: {note_testo}"
+    crea_notifica(db, t.persona_id, "timesheet_rifiutato", titolo_rif, messaggio_rif,
+                  link=f"/timesheet/{t.id}", urgente=True, riferimento_id=str(t.id))
+    autore = db.query(Persona).filter(Persona.id == t.persona_id).first()
+    if autore and autore.email:
+        invia_email(autore.email, titolo_rif, messaggio_rif)
+
     db.commit()
     db.refresh(t)
     return {"data": _testata_dict(t, db)}
@@ -451,7 +525,7 @@ def elimina_timesheet(
     if t.stato not in ("bozza", "rifiutato") and utente.ruolo != "amministrativo":
         raise HTTPException(status_code=409, detail={"error": {"code": "TIMESHEET_NON_ELIMINABILE",
             "message": "Solo i timesheet in bozza o rifiutati possono essere eliminati"}})
-    if utente.ruolo in ("ricercatore", "pi") and str(t.persona_id) != str(utente.id):
+    if utente.ruolo == "ricercatore" and str(t.persona_id) != str(utente.id):
         raise HTTPException(status_code=403, detail={"error": {"code": "FORBIDDEN",
             "message": "Puoi eliminare solo i tuoi timesheet"}})
     # Elimina manualmente le approvazioni collegate

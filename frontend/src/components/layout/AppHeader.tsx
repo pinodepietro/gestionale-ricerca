@@ -1,8 +1,8 @@
 // frontend/src/components/layout/AppHeader.tsx
 import { Layout, Breadcrumb, Avatar, Dropdown, Badge, Space, Typography,
-         Popover, List, Tag, Empty, Spin } from 'antd';
+         Popover, List, Tag, Empty, Spin, Button } from 'antd';
 import { UserOutlined, LogoutOutlined, BellOutlined,
-         ClockCircleOutlined, FileTextOutlined } from '@ant-design/icons';
+         ClockCircleOutlined, FileTextOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
 import { useLocation, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -24,7 +24,7 @@ const BREADCRUMB_MAP: Record<string, string> = {
 
 interface Notifica {
   id: string;
-  tipo: 'sal_scadenza' | 'timesheet_pendente';
+  tipo: 'sal_scadenza' | 'timesheet_pendente' | 'timesheet_approvato' | 'timesheet_rifiutato';
   titolo: string;
   messaggio: string;
   giorni_rimanenti: number | null;
@@ -41,9 +41,26 @@ export function AppHeader() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
+  type CacheNotifiche = { data: Notifica[]; meta: { totale: number } };
+
   const { mutate: segnaLetta } = useMutation({
     mutationFn: (id: string) => apiClient.post(`/notifiche/${id}/letta`, {}),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notifiche'] }),
+    onMutate: (id: string) => {
+      queryClient.setQueryData<CacheNotifiche>(['notifiche'], old => {
+        if (!old) return old;
+        const nuova = old.data.filter(n => n.id !== id);
+        return { data: nuova, meta: { totale: nuova.length } };
+      });
+    },
+    onError: () => queryClient.invalidateQueries({ queryKey: ['notifiche'] }),
+  });
+
+  const { mutate: segnaLetteTutte } = useMutation({
+    mutationFn: () => apiClient.post('/notifiche/leggi-tutte', {}),
+    onMutate: () => {
+      queryClient.setQueryData<CacheNotifiche>(['notifiche'], { data: [], meta: { totale: 0 } });
+    },
+    onError: () => queryClient.invalidateQueries({ queryKey: ['notifiche'] }),
   });
 
   const { data: notifiche, isLoading: loadingNotifiche } = useQuery({
@@ -51,7 +68,7 @@ export function AppHeader() {
     queryFn: () => apiClient.get<{ data: Notifica[]; meta: { totale: number } }>('/notifiche')
       .then(r => r.data),
     refetchInterval: 60000,
-    enabled: !!user && ['pi', 'amministrativo', 'management'].includes(user.ruolo),
+    enabled: !!user && ['ricercatore', 'amministrativo', 'management', 'superadmin'].includes(user.ruolo),
   });
 
   const totaleNotifiche = notifiche?.meta?.totale ?? 0;
@@ -64,14 +81,26 @@ export function AppHeader() {
     return { title: index < pathSegments.length - 1 ? <Link to={path}>{label}</Link> : label };
   });
 
-  const userMenuItems = [{ key: 'logout', icon: <LogoutOutlined />, label: 'Esci', onClick: logout }];
+  const handleLogout = () => {
+    queryClient.clear();
+    logout();
+  };
+
+  const userMenuItems = [{ key: 'logout', icon: <LogoutOutlined />, label: 'Esci', onClick: handleLogout }];
 
   const pannelloNotifiche = (
     <div style={{ width: 360 }}>
-      <div style={{ padding: '8px 0', borderBottom: '1px solid #f0f0f0', marginBottom: 8 }}>
-        <Text strong>Notifiche</Text>
+      <div style={{ padding: '8px 0', borderBottom: '1px solid #f0f0f0', marginBottom: 8,
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Space>
+          <Text strong>Notifiche</Text>
+          {totaleNotifiche > 0 && <Tag color="red">{totaleNotifiche}</Tag>}
+        </Space>
         {totaleNotifiche > 0 && (
-          <Tag color="red" style={{ marginLeft: 8 }}>{totaleNotifiche}</Tag>
+          <Button type="link" size="small" style={{ padding: 0, fontSize: 12 }}
+            onClick={() => segnaLetteTutte()}>
+            Segna tutte lette
+          </Button>
         )}
       </div>
       {loadingNotifiche ? (
@@ -97,6 +126,10 @@ export function AppHeader() {
                 avatar={
                   n.tipo === 'sal_scadenza'
                     ? <ClockCircleOutlined style={{ fontSize: 18, color: n.urgente ? '#ff4d4f' : '#faad14', marginTop: 4 }} />
+                    : n.tipo === 'timesheet_approvato'
+                    ? <CheckCircleOutlined style={{ fontSize: 18, color: '#52c41a', marginTop: 4 }} />
+                    : n.tipo === 'timesheet_rifiutato'
+                    ? <CloseCircleOutlined style={{ fontSize: 18, color: '#ff4d4f', marginTop: 4 }} />
                     : <FileTextOutlined style={{ fontSize: 18, color: '#1677ff', marginTop: 4 }} />
                 }
                 title={

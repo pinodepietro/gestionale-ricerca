@@ -111,7 +111,7 @@ export function Step5Personale({ progettoId, onCompletato, onIndietro }: Props) 
       <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalAperta(true)} style={{ marginBottom: 16 }}>
         Aggiungi persona
       </Button>
-      <Table columns={colonne} dataSource={allocazioni ?? []} rowKey="id" pagination={false} size="small" />
+      <Table columns={colonne} dataSource={(allocazioni ?? []) as Record<string, unknown>[]} rowKey="id" pagination={false} size="small" />
 
       <Modal open={modalAperta} title={allocInModifica ? 'Modifica allocazione' : 'Nuova allocazione'}
         onCancel={() => { setModalAperta(false); setAllocInModifica(null); form.resetFields(); setShowPiWarning(false); }}
@@ -142,8 +142,8 @@ export function Step5Personale({ progettoId, onCompletato, onIndietro }: Props) 
           <Form.Item name="is_pi" label="PI del progetto" valuePropName="checked" initialValue={false}>
             <Switch onChange={(checked) => {
               if (checked) {
-                const piEsistente = allocazioni?.find((a: { is_pi: boolean; id: string }) =>
-                  a.is_pi && a.id !== allocInModifica?.id);
+                const piEsistente = (allocazioni as { is_pi: boolean; id: string }[] | undefined)
+                  ?.find(a => a.is_pi && a.id !== allocInModifica?.id);
                 setShowPiWarning(!!piEsistente);
               } else {
                 setShowPiWarning(false);

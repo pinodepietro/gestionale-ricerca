@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.deps import tutti_i_ruoli, solo_amministrativo
 from app.models.persona import Persona
-from app.models.partner import TipoFinanziamento, Partner
+from app.models.partner import TipoFinanziamento, Partner, TipoProgetto
 from app.models.budget import VoceDiCosto
 from app.models.timesheet import TemplateTimesheet
 import uuid
@@ -135,6 +135,43 @@ def _template_dict(t: TemplateTimesheet) -> dict:
         "etichetta_firmatario_2": t.etichetta_firmatario_2,
         "etichetta_firmatario_3": t.etichetta_firmatario_3,
     }
+
+
+# ─── Tipi progetto ────────────────────────────────────────────────────────────
+
+@router.get("/tipi-progetto")
+def lista_tipi_progetto(db: Session = Depends(get_db), utente: Persona = Depends(tutti_i_ruoli)):
+    items = db.query(TipoProgetto).order_by(TipoProgetto.nome).all()
+    return {"data": [{"id": str(i.id), "nome": i.nome} for i in items]}
+
+
+@router.post("/tipi-progetto")
+def crea_tipo_progetto(body: dict, db: Session = Depends(get_db), utente: Persona = Depends(solo_amministrativo)):
+    if db.query(TipoProgetto).filter(TipoProgetto.nome == body.get("nome")).first():
+        raise HTTPException(status_code=409, detail={"error": {"code": "DUPLICATO", "message": "Tipo già esistente"}})
+    t = TipoProgetto(id=uuid.uuid4(), nome=body.get("nome"))
+    db.add(t); db.commit(); db.refresh(t)
+    return {"data": {"id": str(t.id), "nome": t.nome}}
+
+
+@router.patch("/tipi-progetto/{id}")
+def aggiorna_tipo_progetto(id: str, body: dict, db: Session = Depends(get_db), utente: Persona = Depends(solo_amministrativo)):
+    t = db.query(TipoProgetto).filter(TipoProgetto.id == id).first()
+    if not t:
+        raise HTTPException(status_code=404, detail={"error": {"code": "NOT_FOUND", "message": "Tipo non trovato"}})
+    if "nome" in body:
+        t.nome = body["nome"]
+    db.commit(); db.refresh(t)
+    return {"data": {"id": str(t.id), "nome": t.nome}}
+
+
+@router.delete("/tipi-progetto/{id}")
+def elimina_tipo_progetto(id: str, db: Session = Depends(get_db), utente: Persona = Depends(solo_amministrativo)):
+    t = db.query(TipoProgetto).filter(TipoProgetto.id == id).first()
+    if not t:
+        raise HTTPException(status_code=404, detail={"error": {"code": "NOT_FOUND", "message": "Tipo non trovato"}})
+    db.delete(t); db.commit()
+    return {"data": {"deleted": True}}
 
 
 # ─── Tipi finanziamento (sola lettura) ───────────────────────────────────────

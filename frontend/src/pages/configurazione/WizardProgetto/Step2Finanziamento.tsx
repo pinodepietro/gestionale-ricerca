@@ -6,6 +6,7 @@ import { progettiApi } from '../../../api/progetti';
 import { configApi } from '../../../api/config';
 import { queryKeys } from '../../../utils/queryKeys';
 import { formatEuro } from '../../../utils/formatters';
+import { CreaVoceDiCostoButton } from '../../../components/common/CreaVoceDiCostoButton';
 
 const { Title, Text } = Typography;
 
@@ -46,7 +47,7 @@ export function Step2Finanziamento({ progettoId, onCompletato, onIndietro }: Pro
   useEffect(() => {
     if (budgetEsistente && budgetEsistente.length > 0 && !inizializzato.current) {
       inizializzato.current = true;
-      const vociCaricate = budgetEsistente.map((v: { voce_id: string; importo_previsto: number }) => ({
+      const vociCaricate = (budgetEsistente as { voce_id: string; importo_previsto: number }[]).map(v => ({
         voce_id: v.voce_id,
         importo_previsto: v.importo_previsto,
       }));
@@ -96,7 +97,10 @@ export function Step2Finanziamento({ progettoId, onCompletato, onIndietro }: Pro
   return (
     <div>
       <Title level={4} style={{ marginBottom: 24 }}>Finanziamento e budget</Title>
-      <Title level={5}>Voci di budget</Title>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <Title level={5} style={{ margin: 0 }}>Voci di budget</Title>
+        <CreaVoceDiCostoButton />
+      </div>
       <Form form={form} layout="inline" onFinish={aggiungiVoce} style={{ marginBottom: 16 }}>
         <Form.Item name="voce_id" rules={[{ required: true, message: 'Seleziona voce' }]} style={{ minWidth: 320 }}>
           <Select placeholder="Seleziona voce di costo"

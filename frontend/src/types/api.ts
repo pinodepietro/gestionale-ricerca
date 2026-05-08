@@ -15,10 +15,16 @@ export interface PaginatedResponse<T> {
 }
 
 export interface ApiError {
-  error: {
+  error?: {
     code: string;
     message: string;
     detail?: Record<string, unknown>;
+  };
+  detail?: {
+    error?: {
+      code: string;
+      message: string;
+    };
   };
 }
 

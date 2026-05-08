@@ -1,7 +1,7 @@
 // frontend/src/pages/progetti/ModificaProgettoDrawer.tsx
 import { useEffect, useRef, useState } from 'react';
 import { Drawer, Tabs, Form, Input, InputNumber, DatePicker, Button, Select,
-         Table, Space, Modal, App, Typography, Divider, Row, Col, Switch, Tag } from 'antd';
+         Table, Space, Modal, App, Divider, Row, Col, Switch, Tag } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
@@ -10,10 +10,8 @@ import { budgetApi } from '../../api/budget';
 import { configApi } from '../../api/config';
 import { personaleApi } from '../../api/personale';
 import { queryKeys } from '../../utils/queryKeys';
-import { formatEuro, formatData, formatOre } from '../../utils/formatters';
-import type { Progetto } from '../../types/progetto';
-
-const { Text } = Typography;
+import { formatData, formatOre } from '../../utils/formatters';
+import { CreaTipoProgettoButton } from '../../components/common/CreaTipoProgettoButton';
 
 interface Props {
   progettoId: string;
@@ -55,6 +53,11 @@ function TabAnagrafica({ progettoId, onSalvato }: { progettoId: string; onSalvat
     queryFn: () => progettiApi.get(progettoId).then(r => r.data.data),
   });
 
+  const { data: tipiProgetto } = useQuery({
+    queryKey: queryKeys.config.tipiProgetto,
+    queryFn: () => configApi.tipiProgetto().then(r => r.data.data),
+  });
+
   useEffect(() => {
     if (progetto) {
       form.setFieldsValue({
@@ -76,7 +79,7 @@ function TabAnagrafica({ progettoId, onSalvato }: { progettoId: string; onSalvat
         data_fine_rendicontazione: values.data_fine_rendicontazione
           ? dayjs(values.data_fine_rendicontazione as dayjs.Dayjs).format('YYYY-MM-DD') : null,
       };
-      return progettiApi.update(progettoId, payload).then(r => r.data.data);
+      return progettiApi.update(progettoId, payload as Parameters<typeof progettiApi.update>[1]).then(r => r.data.data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.progetti.detail(progettoId) });
@@ -111,6 +114,20 @@ function TabAnagrafica({ progettoId, onSalvato }: { progettoId: string; onSalvat
       </Form.Item>
       <Row gutter={16}>
         <Col span={8}>
+          <Form.Item name="tipo" label={
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              Tipo progetto <CreaTipoProgettoButton />
+            </span>
+          } rules={[{ required: true, message: 'Obbligatorio' }]}>
+            <Select
+              options={(tipiProgetto ?? []).map((t: { nome: string }) => ({ value: t.nome, label: t.nome }))}
+              showSearch
+              filterOption={(input, option) =>
+                (option?.label as string)?.toLowerCase().includes(input.toLowerCase())}
+            />
+          </Form.Item>
+        </Col>
+        <Col span={8}>
           <Form.Item name="data_inizio" label="Data inizio" rules={[{ required: true }]}>
             <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
           </Form.Item>
@@ -120,6 +137,8 @@ function TabAnagrafica({ progettoId, onSalvato }: { progettoId: string; onSalvat
             <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
           </Form.Item>
         </Col>
+      </Row>
+      <Row gutter={16}>
         <Col span={8}>
           <Form.Item name="data_fine_rendicontazione" label="Fine rendicontazione">
             <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
@@ -314,7 +333,7 @@ function TabWpModifica({ progettoId }: { progettoId: string }) {
         onClick={() => { setWpInModifica(null); form.resetFields(); setModalAperta(true); }}>
         Nuovo WP
       </Button>
-      <Table columns={colonne} dataSource={wps ?? []} rowKey="id" pagination={false} size="small" />
+      <Table columns={colonne} dataSource={(wps ?? []) as Record<string, unknown>[]} rowKey="id" pagination={false} size="small" />
       <Modal title={wpInModifica?.id ? 'Modifica WP' : 'Nuovo WP'}
         open={modalAperta} onCancel={() => { setModalAperta(false); form.resetFields(); }}
         onOk={() => form.submit()} confirmLoading={isPending} okText="Salva">
@@ -360,9 +379,8 @@ function TabAllocazioniModifica({ progettoId }: { progettoId: string }) {
         data_fine: dayjs(values.data_fine as dayjs.Dayjs).format('YYYY-MM-DD'),
       };
       if (values.is_pi) {
-        const allocs = await progettiApi.allocazioni.list(progettoId).then(r => r.data.data);
-        const piPrecedente = allocs.find((a: { is_pi: boolean; id: string }) =>
-          a.is_pi && a.id !== allocInModifica?.id);
+        const allocs = await progettiApi.allocazioni.list(progettoId).then(r => r.data.data) as { is_pi: boolean; id: string }[];
+        const piPrecedente = allocs.find(a => a.is_pi && a.id !== allocInModifica?.id);
         if (piPrecedente) {
           await progettiApi.allocazioni.update(progettoId, piPrecedente.id, { is_pi: false });
           notification.info({ message: "Ruolo PI rimosso dalla persona precedente" });
@@ -436,20 +454,20 @@ function TabAllocazioniModifica({ progettoId }: { progettoId: string }) {
         onClick={() => { setAllocInModifica(null); form.resetFields(); setModalAperta(true); }}>
         Nuova allocazione
       </Button>
-      <Table columns={colonne} dataSource={allocazioni ?? []} rowKey="id" pagination={false} size="small" />
+      <Table columns={colonne} dataSource={(allocazioni ?? []) as Record<string, unknown>[]} rowKey="id" pagination={false} size="small" />
       <Modal title={allocInModifica?.id ? 'Modifica allocazione' : 'Nuova allocazione'}
         open={modalAperta} onCancel={() => { setModalAperta(false); form.resetFields(); }}
         onOk={() => form.submit()} confirmLoading={isPending} okText="Salva">
         <Form form={form} layout="vertical" onFinish={salvaAlloc} style={{ marginTop: 12 }}>
           <Form.Item name="persona_id" label="Persona" rules={[{ required: true }]}>
             <Select placeholder="Seleziona persona"
-              options={persone
-                ?.filter((p: { id: string }) => 
-                  !allocazioni?.find((a: { persona_id: string; id: string }) => 
+              options={(persone as { id: string; nome: string; cognome: string }[] | undefined)
+                ?.filter(p =>
+                  !(allocazioni as { persona_id: string; id: string }[] | undefined)?.find(a =>
                     a.persona_id === p.id && a.id !== allocInModifica?.id
                   )
                 )
-                .map((p: { id: string; nome: string; cognome: string }) => ({
+                .map(p => ({
                   value: p.id, label: `${p.nome} ${p.cognome}`,
                 }))}
               showSearch filterOption={(inp, opt) =>

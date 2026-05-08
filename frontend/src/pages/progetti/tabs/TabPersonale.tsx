@@ -17,6 +17,7 @@ interface Allocazione {
   data_inizio: string;
   data_fine: string;
   note?: string;
+  is_pi?: boolean;
 }
 
 interface Props { progettoId: string; }
@@ -26,7 +27,7 @@ export function TabPersonale({ progettoId }: Props) {
 
   const { data: allocazioni, isLoading } = useQuery({
     queryKey: queryKeys.progetti.allocazioni(progettoId),
-    queryFn: () => progettiApi.allocazioni.list(progettoId).then(r => r.data.data),
+    queryFn: () => progettiApi.allocazioni.list(progettoId).then(r => r.data.data as Allocazione[]),
     enabled: !!progettoId,
   });
 
@@ -35,11 +36,12 @@ export function TabPersonale({ progettoId }: Props) {
     queryFn: () => personaleApi.list({}).then(r => r.data.data),
   });
 
-  const { data: timesheet } = useQuery({
+  const { data: timesheetData } = useQuery({
     queryKey: queryKeys.timesheet.list({ progetto_id: progettoId }),
-    queryFn: () => timesheetApi.list({ progetto_id: progettoId }).then(r => r.data.data),
+    queryFn: () => timesheetApi.list({ progetto_id: progettoId }).then(r => r.data),
     enabled: !!progettoId,
   });
+  const timesheet = timesheetData?.data ?? [];
 
   const nomPersona = (id: string) => {
     const p = persone?.find((x: { id: string }) => x.id === id);
@@ -48,12 +50,11 @@ export function TabPersonale({ progettoId }: Props) {
 
   const ruoloPersona = (id: string) => {
     const p = persone?.find((x: { id: string }) => x.id === id);
-    return p?.ruolo_ente || p?.ruolo || '—';
+    return p?.ruolo_ente || '—';
   };
 
   // Calcola ore effettive dai timesheet approvati per persona
   const oreEffettivePerPersona = (personaId: string): number => {
-    if (!timesheet) return 0;
     return timesheet
       .filter((ts: { persona_id: string; stato: string }) =>
         ts.persona_id === personaId && ts.stato === 'approvato')
@@ -71,10 +72,13 @@ export function TabPersonale({ progettoId }: Props) {
       title: 'Persona', key: 'persona',
       render: (_: unknown, r: Allocazione) => (
         <Space direction="vertical" size={0}>
-          <Text strong style={{ cursor: 'pointer', color: '#185FA5' }}
-            onClick={() => navigate(`/personale/${r.persona_id}`)}>
-            {nomPersona(r.persona_id)}
-          </Text>
+          <Space size={6}>
+            <Text strong style={{ cursor: 'pointer', color: '#185FA5' }}
+              onClick={() => navigate(`/personale/${r.persona_id}`)}>
+              {nomPersona(r.persona_id)}
+            </Text>
+            {r.is_pi && <Tag color="blue" style={{ fontSize: 11, padding: '0 4px' }}>PI</Tag>}
+          </Space>
           <Text type="secondary" style={{ fontSize: 12 }}>{ruoloPersona(r.persona_id)}</Text>
         </Space>
       ),

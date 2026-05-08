@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Table, Input, Switch, Button, Space, Typography, Row, Col, Tag, Modal, Form, Select, DatePicker, InputNumber, Popconfirm, App } from 'antd';
+import { Table, Input, Switch, Button, Space, Typography, Row, Col, Tag, Modal, Form, Select, DatePicker, App } from 'antd';
 import { PlusOutlined, SearchOutlined, UserOutlined, StopOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -15,9 +15,10 @@ const { Title, Text } = Typography;
 
 const RUOLI_OPTIONS = [
   { value: 'amministrativo', label: 'Amministrativo' },
-  { value: 'pi', label: 'PI' },
   { value: 'ricercatore', label: 'Ricercatore' },
   { value: 'management', label: 'Management' },
+  { value: 'monitor', label: 'Monitor' },
+  { value: 'superadmin', label: 'Super Admin' },
 ];
 
 export function PersonalePage() {

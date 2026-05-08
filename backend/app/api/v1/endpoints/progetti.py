@@ -1,17 +1,20 @@
 # backend/app/api/v1/endpoints/progetti.py
 from fastapi import APIRouter, Depends, HTTPException, Query, status, UploadFile, File
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from app.core.database import get_db
-from app.core.deps import tutti_i_ruoli, solo_amministrativo
+from app.core.deps import tutti_i_ruoli, solo_amministrativo, solo_superadmin
 from app.models.progetto import Progetto
 from app.models.partner import Partner, ProgettoPartner, TipoFinanziamento, Finanziamento
 from app.models.struttura import WorkPackage, Milestone, Deliverable
-from app.models.budget import VoceDiCosto, BudgetVoce
+from app.models.budget import VoceDiCosto, BudgetVoce, Spesa, Sal
 from app.models.personale import Allocazione, MonteOreAnnuale
+from app.models.timesheet import TimesheetTestata
 from app.models.persona import Persona
-from datetime import date
+from datetime import date, datetime
 import math
+import io
 
 router = APIRouter()
 # Router separato per endpoint che non hanno prefisso /progetti
@@ -105,8 +108,8 @@ def cruscotto_globale(
     from datetime import date, timedelta
     from sqlalchemy import func
 
-    # Progetti a cui l'utente partecipa (tramite allocazioni) o tutti se admin/management
-    if utente.ruolo == "management":
+    # Progetti a cui l'utente partecipa (tramite allocazioni) o tutti se admin/management/monitor
+    if utente.ruolo in ("management", "monitor", "superadmin"):
         progetti_ids = [str(p.id) for p in db.query(Progetto).filter(Progetto.stato == "attivo").all()]
     elif utente.ruolo == "amministrativo":
         progetti_ids = [str(p.id) for p in db.query(Progetto).filter(
@@ -184,6 +187,15 @@ def cruscotto_globale(
         else:
             pct_tempo = 0
 
+        pi_alloc = db.query(Allocazione).filter(
+            Allocazione.progetto_id == p.id,
+            Allocazione.is_pi == True,
+        ).first()
+        pi_nome = None
+        if pi_alloc:
+            pi_p = db.query(Persona).filter(Persona.id == pi_alloc.persona_id).first()
+            pi_nome = f"{pi_p.nome} {pi_p.cognome}" if pi_p else None
+
         progetti_detail.append({
             "id": str(p.id),
             "codice": p.codice,
@@ -218,6 +230,7 @@ def cruscotto_globale(
                     VoceDiCosto.categoria.notin_(["personale", "overhead"]),
                 ).scalar() or 0
             ),
+            "pi_nome": pi_nome,
         })
 
     return {"data": {
@@ -234,11 +247,27 @@ def cruscotto_globale(
 
 @router.get("/{id}")
 def get_progetto(id: str, db: Session = Depends(get_db), utente: Persona = Depends(tutti_i_ruoli)):
-    return {"data": progetto_dict(_get_or_404(id, db))}
+    p = _get_or_404(id, db)
+    d = progetto_dict(p)
+    pi_alloc = db.query(Allocazione).filter(
+        Allocazione.progetto_id == p.id,
+        Allocazione.is_pi == True,
+    ).first()
+    if pi_alloc:
+        pi = db.query(Persona).filter(Persona.id == pi_alloc.persona_id).first()
+        d["pi_nome"] = f"{pi.nome} {pi.cognome}" if pi else None
+    else:
+        d["pi_nome"] = None
+    if p.amministrativo_id:
+        amm = db.query(Persona).filter(Persona.id == p.amministrativo_id).first()
+        d["amministrativo_nome"] = f"{amm.nome} {amm.cognome}" if amm else None
+    else:
+        d["amministrativo_nome"] = None
+    return {"data": d}
 
 
 @router.post("")
-def crea_progetto(body: dict, db: Session = Depends(get_db), utente: Persona = Depends(solo_amministrativo)):
+def crea_progetto(body: dict, db: Session = Depends(get_db), utente: Persona = Depends(solo_superadmin)):
     campi = {k: v for k, v in body.items() if hasattr(Progetto, k)}
     p = Progetto(**campi)
     p.stato = "bozza"
@@ -261,6 +290,31 @@ def aggiorna_progetto(id: str, body: dict, db: Session = Depends(get_db), utente
 
 @router.post("/{id}/attiva")
 def attiva(id: str, db: Session = Depends(get_db), utente: Persona = Depends(solo_amministrativo)):
+    p = _get_or_404(id, db)
+    errori = []
+
+    ha_wp = db.query(WorkPackage).filter(WorkPackage.progetto_id == id).first() is not None
+    if not ha_wp:
+        errori.append("Il progetto deve avere almeno un Work Package")
+
+    ha_allocazioni = db.query(Allocazione).filter(Allocazione.progetto_id == id).first() is not None
+    if not ha_allocazioni:
+        errori.append("Il progetto deve avere almeno un membro del personale allocato")
+
+    budget_totale = db.query(BudgetVoce).filter(BudgetVoce.progetto_id == id).first()
+    if not budget_totale:
+        errori.append("Il progetto deve avere almeno una voce di budget definita")
+
+    if errori:
+        raise HTTPException(
+            status_code=422,
+            detail={"error": {
+                "code": "PRE_ATTIVAZIONE_FALLITA",
+                "message": "Il progetto non può essere attivato",
+                "dettagli": errori,
+            }},
+        )
+
     return _transizione(id, "attiva", db)
 
 
@@ -639,9 +693,18 @@ def registra_spesa(
     db: Session = Depends(get_db),
     utente: Persona = Depends(tutti_i_ruoli),
 ):
-    if utente.ruolo not in ("amministrativo", "pi"):
-        raise HTTPException(status_code=403, detail={"error": {
-            "code": "FORBIDDEN", "message": "Solo amministrativi e PI possono registrare spese"}})
+    if utente.ruolo == "amministrativo":
+        pass  # sempre autorizzato
+    else:
+        from app.models.personale import Allocazione
+        e_pi = db.query(Allocazione).filter(
+            Allocazione.persona_id == utente.id,
+            Allocazione.progetto_id == id,
+            Allocazione.is_pi == True,
+        ).first()
+        if not e_pi:
+            raise HTTPException(status_code=403, detail={"error": {
+                "code": "FORBIDDEN", "message": "Solo l'amministrativo o il PI del progetto possono registrare spese"}})
     from app.models.budget import Spesa, BudgetVoce
     import uuid as _uuid
     p = _get_or_404(id, db)
@@ -957,3 +1020,390 @@ def _deliverable_dict(d) -> dict:
             "codice": d.codice, "titolo": d.titolo, "tipo": d.tipo,
             "data_scadenza": str(d.data_scadenza) if d.data_scadenza else None,
             "data_consegna": str(d.data_consegna) if d.data_consegna else None, "stato": d.stato}
+
+
+# ─── Helpers report ───────────────────────────────────────────────────────────
+
+def _check_report_permission(p: Progetto, utente: Persona):
+    if utente.ruolo == "superadmin":
+        return
+    if p.amministrativo_id and str(p.amministrativo_id) == str(utente.id):
+        return
+    raise HTTPException(status_code=403, detail={"error": {"code": "FORBIDDEN",
+        "message": "Solo l'amministrativo del progetto può generare il report"}})
+
+
+def _raccogli_dati_report(id: str, db: Session):
+    p = db.query(Progetto).filter(Progetto.id == id).first()
+    if not p:
+        raise HTTPException(status_code=404, detail={"error": {"code": "NOT_FOUND", "message": "Progetto non trovato"}})
+
+    pi_alloc = db.query(Allocazione).filter(Allocazione.progetto_id == id, Allocazione.is_pi == True).first()
+    pi = db.query(Persona).filter(Persona.id == pi_alloc.persona_id).first() if pi_alloc else None
+    amm = db.query(Persona).filter(Persona.id == p.amministrativo_id).first() if p.amministrativo_id else None
+
+    budget_voci = db.query(BudgetVoce).filter(BudgetVoce.progetto_id == id).all()
+    voci_map = {str(v.id): v for v in db.query(VoceDiCosto).all()}
+
+    spese = db.query(Spesa).filter(Spesa.progetto_id == id, Spesa.stato == "registrata").order_by(Spesa.data).all()
+
+    timesheet = (db.query(TimesheetTestata)
+                 .filter(TimesheetTestata.progetto_id == id, TimesheetTestata.stato == "approvato")
+                 .order_by(TimesheetTestata.anno, TimesheetTestata.mese).all())
+    persone_map = {str(pe.id): pe for pe in db.query(Persona).all()}
+
+    sal_list = db.query(Sal).filter(Sal.progetto_id == id).order_by(Sal.numero).all()
+
+    partner_rows = db.query(ProgettoPartner).filter(ProgettoPartner.progetto_id == id).all()
+    partner_map = {str(pa.id): pa for pa in db.query(Partner).all()}
+
+    return p, pi, amm, budget_voci, voci_map, spese, timesheet, persone_map, sal_list, partner_rows, partner_map
+
+
+# ─── Report Excel ─────────────────────────────────────────────────────────────
+
+@router.get("/{id}/report/xlsx")
+def report_progetto_xlsx(id: str, db: Session = Depends(get_db), utente: Persona = Depends(tutti_i_ruoli)):
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, numbers
+    from openpyxl.utils import get_column_letter
+
+    p, pi, amm, budget_voci, voci_map, spese, timesheet, persone_map, sal_list, partner_rows, partner_map = \
+        _raccogli_dati_report(id, db)
+    _check_report_permission(p, utente)
+
+    wb = openpyxl.Workbook()
+
+    BLU = "FF185FA5"
+    BIANCO = "FFFFFFFF"
+    GRIGIO = "FFF5F5F5"
+
+    def stile_header(ws, row, cols):
+        for col in range(1, cols + 1):
+            c = ws.cell(row=row, column=col)
+            c.font = Font(bold=True, color=BIANCO)
+            c.fill = PatternFill("solid", fgColor=BLU)
+            c.alignment = Alignment(horizontal="center")
+
+    def auto_width(ws):
+        for col in ws.columns:
+            max_len = max((len(str(c.value or "")) for c in col), default=0)
+            ws.column_dimensions[get_column_letter(col[0].column)].width = min(max_len + 4, 50)
+
+    def fmt_eur(v):
+        return round(float(v), 2) if v else 0.0
+
+    def fmt_d(d):
+        return d.strftime("%d/%m/%Y") if d else ""
+
+    # Sheet 1 — Info progetto
+    ws = wb.active
+    ws.title = "Progetto"
+    rows_info = [
+        ("Titolo", p.titolo),
+        ("Acronimo", p.acronimo),
+        ("Codice", p.codice),
+        ("CUP", p.cup or "—"),
+        ("Stato", p.stato),
+        ("Data inizio", fmt_d(p.data_inizio)),
+        ("Data fine", fmt_d(p.data_fine)),
+        ("PI", f"{pi.nome} {pi.cognome}" if pi else "—"),
+        ("Amministrativo", f"{amm.nome} {amm.cognome}" if amm else "—"),
+        ("Costo totale (€)", fmt_eur(p.costo_totale)),
+        ("Importo finanziato (€)", fmt_eur(p.importo_finanziato)),
+        ("Cofinanziamento (€)", round(fmt_eur(p.costo_totale) - fmt_eur(p.importo_finanziato), 2)),
+    ]
+    for r, (label, val) in enumerate(rows_info, start=1):
+        ws.cell(r, 1, label).font = Font(bold=True)
+        ws.cell(r, 2, val)
+    auto_width(ws)
+
+    # Sheet 2 — Budget
+    ws2 = wb.create_sheet("Budget")
+    ws2.append(["Voce di costo", "Previsto (€)", "Rendicontato (€)", "Delta (€)", "% Utilizzo"])
+    stile_header(ws2, 1, 5)
+    for bv in budget_voci:
+        v = voci_map.get(str(bv.voce_id))
+        label = f"{v.codice} — {v.descrizione}" if v else str(bv.voce_id)
+        prev = fmt_eur(bv.importo_previsto)
+        rend = fmt_eur(bv.importo_rendicontato)
+        pct = round(rend / prev * 100, 1) if prev > 0 else 0
+        ws2.append([label, prev, rend, round(rend - prev, 2), pct])
+    totale_prev = sum(fmt_eur(bv.importo_previsto) for bv in budget_voci)
+    totale_rend = sum(fmt_eur(bv.importo_rendicontato) for bv in budget_voci)
+    ws2.append(["TOTALE", totale_prev, totale_rend,
+                round(totale_rend - totale_prev, 2),
+                round(totale_rend / totale_prev * 100, 1) if totale_prev > 0 else 0])
+    r_tot = ws2.max_row
+    for col in range(1, 6):
+        ws2.cell(r_tot, col).font = Font(bold=True)
+    auto_width(ws2)
+
+    # Sheet 3 — Partner
+    ws3 = wb.create_sheet("Partner")
+    ws3.append(["Nome ente", "Tipo", "Paese", "Ruolo nel progetto", "Budget assegnato (€)"])
+    stile_header(ws3, 1, 5)
+    for pr in partner_rows:
+        pa = partner_map.get(str(pr.partner_id))
+        ws3.append([pa.nome if pa else "—", pa.tipo if pa else "—",
+                    pa.paese if pa else "—", pr.ruolo,
+                    fmt_eur(pr.budget_assegnato) if pr.budget_assegnato else ""])
+    auto_width(ws3)
+
+    # Sheet 4 — Spese
+    ws4 = wb.create_sheet("Spese")
+    ws4.append(["Data", "N° documento", "Voce di costo", "Descrizione", "Importo (€)"])
+    stile_header(ws4, 1, 5)
+    tot_spese = 0.0
+    for s in spese:
+        v = voci_map.get(str(s.voce_id))
+        voce_label = f"{v.codice} — {v.descrizione}" if v else "—"
+        importo = fmt_eur(s.importo)
+        tot_spese += importo
+        ws4.append([fmt_d(s.data), s.numero_documento or "", voce_label, s.descrizione or "", importo])
+    ws4.append(["", "", "", "TOTALE", round(tot_spese, 2)])
+    r_tot = ws4.max_row
+    for col in range(1, 6):
+        ws4.cell(r_tot, col).font = Font(bold=True)
+    auto_width(ws4)
+
+    # Sheet 5 — Timesheet
+    ws5 = wb.create_sheet("Timesheet")
+    ws5.append(["Cognome", "Nome", "Mese", "Anno", "Ore totali", "Costo calcolato (€)"])
+    stile_header(ws5, 1, 6)
+    tot_ts_costo = 0.0
+    for t in timesheet:
+        pe = persone_map.get(str(t.persona_id))
+        ore = sum(float(c.ore) for r in t.righe for c in r.celle) if t.righe else 0
+        costo = sum(float(c.costo_calcolato or 0) for r in t.righe for c in r.celle) if t.righe else 0
+        tot_ts_costo += costo
+        ws5.append([pe.cognome if pe else "—", pe.nome if pe else "—",
+                    t.mese, t.anno, round(ore, 2), round(costo, 2)])
+    ws5.append(["", "", "", "", "TOTALE", round(tot_ts_costo, 2)])
+    r_tot = ws5.max_row
+    for col in range(1, 7):
+        ws5.cell(r_tot, col).font = Font(bold=True)
+    auto_width(ws5)
+
+    # Sheet 6 — SAL
+    ws6 = wb.create_sheet("SAL")
+    ws6.append(["N° SAL", "Inizio periodo", "Fine periodo", "Stato", "Importo erogato (€)"])
+    stile_header(ws6, 1, 5)
+    for s in sal_list:
+        ws6.append([s.numero, fmt_d(s.data_inizio), fmt_d(s.data_fine),
+                    s.stato, fmt_eur(s.importo_erogato) if s.importo_erogato else ""])
+    auto_width(ws6)
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    nome_p = p.acronimo or p.codice or (p.titolo[:30] if p.titolo else "Progetto")
+    nome = f"Report_{nome_p}_{datetime.today().strftime('%Y%m%d')}.xlsx"
+    return StreamingResponse(buf, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                             headers={"Content-Disposition": f'attachment; filename="{nome}"'})
+
+
+# ─── Report PDF ───────────────────────────────────────────────────────────────
+
+@router.get("/{id}/report/pdf")
+def report_progetto_pdf(id: str, db: Session = Depends(get_db), utente: Persona = Depends(tutti_i_ruoli)):
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.lib.units import cm
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
+    from reportlab.lib.enums import TA_CENTER, TA_RIGHT
+
+    p, pi, amm, budget_voci, voci_map, spese, timesheet, persone_map, sal_list, partner_rows, partner_map = \
+        _raccogli_dati_report(id, db)
+    _check_report_permission(p, utente)
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4,
+                            leftMargin=2*cm, rightMargin=2*cm,
+                            topMargin=2*cm, bottomMargin=2*cm)
+
+    BLU = colors.HexColor("#185FA5")
+    GRIGIO_CH = colors.HexColor("#F5F5F5")
+    BIANCO = colors.white
+
+    styles = getSampleStyleSheet()
+    titolo_doc = ParagraphStyle("TitoloDoc", parent=styles["Normal"],
+                                fontSize=20, fontName="Helvetica-Bold",
+                                textColor=BIANCO, alignment=TA_CENTER)
+    sottotitolo = ParagraphStyle("Sottotitolo", parent=styles["Normal"],
+                                 fontSize=11, textColor=BIANCO, alignment=TA_CENTER)
+    sezione = ParagraphStyle("Sezione", parent=styles["Normal"],
+                             fontSize=13, fontName="Helvetica-Bold",
+                             textColor=BLU, spaceBefore=16, spaceAfter=6)
+    normale = styles["Normal"]
+    normale.fontSize = 9
+
+    def fmt_eur(v):
+        if not v:
+            return "€ 0,00"
+        return f"€ {float(v):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+    def fmt_d(d):
+        return d.strftime("%d/%m/%Y") if d else "—"
+
+    def tabella(dati, col_widths, header_row=True, extra_cmds=None):
+        t = Table(dati, colWidths=col_widths)
+        cmds = [
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [BIANCO, GRIGIO_CH]),
+            ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#DDDDDD")),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ]
+        if header_row:
+            cmds += [
+                ("BACKGROUND", (0, 0), (-1, 0), BLU),
+                ("TEXTCOLOR", (0, 0), (-1, 0), BIANCO),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ]
+        if extra_cmds:
+            cmds += extra_cmds
+        t.setStyle(TableStyle(cmds))
+        return t
+
+    story = []
+    W = 17 * cm  # larghezza utile
+
+    # Banner copertina
+    banner_data = [[Paragraph(p.acronimo or p.codice or "Progetto", titolo_doc)],
+                   [Paragraph(p.titolo or "", sottotitolo)],
+                   [Paragraph(f"Codice: {p.codice or '—'}" + (f" | CUP: {p.cup}" if p.cup else ""), sottotitolo)]]
+    banner = Table(banner_data, colWidths=[W])
+    banner.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), BLU),
+        ("TOPPADDING", (0, 0), (-1, -1), 10),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+        ("LEFTPADDING", (0, 0), (-1, -1), 16),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 16),
+    ]))
+    story.append(banner)
+    story.append(Spacer(1, 0.4*cm))
+
+    # Info box
+    pi_nome = f"{pi.nome} {pi.cognome}" if pi else "—"
+    amm_nome = f"{amm.nome} {amm.cognome}" if amm else "—"
+    info_data = [
+        ["Periodo", f"{fmt_d(p.data_inizio)} → {fmt_d(p.data_fine)}", "Stato", p.stato.upper()],
+        ["PI", pi_nome, "Amministrativo", amm_nome],
+        ["Costo totale", fmt_eur(p.costo_totale), "Importo finanziato", fmt_eur(p.importo_finanziato)],
+        ["Cofinanziamento", fmt_eur(float(p.costo_totale or 0) - float(p.importo_finanziato or 0)),
+         "% Finanziato", f"{round(float(p.importo_finanziato or 0) / float(p.costo_totale or 1) * 100, 1)}%"],
+    ]
+    t_info = Table(info_data, colWidths=[3.5*cm, 5*cm, 3.5*cm, 5*cm])
+    t_info.setStyle(TableStyle([
+        ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
+        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+        ("FONTNAME", (2, 0), (2, -1), "Helvetica-Bold"),
+        ("BACKGROUND", (0, 0), (-1, -1), GRIGIO_CH),
+        ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#DDDDDD")),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+    ]))
+    story.append(t_info)
+
+    # Budget per voce
+    if budget_voci:
+        story.append(Paragraph("Budget per voce di costo", sezione))
+        bv_data = [["Voce di costo", "Previsto", "Rendicontato", "Delta", "%"]]
+        tot_prev = tot_rend = 0.0
+        for bv in budget_voci:
+            v = voci_map.get(str(bv.voce_id))
+            label = f"{v.codice} — {v.descrizione}" if v else "—"
+            prev = float(bv.importo_previsto or 0)
+            rend = float(bv.importo_rendicontato or 0)
+            tot_prev += prev; tot_rend += rend
+            pct = f"{round(rend / prev * 100, 1)}%" if prev > 0 else "—"
+            bv_data.append([label, fmt_eur(prev), fmt_eur(rend),
+                            fmt_eur(rend - prev), pct])
+        bv_data.append(["TOTALE", fmt_eur(tot_prev), fmt_eur(tot_rend),
+                         fmt_eur(tot_rend - tot_prev),
+                         f"{round(tot_rend / tot_prev * 100, 1)}%" if tot_prev > 0 else "—"])
+        t_bv = tabella(bv_data, [6.5*cm, 2.8*cm, 2.8*cm, 2.8*cm, 2.1*cm], extra_cmds=[
+            ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
+            ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#E8F0FB")),
+        ])
+        story.append(t_bv)
+
+    # Partner
+    if partner_rows:
+        story.append(Paragraph("Partner del progetto", sezione))
+        pa_data = [["Ente", "Tipo", "Paese", "Ruolo", "Budget assegnato"]]
+        for pr in partner_rows:
+            pa = partner_map.get(str(pr.partner_id))
+            pa_data.append([pa.nome if pa else "—", pa.tipo if pa else "—",
+                            pa.paese if pa else "—", pr.ruolo,
+                            fmt_eur(pr.budget_assegnato) if pr.budget_assegnato else "—"])
+        story.append(tabella(pa_data, [5.5*cm, 3*cm, 2*cm, 3*cm, 3.5*cm]))
+
+    # Spese
+    if spese:
+        story.append(Paragraph("Spese registrate", sezione))
+        sp_data = [["Data", "N° documento", "Voce di costo", "Descrizione", "Importo"]]
+        tot_sp = 0.0
+        for s in spese:
+            v = voci_map.get(str(s.voce_id))
+            voce_label = f"{v.codice} — {v.descrizione}" if v else "—"
+            imp = float(s.importo or 0); tot_sp += imp
+            sp_data.append([fmt_d(s.data), s.numero_documento or "—",
+                            voce_label, s.descrizione or "—", fmt_eur(imp)])
+        sp_data.append(["", "", "", "TOTALE", fmt_eur(tot_sp)])
+        t_sp = tabella(sp_data, [2.3*cm, 2.8*cm, 5*cm, 4*cm, 2.9*cm], extra_cmds=[
+            ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
+            ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#E8F0FB")),
+        ])
+        story.append(t_sp)
+
+    # Timesheet
+    if timesheet:
+        story.append(Paragraph("Timesheet approvati", sezione))
+        ts_data = [["Cognome", "Nome", "Mese", "Anno", "Ore totali", "Costo calcolato"]]
+        tot_ts = 0.0
+        for t in timesheet:
+            pe = persone_map.get(str(t.persona_id))
+            ore = sum(float(c.ore) for r in t.righe for c in r.celle) if t.righe else 0
+            costo = sum(float(c.costo_calcolato or 0) for r in t.righe for c in r.celle) if t.righe else 0
+            tot_ts += costo
+            ts_data.append([pe.cognome if pe else "—", pe.nome if pe else "—",
+                            str(t.mese), str(t.anno), f"{ore:.1f}", fmt_eur(costo)])
+        ts_data.append(["", "", "", "", "TOTALE", fmt_eur(tot_ts)])
+        t_ts = tabella(ts_data, [3*cm, 3*cm, 1.5*cm, 1.5*cm, 2.5*cm, 5.5*cm], extra_cmds=[
+            ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
+            ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#E8F0FB")),
+        ])
+        story.append(t_ts)
+
+    # Storico SAL
+    if sal_list:
+        story.append(Paragraph("Storico SAL", sezione))
+        sal_data = [["N° SAL", "Inizio periodo", "Fine periodo", "Stato", "Importo erogato"]]
+        for s in sal_list:
+            sal_data.append([str(s.numero), fmt_d(s.data_inizio), fmt_d(s.data_fine),
+                            s.stato, fmt_eur(s.importo_erogato) if s.importo_erogato else "—"])
+        story.append(tabella(sal_data, [2*cm, 3.5*cm, 3.5*cm, 3*cm, 5*cm]))
+
+    # Footer
+    story.append(Spacer(1, 0.6*cm))
+    story.append(HRFlowable(width=W, color=BLU, thickness=1))
+    story.append(Spacer(1, 0.2*cm))
+    footer_style = ParagraphStyle("Footer", parent=styles["Normal"],
+                                  fontSize=7, textColor=colors.grey, alignment=TA_RIGHT)
+    story.append(Paragraph(
+        f"Report generato il {datetime.today().strftime('%d/%m/%Y %H:%M')} — {p.acronimo} — Università Pegaso",
+        footer_style
+    ))
+
+    doc.build(story)
+    buf.seek(0)
+    nome_pdf = p.acronimo or p.codice or (p.titolo[:30] if p.titolo else "Progetto")
+    nome = f"Report_{nome_pdf}_{datetime.today().strftime('%Y%m%d')}.pdf"
+    return StreamingResponse(buf, media_type="application/pdf",
+                             headers={"Content-Disposition": f'attachment; filename="{nome}"'})

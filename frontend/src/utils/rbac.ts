@@ -13,10 +13,13 @@ export type Azione =
   | 'spesa:registra'
   | 'spesa:annulla'
   | 'spesa:visualizza_tutte'       // tutti i progetti, non solo i propri
+  | 'timesheet:accedi'             // voce di menu Timesheet nella sidebar
   | 'timesheet:compila'
   | 'timesheet:approva'            // PI — prima firma
   | 'timesheet:firma_2'            // seconda firma (es. Direttore Istituto)
   | 'timesheet:visualizza_tutti'   // tutti i timesheet, non solo i propri
+  | 'sal:visualizza'
+  | 'sal:esporta'
   | 'sal:crea'
   | 'sal:invia'
   | 'sal:contesta'
@@ -29,32 +32,35 @@ export type Azione =
   | 'documento:carica';            // upload documenti progetto
 
 const PERMESSI: Record<Azione, Ruolo[]> = {
-  'progetto:crea':               ['amministrativo'],
-  'progetto:attiva':             ['amministrativo'],
-  'progetto:chiudi':             ['amministrativo'],
-  'progetto:modifica':           ['amministrativo'],
-  'configurazione:accedi':       ['amministrativo'],
+  'progetto:crea':               ['superadmin'],
+  'progetto:attiva':             ['amministrativo', 'superadmin'],
+  'progetto:chiudi':             ['amministrativo', 'superadmin'],
+  'progetto:modifica':           ['amministrativo', 'superadmin'],
+  'configurazione:accedi':       ['amministrativo', 'superadmin'],
 
-  'spesa:registra':              ['amministrativo', 'pi'],
+  'spesa:registra':              ['amministrativo', 'ricercatore', 'superadmin'],
   'spesa:annulla':               ['amministrativo'],
-  'spesa:visualizza_tutte':      ['amministrativo', 'management'],
+  'spesa:visualizza_tutte':      ['amministrativo', 'management', 'monitor'],
 
-  'timesheet:compila':           ['ricercatore', 'pi', 'amministrativo'],
-  'timesheet:approva':           ['pi'],
+  'timesheet:accedi':            ['ricercatore', 'amministrativo', 'management', 'superadmin'],
+  'timesheet:compila':           ['ricercatore'],
+  'timesheet:approva':           ['ricercatore', 'superadmin'],
   'timesheet:firma_2':           ['amministrativo'],
-  'timesheet:visualizza_tutti':  ['amministrativo', 'management'],
+  'timesheet:visualizza_tutti':  ['amministrativo', 'management', 'monitor'],
 
-  'sal:crea':                    ['amministrativo'],
-  'sal:invia':                   ['amministrativo'],
-  'sal:contesta':                ['amministrativo'],
-  'sal:rendiconta':              ['amministrativo'],
-  'sal:registra_erogazione':     ['amministrativo'],
+  'sal:visualizza':              ['amministrativo', 'superadmin', 'management', 'ricercatore', 'monitor'],
+  'sal:esporta':                 ['amministrativo', 'superadmin', 'management', 'ricercatore'],
+  'sal:crea':                    ['amministrativo', 'superadmin'],
+  'sal:invia':                   ['amministrativo', 'superadmin'],
+  'sal:contesta':                ['amministrativo', 'superadmin'],
+  'sal:rendiconta':              ['amministrativo', 'superadmin'],
+  'sal:registra_erogazione':     ['amministrativo', 'superadmin'],
 
-  'personale:visualizza':        ['amministrativo', 'pi', 'management', 'superadmin'],
+  'personale:visualizza':        ['amministrativo', 'management', 'superadmin', 'monitor'],
   'personale:gestisci':          ['amministrativo', 'superadmin'],
   'partner:gestisci':            ['amministrativo'],
   'config:gestisci':             ['amministrativo'],
-  'documento:carica':            ['amministrativo', 'pi'],
+  'documento:carica':            ['amministrativo', 'ricercatore', 'superadmin'],
 };
 
 export function canDo(ruolo: Ruolo, azione: Azione): boolean {

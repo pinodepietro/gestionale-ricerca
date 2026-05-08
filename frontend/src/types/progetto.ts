@@ -20,6 +20,9 @@ export interface Progetto {
   budget_per_partner: boolean;
   template_timesheet_id?: string;
   note?: string;
+  pi_nome?: string;
+  amministrativo_nome?: string;
+  amministrativo_id?: string;
 }
 
 export interface DocumentoProgetto {

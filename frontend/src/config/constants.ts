@@ -12,7 +12,7 @@ export type StatoTimesheet = typeof STATI_TIMESHEET[number];
 export const STATI_DELIVERABLE = ['atteso', 'consegnato', 'in_ritardo', 'accettato'] as const;
 export type StatoDeliverable = typeof STATI_DELIVERABLE[number];
 
-export const RUOLI = ['amministrativo', 'pi', 'ricercatore', 'management'] as const;
+export const RUOLI = ['amministrativo', 'ricercatore', 'management', 'superadmin', 'monitor'] as const;
 export type Ruolo = typeof RUOLI[number];
 
 export const TIPI_PROGETTO = ['Horizon Europe', 'PNRR', 'MUR/PRIN', 'MISE', 'Interno', 'Commessa'] as const;

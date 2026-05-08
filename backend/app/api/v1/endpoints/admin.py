@@ -10,7 +10,7 @@ import uuid, subprocess, os, datetime
 
 router = APIRouter()
 
-RUOLI_VALIDI = ["amministrativo", "pi", "ricercatore", "management", "superadmin"]
+RUOLI_VALIDI = ["amministrativo", "ricercatore", "management", "superadmin", "monitor"]
 
 
 # ─── Utenti ──────────────────────────────────────────────────────────────────
@@ -208,7 +208,7 @@ def statistiche(db: Session = Depends(get_db), utente: Persona = Depends(solo_su
             "attivi": db.query(func.count(Persona.id)).filter(Persona.attivo == True).scalar(),
             "per_ruolo": {
                 r: db.query(func.count(Persona.id)).filter(Persona.ruolo == r).scalar()
-                for r in ["amministrativo", "pi", "ricercatore", "management", "superadmin"]
+                for r in ["amministrativo", "ricercatore", "management", "superadmin", "monitor"]
             },
         },
         "timesheet": {

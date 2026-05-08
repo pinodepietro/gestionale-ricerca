@@ -1,5 +1,5 @@
 // frontend/src/pages/progetti/tabs/TabTimesheet.tsx
-import { Table, Button, Tag, Space, Typography, Badge } from 'antd';
+import { Table, Button, Tag, Space, Typography, Badge, Alert } from 'antd';
 import { EditOutlined, PlusOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -16,9 +16,9 @@ const COLORI_STATO: Record<string, string> = {
   bozza: 'default', inviato: 'blue', approvato: 'green', rifiutato: 'red',
 };
 
-interface Props { progettoId: string; }
+interface Props { progettoId: string; stato?: string; }
 
-export function TabTimesheet({ progettoId }: Props) {
+export function TabTimesheet({ progettoId, stato }: Props) {
   const navigate = useNavigate();
 
   const { data, isLoading } = useQuery({
@@ -60,6 +60,18 @@ export function TabTimesheet({ progettoId }: Props) {
       ),
     },
   ];
+
+  if (stato === 'bozza') {
+    return (
+      <Alert
+        type="warning"
+        showIcon
+        message="Progetto non ancora attivo"
+        description="Attiva il progetto per poter inserire e gestire i timesheet."
+        style={{ marginTop: 8 }}
+      />
+    );
+  }
 
   return (
     <div>

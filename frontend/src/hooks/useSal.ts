@@ -26,6 +26,7 @@ function useSalTransizione(
   successMessage: string,
 ) {
   const queryClient = useQueryClient();
+  const { notification } = App.useApp();
   return useMutation({
     mutationFn: fn,
     onSuccess: (data) => {
@@ -52,6 +53,7 @@ export function useInviaSal() {
 
 export function useContestasal() {
   const queryClient = useQueryClient();
+  const { notification } = App.useApp();
   return useMutation({
     mutationFn: ({ id, motivo }: { id: string; motivo: string }) =>
       salApi.contesta(id, motivo).then((r) => r.data.data),
@@ -72,6 +74,7 @@ export function useRendicontaSal() {
 
 export function useRegistraErogazione() {
   const queryClient = useQueryClient();
+  const { notification } = App.useApp();
   return useMutation({
     mutationFn: ({ id, importo_erogato, data_erogazione }: { id: string; importo_erogato: number; data_erogazione: string }) =>
       salApi.registraErogazione(id, { importo_erogato, data_erogazione }).then((r) => r.data.data),

@@ -64,12 +64,27 @@ def monte_ore_dict(m: MonteOreAnnuale) -> dict:
     }
 
 
+# ─── Stato PI (per dashboard) ────────────────────────────────────────────────
+
+@router.get("/me/is-pi")
+def sono_pi_di_qualcuno(
+    db: Session = Depends(get_db),
+    utente: Persona = Depends(tutti_i_ruoli),
+):
+    is_pi = db.query(Allocazione).filter(
+        Allocazione.persona_id == utente.id,
+        Allocazione.is_pi == True,
+    ).first() is not None
+    return {"data": {"is_pi": is_pi}}
+
+
 # ─── Persone ─────────────────────────────────────────────────────────────────
 
 @router.get("/persone")
 def lista_persone(
     search: str = Query(None),
     attivo: bool = Query(None),
+    ruolo: str = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
@@ -78,6 +93,8 @@ def lista_persone(
     q = db.query(Persona)
     if attivo is not None:
         q = q.filter(Persona.attivo == attivo)
+    if ruolo:
+        q = q.filter(Persona.ruolo == ruolo)
     if search:
         q = q.filter(or_(
             Persona.nome.ilike(f"%{search}%"),

@@ -17,6 +17,14 @@ class Settings(BaseSettings):
     LDAP_BIND_DN: str = ""
     LDAP_BIND_PASSWORD: str = ""
 
+    # Email — opzionali, disabilitati se SMTP_HOST vuoto
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_TLS: bool = True
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    EMAIL_FROM: str = "noreply@gestionale-ricerca.it"
+
     @property
     def allowed_origins_list(self) -> list[str]:
         return [o.strip() for o in self.ALLOWED_ORIGINS.split(",")]

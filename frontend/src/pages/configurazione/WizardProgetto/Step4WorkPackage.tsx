@@ -1,10 +1,20 @@
 import { useState } from 'react';
-import { Form, Input, DatePicker, Button, Table, Space, Typography, Divider, Row, Col, Modal, App } from 'antd';
+import { Form, Input, DatePicker, Button, Table, Space, Typography, Divider, Row, Col, Modal, App, Alert } from 'antd';
 import { PlusOutlined, DeleteOutlined, EditOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { progettiApi } from '../../../api/progetti';
 import { formatData } from '../../../utils/formatters';
 import dayjs from 'dayjs';
+
+interface WorkPackage {
+  id: string;
+  codice: string;
+  titolo: string;
+  descrizione?: string;
+  data_inizio: string;
+  data_fine: string;
+  stato?: string;
+}
 
 const { Title } = Typography;
 
@@ -18,12 +28,17 @@ export function Step4WorkPackage({ progettoId, onCompletato, onIndietro }: Props
   const { notification } = App.useApp();
   const [form] = Form.useForm();
   const [modalAperta, setModalAperta] = useState(false);
-  const [wpInModifica, setWpInModifica] = useState<Record<string, unknown> | null>(null);
+  const [wpInModifica, setWpInModifica] = useState<WorkPackage | null>(null);
   const queryClient = useQueryClient();
+
+  const { data: progetto } = useQuery({
+    queryKey: ['progetto', progettoId],
+    queryFn: () => progettiApi.get(progettoId).then(r => r.data.data),
+  });
 
   const { data: wps } = useQuery({
     queryKey: ['wp', progettoId],
-    queryFn: () => progettiApi.wp.list(progettoId).then(r => r.data.data),
+    queryFn: () => progettiApi.wp.list(progettoId).then(r => r.data.data as WorkPackage[]),
   });
 
   const { mutate: salvaWp, isPending: salvando } = useMutation({
@@ -34,7 +49,7 @@ export function Step4WorkPackage({ progettoId, onCompletato, onIndietro }: Props
         data_fine: dayjs(values.data_fine as string).format('YYYY-MM-DD'),
       };
       if (wpInModifica) {
-        return progettiApi.wp.update(wpInModifica.id as string, payload).then(r => r.data.data);
+        return progettiApi.wp.update(wpInModifica.id, payload).then(r => r.data.data);
       }
       return progettiApi.wp.create(progettoId, payload).then(r => r.data.data);
     },
@@ -69,12 +84,12 @@ export function Step4WorkPackage({ progettoId, onCompletato, onIndietro }: Props
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['wp', progettoId] }),
   });
 
-  function apriModifica(wp: Record<string, unknown>) {
+  function apriModifica(wp: WorkPackage) {
     setWpInModifica(wp);
     form.setFieldsValue({
       ...wp,
-      data_inizio: wp.data_inizio ? dayjs(wp.data_inizio as string) : null,
-      data_fine: wp.data_fine ? dayjs(wp.data_fine as string) : null,
+      data_inizio: wp.data_inizio ? dayjs(wp.data_inizio) : null,
+      data_fine: wp.data_fine ? dayjs(wp.data_fine) : null,
     });
     setModalAperta(true);
   }
@@ -92,15 +107,19 @@ export function Step4WorkPackage({ progettoId, onCompletato, onIndietro }: Props
     { title: 'Fine', dataIndex: 'data_fine', width: 110, render: formatData },
     {
       title: '', width: 100,
-      render: (_: unknown, r: Record<string, unknown>) => (
+      render: (_: unknown, r: WorkPackage) => (
         <Space>
           <Button icon={<EditOutlined />} size="small" type="text" onClick={() => apriModifica(r)} />
           <Button danger icon={<DeleteOutlined />} size="small" type="text"
-            onClick={() => eliminaWp(r.id as string)} />
+            onClick={() => eliminaWp(r.id)} />
         </Space>
       ),
     },
   ];
+
+  const periodoProgetto = progetto
+    ? `${formatData(progetto.data_inizio)} → ${formatData(progetto.data_fine)}`
+    : null;
 
   return (
     <div>
@@ -115,9 +134,14 @@ export function Step4WorkPackage({ progettoId, onCompletato, onIndietro }: Props
         onCancel={chiudiModal} onOk={() => form.submit()} confirmLoading={salvando}
         okText="Salva" cancelText="Annulla">
         <Form form={form} layout="vertical" onFinish={salvaWp} style={{ marginTop: 16 }}>
-          <p style={{ color: '#888', marginBottom: 16, fontSize: 13 }}>
-            Le date devono essere comprese nel periodo del progetto.
-          </p>
+          {periodoProgetto && (
+            <Alert
+              type="info"
+              message={`Periodo progetto: ${periodoProgetto}`}
+              style={{ marginBottom: 16 }}
+              showIcon
+            />
+          )}
           <Row gutter={16}>
             <Col span={8}>
               <Form.Item name="codice" label="Codice" rules={[{ required: true, message: 'Obbligatorio' }]}>

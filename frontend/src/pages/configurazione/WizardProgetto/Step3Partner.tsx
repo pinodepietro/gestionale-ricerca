@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { Form, Select, Button, Table, Space, Typography, Divider, Row, Col, Tag } from 'antd';
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -43,7 +42,7 @@ export function Step3Partner({ progettoId, onCompletato, onIndietro }: Props) {
   });
 
   const colori: Record<string, string> = { capofila: 'blue', partner: 'green', associato: 'orange' };
-  const partnerGiaAggiunti = new Set((partnerProgetto ?? []).map((p: { partner_id: string }) => p.partner_id));
+  const partnerGiaAggiunti = new Set((partnerProgetto as { partner_id: string }[] | undefined ?? []).map(p => p.partner_id));
 
   const colonne = [
     { title: 'Ente', render: (_: unknown, r: { partner?: { nome: string } }) => r.partner?.nome ?? '—' },
@@ -81,7 +80,7 @@ export function Step3Partner({ progettoId, onCompletato, onIndietro }: Props) {
           </Button>
         </Form.Item>
       </Form>
-      <Table columns={colonne} dataSource={partnerProgetto ?? []} rowKey="id" pagination={false} size="small" />
+      <Table columns={colonne as never} dataSource={(partnerProgetto ?? []) as Record<string, unknown>[]} rowKey="id" pagination={false} size="small" />
       <Divider />
       <Row justify="space-between">
         <Col><Button onClick={onIndietro}>← Indietro</Button></Col>

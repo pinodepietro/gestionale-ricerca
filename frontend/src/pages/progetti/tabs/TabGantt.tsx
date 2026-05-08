@@ -10,8 +10,8 @@ import { RbacGuard } from '../../../components/common/RbacGuard';
 import { useWorkPackages } from '../../../hooks/useStruttura';
 import { progettiApi } from '../../../api/progetti';
 import { apiClient } from '../../../api/client';
-import { queryKeys } from '../../../utils/queryKeys';
 import { formatData } from '../../../utils/formatters';
+import { apiErrorMessage } from '../../../utils/apiError';
 import type { WorkPackage, Milestone, Deliverable } from '../../../types/struttura';
 import type { ApiResponse } from '../../../types/api';
 
@@ -80,11 +80,7 @@ export function TabGantt({ progettoId }: Props) {
       notification.success({ message: inModifica?.id ? 'WP aggiornato' : 'WP creato' });
       setModalWp(false); setInModifica(null); formWp.resetFields();
     },
-    onError: (error: unknown) => {
-      const err = (error as { response?: { data?: { detail?: { error?: { message?: string } } } } })
-        ?.response?.data?.detail?.error;
-      notification.error({ message: err?.message ?? 'Errore durante il salvataggio' });
-    },
+    onError: (e: unknown) => notification.error({ message: apiErrorMessage(e, 'Errore durante il salvataggio') }),
   });
 
   const eliminaWp = useMutation({
@@ -93,6 +89,7 @@ export function TabGantt({ progettoId }: Props) {
       queryClient.invalidateQueries({ queryKey: ['progetti', progettoId, 'wp'] });
       notification.success({ message: 'WP eliminato' });
     },
+    onError: (e: unknown) => notification.error({ message: apiErrorMessage(e, 'Errore durante l\'eliminazione') }),
   });
 
   // ── Milestone mutations ──────────────────────────────────────────────────────
@@ -114,10 +111,7 @@ export function TabGantt({ progettoId }: Props) {
       notification.success({ message: inModifica?.id ? 'Milestone aggiornata' : 'Milestone creata' });
       setModalMs(false); setInModifica(null); formMs.resetFields();
     },
-    onError: (error: unknown) => {
-      const err = (error as { response?: { data?: { detail?: { error?: { message?: string } } } } })?.response?.data?.detail?.error;
-      notification.error({ message: err?.message ?? 'Errore' });
-    },
+    onError: (e: unknown) => notification.error({ message: apiErrorMessage(e, 'Errore') }),
   });
 
   const eliminaMs = useMutation({
@@ -126,6 +120,7 @@ export function TabGantt({ progettoId }: Props) {
       queryClient.invalidateQueries({ queryKey: ['progetti', progettoId, 'milestone'] });
       notification.success({ message: 'Milestone eliminata' });
     },
+    onError: (e: unknown) => notification.error({ message: apiErrorMessage(e, 'Errore durante l\'eliminazione') }),
   });
 
   // ── Deliverable mutations ────────────────────────────────────────────────────
@@ -147,10 +142,7 @@ export function TabGantt({ progettoId }: Props) {
       notification.success({ message: inModifica?.id ? 'Deliverable aggiornato' : 'Deliverable creato' });
       setModalDel(false); setInModifica(null); formDel.resetFields();
     },
-    onError: (error: unknown) => {
-      const err = (error as { response?: { data?: { detail?: { error?: { message?: string } } } } })?.response?.data?.detail?.error;
-      notification.error({ message: err?.message ?? 'Errore' });
-    },
+    onError: (e: unknown) => notification.error({ message: apiErrorMessage(e, 'Errore') }),
   });
 
   const eliminaDel = useMutation({
@@ -159,6 +151,7 @@ export function TabGantt({ progettoId }: Props) {
       queryClient.invalidateQueries({ queryKey: ['progetti', progettoId, 'deliverable'] });
       notification.success({ message: 'Deliverable eliminato' });
     },
+    onError: (e: unknown) => notification.error({ message: apiErrorMessage(e, 'Errore durante l\'eliminazione') }),
   });
 
   const apriModificaWp = (r: WorkPackage) => {

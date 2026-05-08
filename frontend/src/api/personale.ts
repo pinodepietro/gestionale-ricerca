@@ -4,7 +4,7 @@ import type { ApiResponse, PaginatedResponse } from '../types/api';
 import type { Persona, CostoOrarioPersona, MonteOreAnnuale, Allocazione } from '../types/personale';
 
 export const personaleApi = {
-  list: (params: { attivo?: boolean; search?: string } = {}) =>
+  list: (params: { attivo?: boolean; search?: string; ruolo?: string } = {}) =>
     apiClient.get<PaginatedResponse<Persona>>('/persone', { params }),
 
   get: (id: string) =>

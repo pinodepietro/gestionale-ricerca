@@ -4,7 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { progettiApi } from '../../api/progetti';
 import { formatData } from '../../utils/formatters';
-import { VociDiCostoPage, TemplateTimesheetPage } from './ConfigurazioneTabella';
+import { VociDiCostoPage, TemplateTimesheetPage, TipiProgettaPage } from './ConfigurazioneTabella';
+import { RbacGuard } from '../../components/common/RbacGuard';
 import type { Progetto } from '../../types/progetto';
 
 const { Title, Text } = Typography;
@@ -67,10 +68,12 @@ export function ConfigurazionePage() {
           <Text type="secondary">Progetti in stato bozza — non ancora attivati</Text>
         </Col>
         <Col>
-          <Button type="primary" icon={<PlusOutlined />}
-            onClick={() => navigate('/configurazione/nuovo')}>
-            Nuovo progetto
-          </Button>
+          <RbacGuard azione="progetto:crea">
+            <Button type="primary" icon={<PlusOutlined />}
+              onClick={() => navigate('/configurazione/nuovo')}>
+              Nuovo progetto
+            </Button>
+          </RbacGuard>
         </Col>
       </Row>
       <Table columns={colonne} dataSource={data ?? []} rowKey="id" loading={isLoading}
@@ -85,6 +88,7 @@ export function ConfigurazionePage() {
         items={[
           { key: 'progetti', label: 'Progetti in configurazione', children: tabProgetti },
           { key: 'voci', label: 'Voci di costo', children: <VociDiCostoPage /> },
+          { key: 'tipi', label: 'Tipologie progetto', children: <TipiProgettaPage /> },
           { key: 'template', label: 'Template Timesheet', children: <TemplateTimesheetPage /> },
         ]}
       />

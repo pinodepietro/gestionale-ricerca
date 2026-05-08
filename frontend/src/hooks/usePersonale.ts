@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notification } from 'antd';
 import { personaleApi } from '../api/personale';
 import { queryKeys } from '../utils/queryKeys';
-import type { CostoOrarioPersona, MonteOreAnnuale, Allocazione } from '../types/personale';
+import type { CostoOrarioPersona, Allocazione } from '../types/personale';
 
 export function usePersone(params: { attivo?: boolean; search?: string } = {}) {
   return useQuery({

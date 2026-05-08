@@ -8,7 +8,7 @@ from app.models.persona import Persona
 
 bearer_scheme = HTTPBearer()
 
-RUOLI = {"amministrativo", "pi", "ricercatore", "management", "superadmin"}
+RUOLI = {"amministrativo", "ricercatore", "management", "superadmin", "monitor"}
 
 
 def get_utente_corrente(

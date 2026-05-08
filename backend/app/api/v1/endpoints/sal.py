@@ -76,6 +76,12 @@ def crea_sal(
     if not progetto_id:
         raise HTTPException(status_code=422, detail={"error": {"code": "CAMPO_MANCANTE", "message": "progetto_id obbligatorio"}})
 
+    data_inizio = body.get("data_inizio")
+    data_fine = body.get("data_fine")
+    if data_inizio and data_fine and str(data_fine) < str(data_inizio):
+        raise HTTPException(status_code=422, detail={"error": {"code": "DATE_NON_VALIDE",
+            "message": "La data di fine deve essere successiva alla data di inizio"}})
+
     # Verifica che il progetto esista e sia attivo
     p = db.query(Progetto).filter(Progetto.id == progetto_id).first()
     if not p:
@@ -116,6 +122,11 @@ def aggiorna_sal(
     for k in ("data_inizio", "data_fine", "importo_tranche", "data_scadenza_rendiconto"):
         if k in body:
             setattr(s, k, body[k])
+    data_i = str(s.data_inizio) if s.data_inizio else None
+    data_f = str(s.data_fine) if s.data_fine else None
+    if data_i and data_f and data_f < data_i:
+        raise HTTPException(status_code=422, detail={"error": {"code": "DATE_NON_VALIDE",
+            "message": "La data di fine deve essere successiva alla data di inizio"}})
     db.commit()
     db.refresh(s)
     return {"data": _sal_dict(s)}
@@ -211,11 +222,17 @@ def dettaglio_sal(
         })
 
     # ── Timesheet approvati nel periodo ───────────────────────────────────────
-    # Cerca timesheet il cui mese ricade nel periodo del SAL
+    # Solo persone con allocazione sul progetto
+    from app.models.personale import Allocazione
+    persone_allocate_sq = db.query(Allocazione.persona_id).filter(
+        Allocazione.progetto_id == s.progetto_id
+    ).subquery()
+
     ts_list_raw = db.query(TimesheetTestata).filter(
         and_(
             TimesheetTestata.progetto_id == s.progetto_id,
             TimesheetTestata.stato == "approvato",
+            TimesheetTestata.persona_id.in_(persone_allocate_sq),
         )
     ).all()
 
@@ -347,6 +364,22 @@ def export_sal_xlsx(
     db: Session = Depends(get_db),
     utente: Persona = Depends(tutti_i_ruoli),
 ):
+    s = db.query(Sal).filter(Sal.id == id).first()
+    if not s:
+        raise HTTPException(status_code=404, detail={"error": {"code": "NOT_FOUND", "message": "SAL non trovato"}})
+    if utente.ruolo == "ricercatore":
+        raise HTTPException(status_code=403, detail={"error": {
+            "code": "FORBIDDEN", "message": "I ricercatori non possono esportare il SAL"}})
+    if utente.ruolo == "pi":
+        from app.models.personale import Allocazione as _Alloc
+        e_pi = db.query(_Alloc).filter(
+            _Alloc.persona_id == utente.id,
+            _Alloc.progetto_id == s.progetto_id,
+            _Alloc.is_pi == True,
+        ).first()
+        if not e_pi:
+            raise HTTPException(status_code=403, detail={"error": {
+                "code": "FORBIDDEN", "message": "Solo il PI del progetto può esportare il SAL"}})
     from fastapi.responses import StreamingResponse
     from openpyxl import Workbook
     from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
@@ -358,7 +391,6 @@ def export_sal_xlsx(
     from sqlalchemy import and_
     import io, calendar
 
-    s = _get_sal_or_404(id, db)
     progetto = db.query(Progetto).filter(Progetto.id == s.progetto_id).first()
 
     wb = Workbook()
@@ -532,6 +564,268 @@ def export_sal_xlsx(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
+
+
+@router.get("/sal/{id}/export/pdf")
+def export_sal_pdf(
+    id: str,
+    db: Session = Depends(get_db),
+    utente: Persona = Depends(tutti_i_ruoli),
+):
+    from fastapi.responses import StreamingResponse
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.lib.units import cm
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
+    from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer, Table,
+                                     TableStyle, HRFlowable)
+    from reportlab.platypus.doctemplate import PageTemplate, BaseDocTemplate
+    from app.models.budget import Spesa, VoceDiCosto
+    from app.models.timesheet import TimesheetTestata
+    from app.models.persona import Persona as PersonaModel
+    from app.models.personale import Allocazione
+    from sqlalchemy import and_
+    import io
+    from datetime import date
+
+    s = db.query(Sal).filter(Sal.id == id).first()
+    if not s:
+        raise HTTPException(status_code=404, detail={"error": {"code": "NOT_FOUND", "message": "SAL non trovato"}})
+
+    # Permessi (stessa logica export xlsx)
+    if utente.ruolo == "ricercatore":
+        raise HTTPException(status_code=403, detail={"error": {"code": "FORBIDDEN", "message": "Accesso non consentito"}})
+    if utente.ruolo == "pi":
+        e_pi = db.query(Allocazione).filter(
+            Allocazione.persona_id == utente.id,
+            Allocazione.progetto_id == s.progetto_id,
+            Allocazione.is_pi == True,
+        ).first()
+        if not e_pi:
+            raise HTTPException(status_code=403, detail={"error": {"code": "FORBIDDEN", "message": "Solo il PI del progetto può esportare il SAL"}})
+
+    progetto = db.query(Progetto).filter(Progetto.id == s.progetto_id).first()
+
+    # PI e amministrativo
+    pi_alloc = db.query(Allocazione).filter(
+        Allocazione.progetto_id == s.progetto_id, Allocazione.is_pi == True
+    ).first()
+    pi_persona = db.query(PersonaModel).filter(PersonaModel.id == pi_alloc.persona_id).first() if pi_alloc else None
+    pi_nome = f"{pi_persona.nome} {pi_persona.cognome}" if pi_persona else "—"
+
+    amm_persona = None
+    if progetto and progetto.amministrativo_id:
+        amm_persona = db.query(PersonaModel).filter(PersonaModel.id == progetto.amministrativo_id).first()
+    amm_nome = f"{amm_persona.nome} {amm_persona.cognome}" if amm_persona else "—"
+
+    # Dati spese e timesheet
+    spese = db.query(Spesa).filter(
+        and_(Spesa.progetto_id == s.progetto_id, Spesa.sal_id == s.id, Spesa.stato == "registrata")
+    ).all()
+    ts_list = db.query(TimesheetTestata).filter(
+        and_(TimesheetTestata.progetto_id == s.progetto_id,
+             TimesheetTestata.sal_id == s.id,
+             TimesheetTestata.stato == "approvato")
+    ).all()
+
+    # ── Stili ──
+    BLU = colors.HexColor("#185FA5")
+    GRIGIO_CHIARO = colors.HexColor("#F5F7FA")
+    GRIGIO_BORDO = colors.HexColor("#D0D5DD")
+    BIANCO = colors.white
+    NERO = colors.HexColor("#1A1A2E")
+
+    styles = getSampleStyleSheet()
+    s_titolo = ParagraphStyle("titolo", fontSize=16, textColor=BIANCO, fontName="Helvetica-Bold",
+                               alignment=TA_CENTER, spaceAfter=0)
+    s_label = ParagraphStyle("label", fontSize=9, textColor=colors.HexColor("#6B7280"),
+                              fontName="Helvetica", leading=13)
+    s_valore = ParagraphStyle("valore", fontSize=10, textColor=NERO,
+                               fontName="Helvetica-Bold", leading=13)
+    s_section = ParagraphStyle("section", fontSize=11, textColor=BLU,
+                                fontName="Helvetica-Bold", spaceBefore=14, spaceAfter=6)
+    s_body = ParagraphStyle("body", fontSize=9, fontName="Helvetica", leading=12)
+    s_footer = ParagraphStyle("footer", fontSize=8, textColor=colors.HexColor("#9CA3AF"),
+                               fontName="Helvetica", alignment=TA_CENTER)
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4,
+                             leftMargin=2*cm, rightMargin=2*cm,
+                             topMargin=2*cm, bottomMargin=2*cm)
+
+    W = A4[0] - 4*cm  # larghezza utile
+
+    story = []
+
+    # ── Banner intestazione ──
+    banner_data = [[Paragraph(
+        f"SAL {s.numero} &nbsp;·&nbsp; {progetto.acronimo or progetto.codice if progetto else ''}",
+        s_titolo
+    )]]
+    banner = Table(banner_data, colWidths=[W])
+    banner.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), BLU),
+        ("TOPPADDING", (0, 0), (-1, -1), 14),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 14),
+        ("ROUNDEDCORNERS", [6]),
+    ]))
+    story.append(banner)
+    story.append(Spacer(1, 0.4*cm))
+
+    # ── Scheda info progetto ──
+    nome_prog = progetto.titolo if progetto else "—"
+    periodo = f"{s.data_inizio.strftime('%d/%m/%Y') if s.data_inizio else '—'} → {s.data_fine.strftime('%d/%m/%Y') if s.data_fine else '—'}"
+    scad = s.data_scadenza_rendiconto.strftime('%d/%m/%Y') if s.data_scadenza_rendiconto else "—"
+    stato_label = s.stato.upper()
+
+    def cella_info(label, valore):
+        return [Paragraph(label, s_label), Paragraph(valore, s_valore)]
+
+    info_data = [
+        [*cella_info("PROGETTO", nome_prog), *cella_info("PERIODO", periodo)],
+        [*cella_info("PI", pi_nome), *cella_info("AMMINISTRATIVO", amm_nome)],
+        [*cella_info("STATO", stato_label), *cella_info("SCADENZA RENDICONTO", scad)],
+    ]
+    col_w = W / 4
+    info_table = Table(info_data, colWidths=[col_w * 0.8, col_w * 1.2, col_w * 0.8, col_w * 1.2])
+    info_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), GRIGIO_CHIARO),
+        ("BOX", (0, 0), (-1, -1), 0.5, GRIGIO_BORDO),
+        ("LINEAFTER", (1, 0), (1, -1), 0.5, GRIGIO_BORDO),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("LEFTPADDING", (0, 0), (-1, -1), 10),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+        ("LINEBELOW", (0, 0), (-1, -2), 0.3, GRIGIO_BORDO),
+    ]))
+    story.append(info_table)
+    story.append(Spacer(1, 0.5*cm))
+
+    def fmt_eur(v): return f"€ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    def fmt_data(d): return d.strftime('%d/%m/%Y') if d else "—"
+
+    th_style = TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), BLU),
+        ("TEXTCOLOR", (0, 0), (-1, 0), BIANCO),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, 0), 9),
+        ("ALIGN", (0, 0), (-1, 0), "CENTER"),
+        ("TOPPADDING", (0, 0), (-1, 0), 7),
+        ("BOTTOMPADDING", (0, 0), (-1, 0), 7),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [BIANCO, GRIGIO_CHIARO]),
+        ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
+        ("FONTSIZE", (0, 1), (-1, -1), 8.5),
+        ("TOPPADDING", (0, 1), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 1), (-1, -1), 5),
+        ("LEFTPADDING", (0, 0), (-1, -1), 7),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 7),
+        ("GRID", (0, 0), (-1, -1), 0.3, GRIGIO_BORDO),
+        ("BOX", (0, 0), (-1, -1), 0.5, GRIGIO_BORDO),
+    ])
+
+    # ── Sezione Spese ──
+    if spese:
+        story.append(Paragraph("Spese documentate", s_section))
+        tot_spese = 0
+        righe_spese = [["Data", "N° Documento", "Voce di costo", "Descrizione", "Importo"]]
+        for sp in spese:
+            voce = db.query(VoceDiCosto).filter(VoceDiCosto.id == sp.voce_id).first()
+            importo = float(sp.importo)
+            righe_spese.append([
+                fmt_data(sp.data),
+                sp.numero_documento or "—",
+                voce.descrizione if voce else "—",
+                Paragraph(sp.descrizione or "—", s_body),
+                Paragraph(f'<para alignment="right">{fmt_eur(importo)}</para>', s_body),
+            ])
+            tot_spese += importo
+        righe_spese.append(["", "", "", Paragraph('<b>Totale spese</b>', s_body),
+                             Paragraph(f'<para alignment="right"><b>{fmt_eur(tot_spese)}</b></para>', s_body)])
+
+        t_spese = Table(righe_spese, colWidths=[2.2*cm, 2.8*cm, 4.5*cm, None, 2.8*cm])
+        t_spese.setStyle(th_style)
+        t_spese.setStyle(TableStyle([
+            ("BACKGROUND", (0, len(righe_spese)-1), (-1, -1), GRIGIO_CHIARO),
+            ("FONTNAME", (0, len(righe_spese)-1), (-1, -1), "Helvetica-Bold"),
+        ]))
+        story.append(t_spese)
+        story.append(Spacer(1, 0.4*cm))
+
+    # ── Sezione Timesheet ──
+    if ts_list:
+        story.append(Paragraph("Personale — Timesheet approvati", s_section))
+        tot_ts = 0
+        righe_ts = [["Persona", "Mese/Anno", "Ore progetto", "Costo orario", "Costo totale"]]
+        for ts in ts_list:
+            persona = db.query(PersonaModel).filter(PersonaModel.id == ts.persona_id).first()
+            ore = sum(float(c.ore) for r in ts.righe if r.tipo_riga == "progetto" for c in r.celle)
+            costo = sum(float(c.costo_calcolato or 0) for r in ts.righe if r.tipo_riga == "progetto" for c in r.celle)
+            costo_orario = costo / ore if ore > 0 else 0
+            righe_ts.append([
+                f"{persona.cognome} {persona.nome}" if persona else "—",
+                f"{ts.mese:02d}/{ts.anno}",
+                Paragraph(f'<para alignment="right">{ore:.1f}h</para>', s_body),
+                Paragraph(f'<para alignment="right">{fmt_eur(costo_orario)}/h</para>', s_body),
+                Paragraph(f'<para alignment="right">{fmt_eur(costo)}</para>', s_body),
+            ])
+            tot_ts += costo
+        righe_ts.append(["", "", "", Paragraph('<b>Totale personale</b>', s_body),
+                          Paragraph(f'<para alignment="right"><b>{fmt_eur(tot_ts)}</b></para>', s_body)])
+
+        t_ts = Table(righe_ts, colWidths=[5*cm, 2.5*cm, 2.5*cm, 3*cm, 3*cm])
+        t_ts.setStyle(th_style)
+        t_ts.setStyle(TableStyle([
+            ("BACKGROUND", (0, len(righe_ts)-1), (-1, -1), GRIGIO_CHIARO),
+            ("FONTNAME", (0, len(righe_ts)-1), (-1, -1), "Helvetica-Bold"),
+        ]))
+        story.append(t_ts)
+        story.append(Spacer(1, 0.4*cm))
+
+    # ── Riepilogo per voce ──
+    story.append(Paragraph("Riepilogo per voce di costo", s_section))
+    totali_voce: dict = {}
+    for sp in spese:
+        voce = db.query(VoceDiCosto).filter(VoceDiCosto.id == sp.voce_id).first()
+        key = voce.descrizione if voce else "Altro"
+        totali_voce[key] = totali_voce.get(key, 0) + float(sp.importo)
+    for ts in ts_list:
+        costo = sum(float(c.costo_calcolato or 0) for r in ts.righe if r.tipo_riga == "progetto" for c in r.celle)
+        if costo > 0:
+            totali_voce["Personale dipendente"] = totali_voce.get("Personale dipendente", 0) + costo
+
+    totale_gen = sum(totali_voce.values())
+    righe_ric = [["Voce di costo", "Importo"]]
+    for desc, imp in totali_voce.items():
+        righe_ric.append([desc, Paragraph(f'<para alignment="right">{fmt_eur(imp)}</para>', s_body)])
+    righe_ric.append([
+        Paragraph("<b>TOTALE GENERALE</b>", s_body),
+        Paragraph(f'<para alignment="right"><b>{fmt_eur(totale_gen)}</b></para>', s_body),
+    ])
+
+    t_ric = Table(righe_ric, colWidths=[None, 3.5*cm])
+    t_ric.setStyle(th_style)
+    t_ric.setStyle(TableStyle([
+        ("BACKGROUND", (0, len(righe_ric)-1), (-1, -1), BLU),
+        ("TEXTCOLOR", (0, len(righe_ric)-1), (-1, -1), BIANCO),
+        ("FONTNAME", (0, len(righe_ric)-1), (-1, -1), "Helvetica-Bold"),
+    ]))
+    story.append(t_ric)
+
+    # ── Footer ──
+    story.append(Spacer(1, 1*cm))
+    story.append(HRFlowable(width="100%", thickness=0.5, color=GRIGIO_BORDO))
+    story.append(Spacer(1, 0.2*cm))
+    story.append(Paragraph(
+        f"Documento generato il {date.today().strftime('%d/%m/%Y')} — Gestionale Ricerca",
+        s_footer
+    ))
+
+    doc.build(story)
+    buf.seek(0)
+    nome_file = f"SAL_{s.numero}_{progetto.codice if progetto else 'export'}.pdf"
+    return StreamingResponse(buf, media_type="application/pdf",
+                              headers={"Content-Disposition": f"attachment; filename={nome_file}"})
 
 
 @router.get("/notifiche")

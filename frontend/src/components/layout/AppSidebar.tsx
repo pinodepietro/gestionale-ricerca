@@ -20,8 +20,10 @@ export function AppSidebar() {
   const menuItems = [
     { key: '/dashboard', icon: <DashboardOutlined />, label: 'Dashboard' },
     { key: '/progetti', icon: <ProjectOutlined />, label: 'Progetti' },
-    { key: '/timesheet', icon: <FileTextOutlined />, label: 'Timesheet' },
-    { key: '/sal', icon: <BarChartOutlined />, label: 'Rendicontazione' },
+    ...(user && canDo(user.ruolo, 'timesheet:accedi')
+      ? [{ key: '/timesheet', icon: <FileTextOutlined />, label: 'Timesheet' }] : []),
+    ...(user && canDo(user.ruolo, 'sal:visualizza')
+      ? [{ key: '/sal', icon: <BarChartOutlined />, label: 'Rendicontazione' }] : []),
     ...(user && canDo(user.ruolo, 'personale:visualizza')
       ? [{ key: '/personale', icon: <TeamOutlined />, label: 'Personale' }] : []),
     ...(user && canDo(user.ruolo, 'partner:gestisci')

@@ -9,6 +9,9 @@ export const configApi = {
   tipiFinanziamento: () =>
     apiClient.get<ApiResponse<TipoFinanziamento[]>>('/tipi-finanziamento'),
 
+  tipiProgetto: () =>
+    apiClient.get<ApiResponse<{ id: string; nome: string }[]>>('/tipi-progetto'),
+
   vociDiCosto: () =>
     apiClient.get<ApiResponse<VoceDiCosto[]>>('/voci-di-costo'),
 

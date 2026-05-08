@@ -1,9 +1,9 @@
 // frontend/src/pages/dashboard/DashboardPage.tsx
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Row, Col, Card, Progress, Tag, Typography, Space, Spin, Alert, List, Button, Divider } from 'antd';
+import { Row, Col, Card, Tag, Typography, Space, Spin, Alert, List, Button, Divider, Empty } from 'antd';
 import { WarningOutlined, FileTextOutlined, ArrowLeftOutlined, ProjectOutlined,
-         EuroOutlined, ClockCircleOutlined, CheckCircleOutlined } from '@ant-design/icons';
+         PlusOutlined, EditOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../../api/client';
 import { budgetApi } from '../../api/budget';
@@ -11,14 +11,18 @@ import { salApi } from '../../api/sal';
 import { timesheetApi } from '../../api/timesheet';
 import { formatEuro, formatData } from '../../utils/formatters';
 import { queryKeys } from '../../utils/queryKeys';
+import { useAuthStore } from '../../store/useAuthStore';
 
 const { Title, Text } = Typography;
 
 interface ProgettoKPI {
-  id: string; acronimo: string; titolo: string; tipo: string;
+  id: string; acronimo: string; codice: string; titolo: string; tipo: string;
   data_inizio: string; data_fine: string;
   budget_previsto: number; budget_rendicontato: number;
   percentuale_budget: number; percentuale_tempo: number;
+  importo_finanziato: number; costo_totale: number;
+  spese_documentate: number; budget_spese_ammissibili: number;
+  pi_nome?: string;
 }
 interface CruscottoData {
   progetti_attivi: number; timesheet_pendenti: number; sal_in_scadenza: number;
@@ -87,7 +91,8 @@ function DashboardProgetto({ progetto, onBack }: { progetto: ProgettoKPI; onBack
     queryFn: () => budgetApi.spese.list(progetto.id).then(r => r.data.data),
   });
 
-  const tsPendenti = (tsData?.data ?? tsData ?? []).filter((t: { stato: string }) => t.stato === 'inviato').length ?? 0;
+  const tsItems = ((tsData as { data?: unknown[] } | undefined)?.data ?? (tsData as unknown[]) ?? []) as { stato: string }[];
+  const tsPendenti = tsItems.filter(t => t.stato === 'inviato').length;
   const speseTotali = speseData?.filter((s: { stato: string }) => s.stato === 'registrata')
     .reduce((sum: number, s: { importo: number }) => sum + s.importo, 0) ?? 0;
   const salInScadenza = salData?.filter((s: { stato: string; data_scadenza_rendiconto?: string }) => {
@@ -289,9 +294,317 @@ function DashboardProgetto({ progetto, onBack }: { progetto: ProgettoKPI; onBack
   );
 }
 
+// ── Dashboard ricercatore ─────────────────────────────────────────────────────
+const COLORI_STATO_TS: Record<string, string> = {
+  bozza: 'default', inviato: 'blue', approvato: 'green', rifiutato: 'red',
+};
+const MESI_TS = ['','Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'];
+
+function DashboardRicercatore() {
+  const navigate = useNavigate();
+  const user = useAuthStore(s => s.user);
+
+  const { data: progettiData, isLoading: loadingP } = useQuery({
+    queryKey: ['cruscotto-globale'],
+    queryFn: () => apiClient.get<{ data: CruscottoData }>('/progetti/cruscotto').then(r => r.data.data),
+  });
+
+  const { data: tsData, isLoading: loadingTs } = useQuery({
+    queryKey: queryKeys.timesheet.list({}),
+    queryFn: () => timesheetApi.list({}).then(r => (r.data as { data: unknown[] }).data ?? []),
+  });
+
+  const progetti = progettiData?.progetti ?? [];
+  const allTs = (tsData ?? []) as { id: string; mese: number; anno: number; stato: string; progetto_id: string }[];
+  const timesheet = allTs.slice(0, 8);
+  const tsPendenti = allTs.filter(t => t.stato === 'inviato').length;
+  const tsRifiutati = allTs.filter(t => t.stato === 'rifiutato').length;
+
+  if (loadingP || loadingTs) return <Spin size="large" style={{ display: 'block', margin: '80px auto' }} />;
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+        <Title level={2} style={{ margin: 0 }}>
+          Ciao, {user?.nome} 👋
+        </Title>
+        <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/timesheet')}>
+          Nuovo timesheet
+        </Button>
+      </div>
+
+      {(tsPendenti > 0 || tsRifiutati > 0) && (
+        <Row gutter={12} style={{ marginBottom: 20 }}>
+          {tsPendenti > 0 && (
+            <Col span={12}>
+              <Alert type="info" showIcon
+                message={`${tsPendenti} timesheet in attesa di approvazione`}
+                action={<Button size="small" type="link" onClick={() => navigate('/timesheet')}>Vai →</Button>} />
+            </Col>
+          )}
+          {tsRifiutati > 0 && (
+            <Col span={12}>
+              <Alert type="error" showIcon
+                message={`${tsRifiutati} timesheet rifiutati — da correggere`}
+                action={<Button size="small" type="link" onClick={() => navigate('/timesheet')}>Vai →</Button>} />
+            </Col>
+          )}
+        </Row>
+      )}
+
+      <Row gutter={[16, 16]}>
+        {/* Progetti */}
+        <Col span={12}>
+          <Card title={<Space><ProjectOutlined />Progetti in cui partecipi</Space>}
+            bordered style={{ borderRadius: 12, borderColor: '#e0e0e0' }}>
+            {progetti.length === 0
+              ? <Empty description="Nessun progetto attivo" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+              : progetti.map(p => {
+                  const giorni = p.data_fine
+                    ? Math.ceil((new Date(p.data_fine).getTime() - Date.now()) / 86400000)
+                    : null;
+                  return (
+                    <div key={p.id} style={{ padding: '10px 0', borderBottom: '1px solid #f0f0f0', cursor: 'pointer' }}
+                      onClick={() => navigate(`/progetti/${p.id}`)}>
+                      <Space style={{ justifyContent: 'space-between', width: '100%' }}>
+                        <div>
+                          <Text strong>{p.acronimo}</Text>
+                          <Text type="secondary" style={{ display: 'block', fontSize: 12 }}>{p.titolo}</Text>
+                          {p.pi_nome && <Text style={{ fontSize: 11, color: '#185FA5' }}>PI: {p.pi_nome}</Text>}
+                        </div>
+                        <Space direction="vertical" align="end" size={2}>
+                          {giorni !== null && giorni >= 0 && giorni <= 30 && <Tag color="orange">{giorni}gg</Tag>}
+                          {giorni !== null && giorni < 0 && <Tag color="red">Scaduto</Tag>}
+                          <Button size="small" type="link" style={{ padding: 0 }}
+                            onClick={e => { e.stopPropagation(); navigate(`/timesheet?progetto_id=${p.id}`); }}>
+                            Nuovo TS →
+                          </Button>
+                        </Space>
+                      </Space>
+                    </div>
+                  );
+                })
+            }
+          </Card>
+        </Col>
+
+        {/* Timesheet recenti */}
+        <Col span={12}>
+          <Card title={<Space><FileTextOutlined />I miei timesheet recenti</Space>}
+            bordered style={{ borderRadius: 12, borderColor: '#e0e0e0' }}
+            extra={<Button type="link" size="small" onClick={() => navigate('/timesheet')}>Vedi tutti</Button>}>
+            {timesheet.length === 0
+              ? <Empty description="Nessun timesheet" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+              : <List
+                  size="small"
+                  dataSource={timesheet}
+                  renderItem={(ts: { id: string; mese: number; anno: number; stato: string; progetto_id: string }) => {
+                    const prog = progetti.find(p => p.id === ts.progetto_id);
+                    return (
+                      <List.Item
+                        style={{ cursor: 'pointer', padding: '8px 0' }}
+                        onClick={() => navigate(`/timesheet/${ts.id}`)}
+                        extra={<Tag color={COLORI_STATO_TS[ts.stato]}>{ts.stato}</Tag>}
+                      >
+                        <List.Item.Meta
+                          avatar={<EditOutlined style={{ fontSize: 16, color: '#888', marginTop: 4 }} />}
+                          title={<Text style={{ fontSize: 13 }}>{MESI_TS[ts.mese]} {ts.anno}</Text>}
+                          description={<Text type="secondary" style={{ fontSize: 12 }}>
+                            {prog?.acronimo ?? '—'}
+                          </Text>}
+                        />
+                      </List.Item>
+                    );
+                  }}
+                />
+            }
+          </Card>
+        </Col>
+      </Row>
+    </div>
+  );
+}
+
+// ── Dashboard PI ──────────────────────────────────────────────────────────────
+function DashboardPI() {
+  const navigate = useNavigate();
+  const user = useAuthStore(s => s.user);
+  const [progettoSelezionato, setProgettoSelezionato] = useState<ProgettoKPI | null>(null);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['cruscotto-globale'],
+    queryFn: () => apiClient.get<{ data: CruscottoData }>('/progetti/cruscotto').then(r => r.data.data),
+    refetchInterval: 120000,
+  });
+
+  const { data: tsData } = useQuery({
+    queryKey: queryKeys.timesheet.list({ stato: 'inviato' }),
+    queryFn: () => timesheetApi.list({ stato: 'inviato' }).then(r =>
+      (r.data as { data: unknown[] }).data ?? []
+    ),
+  });
+
+  if (isLoading) return <Spin size="large" style={{ display: 'block', margin: '80px auto' }} />;
+
+  if (progettoSelezionato) {
+    return <DashboardProgetto progetto={progettoSelezionato} onBack={() => setProgettoSelezionato(null)} />;
+  }
+
+  const d = data ?? { progetti_attivi: 0, timesheet_pendenti: 0, sal_in_scadenza: 0,
+    spese_totali: 0, budget_previsto: 0, budget_rendicontato: 0, percentuale_budget: 0, progetti: [] };
+
+  const tsPendenti = (tsData as unknown[] ?? []).length;
+  const salInScadenza = d.sal_in_scadenza;
+
+  return (
+    <div>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+        <div>
+          <Title level={2} style={{ margin: 0 }}>Ciao, {user?.nome}</Title>
+          <Text type="secondary">I tuoi progetti di ricerca</Text>
+        </div>
+        <Button type="primary" icon={<FileTextOutlined />} onClick={() => navigate('/timesheet')}>
+          Timesheet
+        </Button>
+      </div>
+
+      {/* Alert globali */}
+      {(tsPendenti > 0 || salInScadenza > 0) && (
+        <Row gutter={12} style={{ marginBottom: 20 }}>
+          {tsPendenti > 0 && (
+            <Col span={salInScadenza > 0 ? 12 : 24}>
+              <Alert type="info" showIcon icon={<FileTextOutlined />}
+                message={`${tsPendenti} timesheet in attesa di approvazione`}
+                description="Revisiona e approva i timesheet del tuo team"
+                action={
+                  <Button size="small" type="primary" onClick={() => navigate('/timesheet')}>
+                    Approva ora →
+                  </Button>
+                }
+              />
+            </Col>
+          )}
+          {salInScadenza > 0 && (
+            <Col span={tsPendenti > 0 ? 12 : 24}>
+              <Alert type="warning" showIcon icon={<WarningOutlined />}
+                message={`${salInScadenza} SAL in scadenza entro 30 giorni`}
+                description="Verifica i SAL aperti e procedi alla chiusura"
+              />
+            </Col>
+          )}
+        </Row>
+      )}
+
+      {/* KPI box */}
+      <Row gutter={16} style={{ marginBottom: 24 }}>
+        <Col span={8}>
+          <KpiBox label="Progetti attivi" value={d.progetti_attivi} color="#185FA5" />
+        </Col>
+        <Col span={8}>
+          <KpiBox label="Timesheet da approvare" value={tsPendenti}
+            color={tsPendenti > 0 ? '#185FA5' : '#888'} />
+        </Col>
+        <Col span={8}>
+          <KpiBox label="SAL in scadenza" value={salInScadenza}
+            color={salInScadenza > 0 ? '#E24B4A' : '#888'} />
+        </Col>
+      </Row>
+
+      {/* Schede progetto */}
+      {d.progetti.length === 0 ? (
+        <Card bordered style={{ borderRadius: 12 }}>
+          <Empty description="Nessun progetto attivo trovato" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+        </Card>
+      ) : (
+        <Row gutter={[16, 16]}>
+          {d.progetti.map(p => {
+            const giorni = p.data_fine
+              ? Math.ceil((new Date(p.data_fine).getTime() - Date.now()) / 86400000)
+              : null;
+            return (
+              <Col span={12} key={p.id}>
+                <Card hoverable bordered onClick={() => setProgettoSelezionato(p)}
+                  style={{ borderRadius: 12, borderColor: '#e0e0e0', cursor: 'pointer' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+                    <div>
+                      <Space wrap>
+                        <Text strong style={{ fontSize: 16 }}>{p.acronimo}</Text>
+                        <Tag color="blue" style={{ borderRadius: 20 }}>{p.tipo}</Tag>
+                        {giorni !== null && giorni >= 0 && giorni <= 30 && <Tag color="orange">{giorni}gg</Tag>}
+                        {giorni !== null && giorni < 0 && <Tag color="red">Scaduto</Tag>}
+                      </Space>
+                      <Text type="secondary" style={{ display: 'block', fontSize: 13, marginTop: 2 }}>
+                        {p.titolo}
+                      </Text>
+                    </div>
+                    <ProjectOutlined style={{ fontSize: 20, color: '#185FA5' }} />
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', margin: '8px 0 4px' }}>
+                    <span style={{ fontSize: 12, color: '#888' }}>
+                      Costo: <strong style={{ color: '#333' }}>€ {((p.costo_totale || p.budget_previsto || 0) / 1000).toFixed(0)}k</strong>
+                    </span>
+                    <span style={{ fontSize: 12, color: '#888' }}>
+                      Finanziato: <strong style={{ color: '#185FA5' }}>€ {((p.importo_finanziato || 0) / 1000).toFixed(0)}k</strong>
+                    </span>
+                  </div>
+
+                  <Divider style={{ margin: '10px 0' }} />
+
+                  <Row gutter={12}>
+                    <Col span={12}>
+                      <Text style={{ fontSize: 11, color: '#888', display: 'block', marginBottom: 4 }}>
+                        Budget utilizzato
+                      </Text>
+                      <Text strong style={{ fontSize: 18, color: colore(p.percentuale_budget) }}>
+                        {p.percentuale_budget}%
+                      </Text>
+                      <div style={{ height: 4, background: '#f0f0f0', borderRadius: 2, marginTop: 6 }}>
+                        <div style={{ height: 4, width: `${Math.min(p.percentuale_budget, 100)}%`,
+                          background: colore(p.percentuale_budget), borderRadius: 2 }} />
+                      </div>
+                    </Col>
+                    <Col span={12}>
+                      <Text style={{ fontSize: 11, color: '#888', display: 'block', marginBottom: 4 }}>
+                        Tempo trascorso
+                      </Text>
+                      <Text strong style={{ fontSize: 18, color: p.percentuale_tempo > 85 ? '#faad14' : '#185FA5' }}>
+                        {p.percentuale_tempo}%
+                      </Text>
+                      <div style={{ height: 4, background: '#f0f0f0', borderRadius: 2, marginTop: 6 }}>
+                        <div style={{ height: 4, width: `${p.percentuale_tempo}%`,
+                          background: p.percentuale_tempo > 85 ? '#faad14' : '#185FA5', borderRadius: 2 }} />
+                      </div>
+                    </Col>
+                  </Row>
+                </Card>
+              </Col>
+            );
+          })}
+        </Row>
+      )}
+    </div>
+  );
+}
+
 // ── Lista progetti ────────────────────────────────────────────────────────────
 export function DashboardPage() {
+  const user = useAuthStore(s => s.user);
   const [progettoSelezionato, setProgettoSelezionato] = useState<ProgettoKPI | null>(null);
+
+  const { data: statoPi } = useQuery({
+    queryKey: ['me', 'is-pi'],
+    queryFn: () => apiClient.get<{ data: { is_pi: boolean } }>('/personale/me/is-pi').then(r => r.data.data.is_pi),
+    enabled: user?.ruolo === 'ricercatore',
+    staleTime: 5 * 60 * 1000,
+  });
+
+  if (user?.ruolo === 'ricercatore') {
+    if (statoPi === undefined) return <Spin size="large" style={{ display: 'block', margin: '80px auto' }} />;
+    if (statoPi) return <DashboardPI />;
+    return <DashboardRicercatore />;
+  }
 
   const { data, isLoading } = useQuery({
     queryKey: ['cruscotto-globale'],
@@ -337,6 +650,11 @@ export function DashboardPage() {
                       <Text type="secondary" style={{ display: 'block', fontSize: 13, marginTop: 2 }}>
                         {p.titolo}
                       </Text>
+                      {p.pi_nome && (
+                        <Text style={{ display: 'block', fontSize: 12, marginTop: 4, color: '#185FA5' }}>
+                          PI: {p.pi_nome}
+                        </Text>
+                      )}
                     </div>
                     <ProjectOutlined style={{ fontSize: 20, color: '#185FA5' }} />
                   </div>
