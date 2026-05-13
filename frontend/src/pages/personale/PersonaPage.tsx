@@ -21,6 +21,8 @@ export function PersonaPage() {
   const [modalCosto, setModalCosto] = useState(false);
   const [modalAnagrafica, setModalAnagrafica] = useState(false);
   const [formAnagrafica] = Form.useForm();
+  const [modalPassword, setModalPassword] = useState(false);
+  const [formPassword] = Form.useForm();
   const [modalMonte, setModalMonte] = useState(false);
   const [formCosto] = Form.useForm();
   const [formMonte] = Form.useForm();
@@ -66,6 +68,15 @@ export function PersonaPage() {
       queryClient.invalidateQueries({ queryKey: queryKeys.personale.all });
       setModalAnagrafica(false);
       formAnagrafica.resetFields();
+    },
+  });
+
+  const { mutate: reimpostaPassword, isPending: salvandoPassword } = useMutation({
+    mutationFn: (values: { password: string }) =>
+      personaleApi.update(id!, { password: values.password } as Record<string, unknown>),
+    onSuccess: () => {
+      setModalPassword(false);
+      formPassword.resetFields();
     },
   });
 
@@ -168,13 +179,16 @@ export function PersonaPage() {
                 </RbacGuard>
               </Space>
               <RbacGuard azione="personale:gestisci">
-                <Button icon={<EditOutlined />} onClick={() => {
-                  formAnagrafica.setFieldsValue({
-                    ...persona,
-                    data_inizio_servizio: persona.data_inizio_servizio ? dayjs(persona.data_inizio_servizio) : null,
-                  });
-                  setModalAnagrafica(true);
-                }}>Modifica anagrafica</Button>
+                <Space>
+                  <Button icon={<EditOutlined />} onClick={() => {
+                    formAnagrafica.setFieldsValue({
+                      ...persona,
+                      data_inizio_servizio: persona.data_inizio_servizio ? dayjs(persona.data_inizio_servizio) : null,
+                    });
+                    setModalAnagrafica(true);
+                  }}>Modifica anagrafica</Button>
+                  <Button onClick={() => setModalPassword(true)}>Reimposta password</Button>
+                </Space>
               </RbacGuard>
             </div>
             <Descriptions bordered column={2} size="small">
@@ -357,6 +371,43 @@ export function PersonaPage() {
           </Form.Item>
           <Form.Item name="ore_disponibili" label="Ore disponibili" rules={[{ required: true, message: 'Obbligatorio' }]}>
             <InputNumber min={0} precision={2} style={{ width: '100%' }} placeholder="es. 1506" />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        open={modalPassword}
+        title="Reimposta password"
+        onCancel={() => { setModalPassword(false); formPassword.resetFields(); }}
+        onOk={() => formPassword.submit()}
+        confirmLoading={salvandoPassword}
+        okText="Salva"
+        cancelText="Annulla"
+        width={400}
+      >
+        <Form form={formPassword} layout="vertical" onFinish={reimpostaPassword} style={{ marginTop: 16 }}>
+          <Form.Item
+            name="password"
+            label="Nuova password"
+            rules={[{ required: true, message: 'Obbligatorio' }, { min: 8, message: 'Minimo 8 caratteri' }]}
+          >
+            <Input.Password />
+          </Form.Item>
+          <Form.Item
+            name="conferma"
+            label="Conferma password"
+            dependencies={['password']}
+            rules={[
+              { required: true, message: 'Obbligatorio' },
+              ({ getFieldValue }) => ({
+                validator(_, value) {
+                  if (!value || getFieldValue('password') === value) return Promise.resolve();
+                  return Promise.reject(new Error('Le password non coincidono'));
+                },
+              }),
+            ]}
+          >
+            <Input.Password />
           </Form.Item>
         </Form>
       </Modal>

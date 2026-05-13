@@ -11,7 +11,7 @@ router = APIRouter()
 
 
 class LoginRequest(BaseModel):
-    email: str
+    username: str
     password: str
 
 
@@ -35,7 +35,7 @@ class LoginResponse(BaseModel):
 @router.post("/login", response_model=dict)
 def login(payload: LoginRequest, db: Session = Depends(get_db)):
     persona = db.query(Persona).filter(
-        Persona.email == payload.email,
+        Persona.username == payload.username.strip().lower(),
         Persona.attivo == True,
     ).first()
 

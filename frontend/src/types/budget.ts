@@ -16,11 +16,25 @@ export interface BudgetVoce {
   progetto_id: string;
   voce_id: string;
   partner_id?: string;
+  voce?: { codice: string; descrizione: string; categoria?: string };
   importo_previsto: number;
   importo_rendicontato: number;
+  importo_impegnato: number;
+  importo_speso: number;
+  importo_disponibile: number;
   importo_residuo: number;
-  // campi calcolati per la UI
   percentuale_utilizzata: number;
+}
+
+export interface Impegno {
+  id: string;
+  progetto_id: string;
+  voce_id: string;
+  voce?: { codice: string; descrizione: string };
+  data: string;
+  descrizione: string;
+  importo: number;
+  created_at?: string;
 }
 
 export interface Spesa {
@@ -33,9 +47,10 @@ export interface Spesa {
   data: string;
   numero_documento?: string;
   descrizione?: string;
-  stato: 'registrata' | 'annullata';
+  stato: 'registrata';
   allegato_path?: string;
   sal_id?: string;
+  impegno_id?: string;
   spesa_origine_id?: string;   // valorizzato se è una nota di credito
   created_at: string;
   created_by: string;

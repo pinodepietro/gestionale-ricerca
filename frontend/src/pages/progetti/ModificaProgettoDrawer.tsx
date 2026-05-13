@@ -157,6 +157,9 @@ function TabAnagrafica({ progettoId, onSalvato }: { progettoId: string; onSalvat
           </Form.Item>
         </Col>
       </Row>
+      <Form.Item name="riferimento_bando" label="Riferimento bando">
+        <Input.TextArea rows={2} placeholder="Estremi del bando di finanziamento, decreto, convenzione..." />
+      </Form.Item>
       <Form.Item name="note" label="Note">
         <Input.TextArea rows={2} />
       </Form.Item>
@@ -366,9 +369,13 @@ function TabAllocazioniModifica({ progettoId }: { progettoId: string }) {
     queryFn: () => progettiApi.allocazioni.list(progettoId).then(r => r.data.data),
   });
 
+  const RUOLI_NON_ALLOCABILI = new Set(['management', 'monitor', 'superadmin']);
   const { data: persone } = useQuery({
     queryKey: queryKeys.personale.list({ attivo: true }),
-    queryFn: () => personaleApi.list({}).then(r => r.data.data),
+    queryFn: () => personaleApi.list({}).then(r =>
+      (r.data.data as Array<{ id: string; nome: string; cognome: string; ruolo: string }>)
+        .filter(p => !RUOLI_NON_ALLOCABILI.has(p.ruolo))
+    ),
   });
 
   const { mutate: salvaAlloc, isPending } = useMutation({
@@ -434,6 +441,8 @@ function TabAllocazioniModifica({ progettoId }: { progettoId: string }) {
     { title: 'Ore', dataIndex: 'ore_assegnate', width: 80, render: formatOre },
     { title: 'PI', dataIndex: 'is_pi', width: 60,
       render: (v: boolean) => v ? <Tag color="green">PI</Tag> : null },
+    { title: 'Ammin', dataIndex: 'is_ammin', width: 70,
+      render: (v: boolean) => v ? <Tag color="orange">Ammin</Tag> : null },
     { title: 'Inizio', dataIndex: 'data_inizio', width: 100, render: formatData },
     { title: 'Fine', dataIndex: 'data_fine', width: 100, render: formatData },
     {
@@ -481,6 +490,9 @@ function TabAllocazioniModifica({ progettoId }: { progettoId: string }) {
             <Col span={12}><Form.Item name="data_fine" label="Data fine" rules={[{ required: true }]}><DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" /></Form.Item></Col>
           </Row>
           <Form.Item name="is_pi" label="PI del progetto" valuePropName="checked" initialValue={false}>
+            <Switch />
+          </Form.Item>
+          <Form.Item name="is_ammin" label="Responsabile Amministrativo" valuePropName="checked" initialValue={false}>
             <Switch />
           </Form.Item>
           <Form.Item name="note" label="Note"><Input.TextArea rows={2} /></Form.Item>

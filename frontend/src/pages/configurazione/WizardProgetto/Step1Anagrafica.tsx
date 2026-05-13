@@ -166,6 +166,9 @@ export function Step1Anagrafica({ progettoId, onCompletato }: Props) {
           </Form.Item>
         </Col>
       </Row>
+      <Form.Item name="riferimento_bando" label="Riferimento bando">
+        <Input.TextArea rows={2} placeholder="Estremi del bando di finanziamento, decreto, convenzione..." />
+      </Form.Item>
       <Form.Item name="note" label="Note">
         <Input.TextArea rows={2} />
       </Form.Item>

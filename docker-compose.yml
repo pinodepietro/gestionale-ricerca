@@ -32,6 +32,8 @@ services:
       JWT_EXPIRE_MINUTES: 480
       UPLOAD_DIR: /app/uploads
       ALLOWED_ORIGINS: http://localhost:5173
+      SYNC_API_KEY: gestionale-missioni-sync-key-dev
+      MISSIONI_URL: http://missioni:8001
     depends_on:
       db:
         condition: service_healthy
@@ -47,6 +49,30 @@ services:
     depends_on:
       - backend
 
+  missioni:
+    build: /Users/pino/missioni-app
+    ports:
+      - "8001:8001"
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: missioni
+      DB_USER: dev
+      DB_PASSWORD: dev
+      SITE_URL: http://localhost:8001
+      DEBUG: "true"
+      GESTIONALE_URL: http://backend:8000
+      GESTIONALE_SYNC_KEY: gestionale-missioni-sync-key-dev
+      GESTIONALE_FRONTEND_URL: http://localhost:5173
+      GESTIONALE_DB_NAME: gestionale_ricerca
+    volumes:
+      - /Users/pino/missioni-app:/app
+      - /Users/pino/missioni-app/media:/app/media
+      - missioni_static:/app/staticfiles
+    depends_on:
+      db:
+        condition: service_healthy
+
   adminer:
     image: adminer:latest
     ports:
@@ -57,3 +83,4 @@ services:
 
 volumes:
   postgres_data:
+  missioni_static:

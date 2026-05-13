@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { Table, Button, Tag, Space, Modal, Form, Input, InputNumber, DatePicker,
          Select, Typography, App, Upload, Divider, Alert } from 'antd';
-import { PlusOutlined, StopOutlined, PaperClipOutlined, UploadOutlined } from '@ant-design/icons';
+import { PlusOutlined, StopOutlined, PaperClipOutlined, UploadOutlined, LinkOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { budgetApi } from '../../../api/budget';
@@ -11,7 +11,7 @@ import { queryKeys } from '../../../utils/queryKeys';
 import { apiErrorMessage } from '../../../utils/apiError';
 import { RbacGuard } from '../../../components/common/RbacGuard';
 import { formatEuro, formatData } from '../../../utils/formatters';
-import type { Spesa } from '../../../types/budget';
+import type { Spesa, Impegno } from '../../../types/budget';
 
 const { Text } = Typography;
 
@@ -25,6 +25,7 @@ export function TabSpese({ progettoId, stato }: Props) {
   const [form] = Form.useForm();
   const [spesaDaAnnullare, setSpesaDaAnnullare] = useState<Spesa | null>(null);
   const [confermaStep, setConfermaStep] = useState<1 | 2>(1);
+  const vociSelectedWatch = Form.useWatch('voce_id', form);
 
   const { data, isLoading } = useQuery({
     queryKey: queryKeys.progetti.spese(progettoId, { voce_id: filtroVoce }),
@@ -43,6 +44,12 @@ export function TabSpese({ progettoId, stato }: Props) {
     enabled: !!progettoId,
   });
 
+  const { data: impegniVoce } = useQuery({
+    queryKey: queryKeys.progetti.impegni(progettoId + (vociSelectedWatch ?? '')),
+    queryFn: () => budgetApi.impegni.list(progettoId, { voce_id: vociSelectedWatch }).then(r => r.data.data),
+    enabled: !!progettoId && !!vociSelectedWatch && modalAperta,
+  });
+
   const registraSpesa = useMutation({
     mutationFn: (values: Record<string, unknown>) =>
       budgetApi.spese.create(progettoId, {
@@ -52,6 +59,7 @@ export function TabSpese({ progettoId, stato }: Props) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['progetti', progettoId, 'spese'] });
       queryClient.invalidateQueries({ queryKey: queryKeys.progetti.budget(progettoId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.progetti.impegni(progettoId) });
       notification.success({ message: 'Spesa registrata' });
       setModalAperta(false);
       form.resetFields();
@@ -68,9 +76,10 @@ export function TabSpese({ progettoId, stato }: Props) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['progetti', progettoId, 'spese'] });
       queryClient.invalidateQueries({ queryKey: queryKeys.progetti.budget(progettoId) });
-      notification.success({ message: 'Spesa annullata' });
+      queryClient.invalidateQueries({ queryKey: queryKeys.progetti.impegni(progettoId) });
+      notification.success({ message: 'Spesa eliminata' });
     },
-    onError: (e: unknown) => notification.error({ message: apiErrorMessage(e, 'Errore durante l\'annullamento') }),
+    onError: (e: unknown) => notification.error({ message: apiErrorMessage(e, 'Errore durante l\'eliminazione') }),
   });
 
   // Voci disponibili nel budget del progetto
@@ -102,6 +111,12 @@ export function TabSpese({ progettoId, stato }: Props) {
     { title: 'Importo', dataIndex: 'importo', align: 'right' as const,
       width: 120, render: formatEuro },
     {
+      title: 'Impegno', dataIndex: 'impegno_id', width: 80, align: 'center' as const,
+      render: (v: string | null) => v
+        ? <LinkOutlined style={{ color: '#1677ff' }} title="Collegata a un impegno" />
+        : null,
+    },
+    {
       title: 'Stato', dataIndex: 'stato', width: 110,
       render: (stato: string) => (
         <Tag color={stato === 'registrata' ? 'green' : 'default'}>{stato}</Tag>
@@ -119,7 +134,7 @@ export function TabSpese({ progettoId, stato }: Props) {
             <RbacGuard azione="spesa:annulla">
               <Button size="small" danger icon={<StopOutlined />}
                 onClick={() => { setSpesaDaAnnullare(r); setConfermaStep(1); }}>
-                Annulla
+                Elimina
               </Button>
             </RbacGuard>
           )}
@@ -181,7 +196,7 @@ export function TabSpese({ progettoId, stato }: Props) {
             <Table.Summary.Cell index={4} align="right">
               <Text strong>{formatEuro(totale)}</Text>
             </Table.Summary.Cell>
-            <Table.Summary.Cell index={5} colSpan={2} />
+            <Table.Summary.Cell index={5} colSpan={3} />
           </Table.Summary.Row>
         ) : null}
       />
@@ -199,8 +214,27 @@ export function TabSpese({ progettoId, stato }: Props) {
         <Form form={form} layout="vertical" onFinish={(v) => registraSpesa.mutate(v)}
           style={{ marginTop: 16 }}>
           <Form.Item name="voce_id" label="Voce di costo" rules={[{ required: true }]}>
-            <Select placeholder="Seleziona voce di costo" options={vociDisponibili} />
+            <Select
+              placeholder="Seleziona voce di costo"
+              options={vociDisponibili}
+              onChange={() => form.setFieldValue('impegno_id', undefined)}
+            />
           </Form.Item>
+          {vociSelectedWatch && (
+            <Form.Item name="impegno_id" label="Impegno di riferimento (facoltativo)">
+              <Select
+                placeholder="Seleziona un impegno esistente per questa voce"
+                allowClear
+                options={(impegniVoce as Impegno[] | undefined)
+                  ?.filter(i => i.importo > 0)
+                  .map(i => ({
+                    value: i.id,
+                    label: `${i.data ? i.data.substring(0, 10) : ''} — ${i.descrizione} (${formatEuro(i.importo)})`,
+                  })) ?? []}
+                notFoundContent="Nessun impegno attivo per questa voce"
+              />
+            </Form.Item>
+          )}
           <Space style={{ width: '100%' }} size={12}>
             <Form.Item name="data" label="Data documento" rules={[{ required: true }]}
               style={{ flex: 1 }}>
@@ -229,7 +263,7 @@ export function TabSpese({ progettoId, stato }: Props) {
       {/* Modal doppia conferma annullamento */}
       <Modal
         open={!!spesaDaAnnullare && confermaStep === 1}
-        title="Annullare questa spesa?"
+        title="Eliminare questa spesa?"
         onCancel={chiudiAnnulla}
         onOk={() => setConfermaStep(2)}
         okText="Sì, continua"
@@ -239,7 +273,7 @@ export function TabSpese({ progettoId, stato }: Props) {
       >
         {spesaDaAnnullare && (
           <>
-            <p>Stai per annullare la seguente spesa:</p>
+            <p>Stai per eliminare definitivamente la seguente spesa:</p>
             <p><strong>Importo:</strong> {formatEuro(spesaDaAnnullare.importo)}</p>
             <p><strong>Data:</strong> {formatData(spesaDaAnnullare.data)}</p>
             {spesaDaAnnullare.descrizione && <p><strong>Descrizione:</strong> {spesaDaAnnullare.descrizione}</p>}
@@ -250,19 +284,18 @@ export function TabSpese({ progettoId, stato }: Props) {
 
       <Modal
         open={!!spesaDaAnnullare && confermaStep === 2}
-        title="Conferma definitiva"
+        title="Conferma eliminazione"
         onCancel={chiudiAnnulla}
         onOk={() => {
           if (spesaDaAnnullare) annullaSpesa.mutate(spesaDaAnnullare.id);
           chiudiAnnulla();
         }}
-        okText="Annulla spesa definitivamente"
+        okText="Elimina spesa definitivamente"
         okButtonProps={{ danger: true, loading: annullaSpesa.isPending }}
         cancelText="Indietro"
         width={400}
       >
-        <p>Sei sicuro? <strong>L&apos;operazione è irreversibile.</strong></p>
-        <p>La spesa passerà in stato &quot;annullata&quot; e rimarrà visibile nello storico.</p>
+        <p>Sei sicuro? <strong>La spesa verrà rimossa e non sarà più recuperabile.</strong></p>
       </Modal>
     </div>
   );

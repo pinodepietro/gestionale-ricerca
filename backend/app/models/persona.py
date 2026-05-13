@@ -13,6 +13,7 @@ class Persona(Base):
     nome = Column(String(100), nullable=False)
     cognome = Column(String(100), nullable=False)
     email = Column(String(100), nullable=False, unique=True, index=True)
+    username = Column(String(100), nullable=False, unique=True, index=True)
     password_hash = Column(String(200), nullable=True)
     codice_fiscale = Column(String(16), nullable=True)
     ruolo = Column(String(30), nullable=False)

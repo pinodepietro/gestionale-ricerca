@@ -74,6 +74,39 @@ export interface ProgettoPartner {
 }
 
 // Tipo per il cruscotto progetto
+export interface PortfolioProgetto {
+  id: string;
+  codice: string;
+  acronimo: string;
+  titolo: string;
+  tipo: string;
+  data_inizio: string | null;
+  data_fine: string | null;
+  costo_totale: number;
+  importo_finanziato: number;
+  pianificato: number;
+  rendicontato: number;
+  pct_rendicontato: number;
+  pct_speso: number;
+  percentuale_tempo: number;
+  spese_documentate: number;
+  pi_nome: string | null;
+}
+
+export interface PortfolioGlobale {
+  progetti_attivi: number;
+  costo_totale_portfolio: number;
+  importo_finanziato_portfolio: number;
+  budget_pianificato: number;
+  budget_rendicontato: number;
+  pct_rendicontato: number;
+  spese_totali: number;
+  pct_speso: number;
+  timesheet_pendenti: number;
+  sal_in_scadenza: number;
+  progetti: PortfolioProgetto[];
+}
+
 export interface CruscottoProgetto {
   progetto_id: string;
   ore_allocate_totali: number;

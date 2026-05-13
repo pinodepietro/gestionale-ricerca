@@ -1,6 +1,6 @@
 import { apiClient } from './client';
 import type { ApiResponse, PaginatedResponse } from '../types/api';
-import type { Progetto, DocumentoProgetto, CruscottoProgetto } from '../types/progetto';
+import type { Progetto, DocumentoProgetto, CruscottoProgetto, PortfolioGlobale } from '../types/progetto';
 
 export interface ProgettoFilters {
   stato?: string; tipo?: string; anno?: number;
@@ -28,6 +28,8 @@ export const progettiApi = {
     apiClient.post<ApiResponse<Progetto>>(`/progetti/${id}/chiudi`),
   cruscotto: (id: string) =>
     apiClient.get<ApiResponse<CruscottoProgetto>>(`/progetti/${id}/cruscotto`),
+  portfolio: () =>
+    apiClient.get<ApiResponse<PortfolioGlobale>>('/progetti/cruscotto'),
 
   documenti: {
     list: (progettoId: string) =>

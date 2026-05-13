@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import {
   DashboardOutlined, ProjectOutlined, TeamOutlined,
   FileTextOutlined, BarChartOutlined, SettingOutlined, BankOutlined, ToolOutlined,
+  FundOutlined,
 } from '@ant-design/icons';
 import { useLayoutStore } from '../../store/useLayoutStore';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -20,6 +21,7 @@ export function AppSidebar() {
   const menuItems = [
     { key: '/dashboard', icon: <DashboardOutlined />, label: 'Dashboard' },
     { key: '/progetti', icon: <ProjectOutlined />, label: 'Progetti' },
+    { key: '/portfolio', icon: <FundOutlined />, label: 'Portfolio' },
     ...(user && canDo(user.ruolo, 'timesheet:accedi')
       ? [{ key: '/timesheet', icon: <FileTextOutlined />, label: 'Timesheet' }] : []),
     ...(user && canDo(user.ruolo, 'sal:visualizza')
@@ -49,7 +51,9 @@ export function AppSidebar() {
         {collapsed ? 'GR' : 'Gestionale Ricerca'}
       </div>
       <Menu theme="dark" mode="inline" selectedKeys={[selectedKey]}
-        items={menuItems} onClick={({ key }) => navigate(key)} />
+        items={menuItems}
+        onClick={({ key }) => navigate(key)}
+      />
     </Sider>
   );
 }

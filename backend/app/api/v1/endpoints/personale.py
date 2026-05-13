@@ -1,5 +1,5 @@
 # backend/app/api/v1/endpoints/personale.py
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status, BackgroundTasks
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from app.core.database import get_db
@@ -7,8 +7,45 @@ from app.core.deps import tutti_i_ruoli, solo_amministrativo
 from app.models.persona import Persona
 from app.models.personale import CostoOrarioPersona, MonteOreAnnuale, Allocazione
 from app.core.security import hash_password
+from app.core.config import settings
 from datetime import date
 import math
+import urllib.request
+import json
+
+RUOLI_DA_SINCRONIZZARE = {"ricercatore", "amministrativo"}
+
+
+import re
+
+def _genera_username(nome: str, cognome: str, db: Session) -> str:
+    base = (
+        re.sub(r'\s+', '', nome.lower()) + '.' +
+        re.sub(r'\s+', '', cognome.lower())
+    )
+    candidate = base
+    n = 2
+    while db.query(Persona).filter(Persona.username == candidate).first():
+        candidate = f"{base}{n}"
+        n += 1
+    return candidate
+
+
+def _sync_utente_missioni(email: str, nome: str, cognome: str, password: str | None, attivo: bool):
+    try:
+        payload = json.dumps({
+            "email": email, "nome": nome, "cognome": cognome,
+            "password": password, "attivo": attivo,
+        }).encode()
+        req = urllib.request.Request(
+            f"{settings.MISSIONI_URL}/internal/sync-utente/",
+            data=payload,
+            method="POST",
+            headers={"X-Sync-Key": settings.SYNC_API_KEY, "Content-Type": "application/json"},
+        )
+        urllib.request.urlopen(req, timeout=5)
+    except Exception:
+        pass  # non blocca mai l'operazione principale
 
 router = APIRouter()
 
@@ -31,6 +68,7 @@ def persona_dict(p: Persona) -> dict:
         "nome": p.nome,
         "cognome": p.cognome,
         "email": p.email,
+        "username": p.username,
         "codice_fiscale": p.codice_fiscale,
         "ruolo": p.ruolo,
         "ruolo_ente": p.ruolo_ente,
@@ -66,7 +104,7 @@ def monte_ore_dict(m: MonteOreAnnuale) -> dict:
 
 # ─── Stato PI (per dashboard) ────────────────────────────────────────────────
 
-@router.get("/me/is-pi")
+@router.get("/personale/me/is-pi")
 def sono_pi_di_qualcuno(
     db: Session = Depends(get_db),
     utente: Persona = Depends(tutti_i_ruoli),
@@ -120,10 +158,10 @@ def get_persona(
 @router.post("/persone")
 def crea_persona(
     body: dict,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     utente: Persona = Depends(solo_amministrativo),
 ):
-    # Verifica email unica
     if db.query(Persona).filter(Persona.email == body.get("email")).first():
         raise HTTPException(
             status_code=409,
@@ -131,13 +169,20 @@ def crea_persona(
         )
 
     password = body.pop("password", None)
-    campi_validi = {k: v for k, v in body.items() if hasattr(Persona, k) and k not in ("id", "password_hash")}
+    campi_validi = {k: v for k, v in body.items() if hasattr(Persona, k) and k not in ("id", "password_hash", "username")}
     p = Persona(**campi_validi)
+    p.username = _genera_username(p.nome, p.cognome, db)
     if password:
         p.password_hash = hash_password(password)
     db.add(p)
     db.commit()
     db.refresh(p)
+
+    if p.ruolo in RUOLI_DA_SINCRONIZZARE:
+        background_tasks.add_task(
+            _sync_utente_missioni, p.email, p.nome, p.cognome, password, p.attivo
+        )
+
     return {"data": persona_dict(p)}
 
 
@@ -145,18 +190,39 @@ def crea_persona(
 def aggiorna_persona(
     id: str,
     body: dict,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     utente: Persona = Depends(solo_amministrativo),
 ):
     p = _get_persona_or_404(id, db)
     password = body.pop("password", None)
+    nome_cambiato = "nome" in body and body["nome"] != p.nome
+    cognome_cambiato = "cognome" in body and body["cognome"] != p.cognome
     for k, v in body.items():
-        if hasattr(Persona, k) and k not in ("id", "password_hash"):
+        if hasattr(Persona, k) and k not in ("id", "password_hash", "username"):
             setattr(p, k, v)
+    if nome_cambiato or cognome_cambiato:
+        # escludi l'utente stesso dal controllo duplicati
+        nuovo = (
+            __import__('re').sub(r'\s+', '', p.nome.lower()) + '.' +
+            __import__('re').sub(r'\s+', '', p.cognome.lower())
+        )
+        candidate = nuovo
+        n = 2
+        while db.query(Persona).filter(Persona.username == candidate, Persona.id != p.id).first():
+            candidate = f"{nuovo}{n}"
+            n += 1
+        p.username = candidate
     if password:
         p.password_hash = hash_password(password)
     db.commit()
     db.refresh(p)
+
+    if p.ruolo in RUOLI_DA_SINCRONIZZARE:
+        background_tasks.add_task(
+            _sync_utente_missioni, p.email, p.nome, p.cognome, password, p.attivo
+        )
+
     return {"data": persona_dict(p)}
 
 

@@ -19,6 +19,7 @@ import { TabPersonale } from './tabs/TabPersonale';
 import { TabDocumenti } from './tabs/TabDocumenti';
 import { TabTimesheet } from './tabs/TabTimesheet';
 import { TabSpese } from './tabs/TabSpese';
+import { TabImpegni } from './tabs/TabImpegni';
 import { TabPartner } from './tabs/TabPartner';
 import { ModificaProgettoDrawer } from './ModificaProgettoDrawer';
 
@@ -188,6 +189,7 @@ export function ProgettoPage() {
           { key: 'documenti', label: 'Documenti', children: <TabDocumenti progettoId={id!} /> },
           { key: 'timesheet', label: 'Timesheet', children: <TabTimesheet progettoId={id!} stato={data.stato} /> },
           { key: 'spese', label: 'Spese', children: <TabSpese progettoId={id!} stato={data.stato} /> },
+          { key: 'impegni', label: 'Impegni', children: <TabImpegni progettoId={id!} stato={data.stato} /> },
           { key: 'partner', label: 'Partner', children: <TabPartner progettoId={id!} /> },
         ]}
       />

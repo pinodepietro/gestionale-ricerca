@@ -46,6 +46,7 @@ class Allocazione(Base):
     data_fine = Column(Date, nullable=False)
     note = Column(Text, nullable=True)
     is_pi = Column(Boolean, nullable=False, default=False)
+    is_ammin = Column(Boolean, nullable=False, default=False)
 
     persona = relationship("Persona", back_populates="allocazioni")
     progetto = relationship("Progetto", back_populates="allocazioni")

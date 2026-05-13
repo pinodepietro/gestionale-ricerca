@@ -1,9 +1,9 @@
 // frontend/src/pages/progetti/ProgettiPage.tsx
 import { useState } from 'react';
-import { Table, Input, Select, Space, Typography, Button, Row, Col } from 'antd';
-import { PlusOutlined, SearchOutlined } from '@ant-design/icons';
+import { Table, Input, Select, Space, Typography, Button, Row, Col, Popconfirm, notification } from 'antd';
+import { PlusOutlined, SearchOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/useAuthStore';
 import { progettiApi } from '../../api/progetti';
 import { queryKeys } from '../../utils/queryKeys';
@@ -25,6 +25,19 @@ export function ProgettiPage() {
   const [page, setPage] = useState(1);
 
   const isAdmin = user?.ruolo === 'amministrativo' || user?.ruolo === 'superadmin';
+  const queryClient = useQueryClient();
+
+  const { mutate: eliminaProgetto } = useMutation({
+    mutationFn: (id: string) => progettiApi.delete(id),
+    onSuccess: () => {
+      notification.success({ message: 'Progetto eliminato' });
+      queryClient.invalidateQueries({ queryKey: queryKeys.progetti.all });
+    },
+    onError: (err: any) => {
+      const msg = err?.response?.data?.detail?.error?.message ?? 'Errore durante l\'eliminazione';
+      notification.error({ message: msg });
+    },
+  });
 
   const { data: tipiProgetto } = useQuery({
     queryKey: queryKeys.config.tipiProgetto,
@@ -78,6 +91,31 @@ export function ProgettiPage() {
       align: 'right' as const,
       render: formatEuro,
     },
+    ...(isAdmin ? [{
+      title: '',
+      key: 'azioni',
+      width: 60,
+      render: (_: unknown, record: Progetto) =>
+        (record.stato === 'bozza' || user?.ruolo === 'superadmin') ? (
+          <Popconfirm
+            title="Eliminare il progetto?"
+            description={record.stato !== 'bozza'
+              ? `Il progetto è in stato "${record.stato}". Tutti i dati associati saranno persi. Continuare?`
+              : "L'operazione è irreversibile."}
+            okText="Elimina"
+            okButtonProps={{ danger: true }}
+            cancelText="Annulla"
+            onConfirm={(e) => { e?.stopPropagation(); eliminaProgetto(record.id); }}
+          >
+            <Button
+              size="small"
+              danger
+              icon={<DeleteOutlined />}
+              onClick={(e) => e.stopPropagation()}
+            />
+          </Popconfirm>
+        ) : null,
+    }] : []),
   ];
 
   return (

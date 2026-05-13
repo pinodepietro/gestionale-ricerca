@@ -9,12 +9,14 @@ export const queryKeys = {
   progetti: {
     all: ['progetti'] as const,
     list: (filters: ProgettoFilters) => ['progetti', 'list', filters] as const,
+    portfolio: ['progetti', 'portfolio'] as const,
     detail: (id: string) => ['progetti', id] as const,
     cruscotto: (id: string) => ['progetti', id, 'cruscotto'] as const,
     documenti: (id: string) => ['progetti', id, 'documenti'] as const,
     allocazioni: (id: string) => ['progetti', id, 'allocazioni'] as const,
     budget: (id: string) => ['progetti', id, 'budget'] as const,
     spese: (id: string, params?: object) => ['progetti', id, 'spese', params] as const,
+    impegni: (id: string) => ['progetti', id, 'impegni'] as const,
     partner: (id: string) => ['progetti', id, 'partner'] as const,
   },
 

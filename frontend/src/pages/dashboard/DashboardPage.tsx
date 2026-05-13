@@ -1,11 +1,12 @@
 // frontend/src/pages/dashboard/DashboardPage.tsx
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Row, Col, Card, Tag, Typography, Space, Spin, Alert, List, Button, Divider, Empty } from 'antd';
+import { Row, Col, Card, Tag, Typography, Space, Spin, Alert, List, Button, Divider, Empty, App } from 'antd';
 import { WarningOutlined, FileTextOutlined, ArrowLeftOutlined, ProjectOutlined,
-         PlusOutlined, EditOutlined } from '@ant-design/icons';
+         PlusOutlined, EditOutlined, FileExcelOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../../api/client';
+import { env } from '../../config/env';
 import { budgetApi } from '../../api/budget';
 import { salApi } from '../../api/sal';
 import { timesheetApi } from '../../api/timesheet';
@@ -18,16 +19,18 @@ const { Title, Text } = Typography;
 interface ProgettoKPI {
   id: string; acronimo: string; codice: string; titolo: string; tipo: string;
   data_inizio: string; data_fine: string;
-  budget_previsto: number; budget_rendicontato: number;
-  percentuale_budget: number; percentuale_tempo: number;
+  pianificato: number; rendicontato: number;
+  pct_rendicontato: number; pct_speso: number; percentuale_tempo: number;
   importo_finanziato: number; costo_totale: number;
-  spese_documentate: number; budget_spese_ammissibili: number;
+  spese_documentate: number;
   pi_nome?: string;
 }
 interface CruscottoData {
   progetti_attivi: number; timesheet_pendenti: number; sal_in_scadenza: number;
-  spese_totali: number; budget_previsto: number; budget_rendicontato: number;
-  percentuale_budget: number; progetti: ProgettoKPI[];
+  spese_totali: number; budget_pianificato: number; budget_rendicontato: number;
+  pct_rendicontato: number; pct_speso: number;
+  costo_totale_portfolio: number; importo_finanziato_portfolio: number;
+  progetti: ProgettoKPI[];
 }
 
 function colore(pct: number) {
@@ -37,8 +40,8 @@ function colore(pct: number) {
 }
 
 // ── KPI Card stile A ──────────────────────────────────────────────────────────
-function GaugeCard({ label, value, pct, color, sub }: {
-  label: string; value: string; pct: number; color: string; sub?: string;
+function GaugeCard({ label, value, pct, color, sub, exact }: {
+  label: string; value: string; pct: number; color: string; sub?: string; exact?: string;
 }) {
   const r = 52;
   const circ = 2 * Math.PI * r;
@@ -47,16 +50,21 @@ function GaugeCard({ label, value, pct, color, sub }: {
     <div style={{ background: '#fff', border: `1.5px solid ${color}`, borderRadius: 12,
       padding: 16, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
       <Text style={{ fontSize: 12, color: '#888', marginBottom: 6 }}>{label}</Text>
-      <svg viewBox="0 0 130 130" width="140" height="140">
+      <svg viewBox="0 0 130 130" width="130" height="130">
         <circle cx="65" cy="65" r={r} fill="none" stroke="#D3D1C7" strokeWidth="13"/>
         <circle cx="65" cy="65" r={r} fill="none" stroke={color} strokeWidth="13"
           strokeDasharray={circ} strokeDashoffset={offset}
           strokeLinecap="round"
           transform="rotate(-90 65 65)"
           style={{ transition: 'stroke-dashoffset 0.6s' }}/>
-        <text x="65" y="60" textAnchor="middle" fontSize="22" fontWeight="500" fill={color}>{value}</text>
+        <text x="65" y="62" textAnchor="middle" fontSize="22" fontWeight="500" fill={color}>{value}</text>
         {sub && <text x="65" y="78" textAnchor="middle" fontSize="10" fill="#888">{sub}</text>}
       </svg>
+      {exact && (
+        <Text style={{ fontSize: 12, fontWeight: 600, color, marginTop: 4, textAlign: 'center' }}>
+          {exact}
+        </Text>
+      )}
     </div>
   );
 }
@@ -73,6 +81,7 @@ function KpiBox({ label, value, color }: { label: string; value: string | number
 // ── Dettaglio progetto ────────────────────────────────────────────────────────
 function DashboardProgetto({ progetto, onBack }: { progetto: ProgettoKPI; onBack: () => void }) {
   const navigate = useNavigate();
+  const { notification } = App.useApp();
 
   const { data: budgetVoci } = useQuery({
     queryKey: queryKeys.progetti.budget(progetto.id),
@@ -106,10 +115,10 @@ function DashboardProgetto({ progetto, onBack }: { progetto: ProgettoKPI; onBack
     : null;
 
   const speseDaUsare = progetto.spese_documentate || speseTotali;
-  const limiteSpese = progetto.budget_spese_ammissibili || progetto.importo_finanziato || progetto.budget_previsto;
-  const pctSpese = limiteSpese > 0
+  const limiteSpese = progetto.importo_finanziato || progetto.pianificato;
+  const pctSpese = progetto.pct_speso || (limiteSpese > 0
     ? Math.round(speseDaUsare / limiteSpese * 1000) / 10
-    : 0;
+    : 0);
 
   return (
     <div>
@@ -130,7 +139,7 @@ function DashboardProgetto({ progetto, onBack }: { progetto: ProgettoKPI; onBack
           <div style={{ display: 'flex', gap: 32, marginTop: 10 }}>
             <Text style={{ fontSize: 15, color: '#888' }}>Costo progetto:
               <strong style={{ fontSize: 17, color: '#333', marginLeft: 8 }}>
-                € {((progetto.costo_totale || progetto.budget_previsto || 0) / 1000).toFixed(0)}k
+                € {((progetto.costo_totale || progetto.pianificato || 0) / 1000).toFixed(0)}k
               </strong>
             </Text>
             <Text style={{ fontSize: 15, color: '#888' }}>Importo finanziato:
@@ -140,14 +149,38 @@ function DashboardProgetto({ progetto, onBack }: { progetto: ProgettoKPI; onBack
             </Text>
             <Text style={{ fontSize: 15, color: '#888' }}>Cofinanziamento:
               <strong style={{ fontSize: 17, color: '#555', marginLeft: 8 }}>
-                € {(((progetto.costo_totale || progetto.budget_previsto || 0) - (progetto.importo_finanziato || 0)) / 1000).toFixed(0)}k
+                € {(((progetto.costo_totale || progetto.pianificato || 0) - (progetto.importo_finanziato || 0)) / 1000).toFixed(0)}k
               </strong>
             </Text>
           </div>
         </div>
-        <Button type="primary" onClick={() => navigate(`/progetti/${progetto.id}`)}>
-          Apri scheda progetto →
-        </Button>
+        <Space>
+          <Button
+            icon={<FileExcelOutlined />}
+            onClick={async () => {
+              const token = localStorage.getItem('access_token');
+              const res = await fetch(
+                `${env.apiUrl}/api/v1/progetti/${progetto.id}/riepilogo-dashboard/xlsx`,
+                { headers: { Authorization: `Bearer ${token}` } }
+              );
+              if (!res.ok) {
+                notification.error({ message: 'Errore nella generazione del riepilogo' });
+                return;
+              }
+              const blob = await res.blob();
+              const a = document.createElement('a');
+              a.href = URL.createObjectURL(blob);
+              a.download = `Riepilogo_${progetto.acronimo}_${new Date().toISOString().slice(0,10).replace(/-/g,'')}.xlsx`;
+              a.click();
+              URL.revokeObjectURL(a.href);
+            }}
+          >
+            Stampa riepilogo
+          </Button>
+          <Button type="primary" onClick={() => navigate(`/progetti/${progetto.id}`)}>
+            Apri scheda progetto →
+          </Button>
+        </Space>
       </div>
 
       {/* Alert */}
@@ -170,7 +203,7 @@ function DashboardProgetto({ progetto, onBack }: { progetto: ProgettoKPI; onBack
         </Row>
       )}
 
-      {/* Riga 1: 3 gauge cerchi */}
+      {/* Righe gauge */}
       {(() => {
         const coloreBudget = '#185FA5';
         const coloreSpese = '#1D9E75';
@@ -181,52 +214,89 @@ function DashboardProgetto({ progetto, onBack }: { progetto: ProgettoKPI; onBack
         const durataGg = dataInizio && dataFine ? Math.round((dataFine.getTime() - dataInizio.getTime()) / 86400000) : 0;
         const trascorsiGg = dataInizio ? Math.round((Date.now() - dataInizio.getTime()) / 86400000) : 0;
 
+        const voci = (budgetVoci as { importo_previsto: number; importo_impegnato?: number; importo_speso?: number }[] | undefined) ?? [];
+        const totalePianificato = voci.reduce((s, v) => s + v.importo_previsto, 0);
+        const totaleImpegnato   = voci.reduce((s, v) => s + (v.importo_impegnato ?? 0), 0);
+        const totaleSpeso       = voci.reduce((s, v) => s + (v.importo_speso ?? 0), 0);
+        const totaleDisponibile = Math.max(0, totalePianificato - totaleImpegnato - totaleSpeso);
+
+        const pctImpegnato   = totalePianificato > 0 ? Math.round(totaleImpegnato   / totalePianificato * 1000) / 10 : 0;
+        const pctSpeso2      = totalePianificato > 0 ? Math.round(totaleSpeso        / totalePianificato * 1000) / 10 : 0;
+        const pctDisponibile = totalePianificato > 0 ? Math.round(totaleDisponibile  / totalePianificato * 1000) / 10 : 0;
+
         return (
-          <Row gutter={16} style={{ marginBottom: 16 }}>
-            <Col span={8}>
-              <GaugeCard
-                label="Budget utilizzato"
-                value={`${progetto.percentuale_budget}%`}
-                pct={progetto.percentuale_budget}
-                color={coloreBudget}
-                sub={`€ ${(progetto.budget_rendicontato/1000).toFixed(0)}k / € ${(progetto.budget_previsto/1000).toFixed(0)}k`}
-              />
-            </Col>
-            <Col span={8}>
-              <GaugeCard
-                label="Spese vs Contributo"
-                value={`${pctSpese}%`}
-                pct={pctSpese}
-                color={coloreSpese}
-                sub={`€ ${(speseDaUsare/1000).toFixed(1)}k / € ${(limiteSpese/1000).toFixed(1)}k`}
-              />
-            </Col>
-            <Col span={8}>
-              <GaugeCard
-                label="Tempo trascorso"
-                value={`${progetto.percentuale_tempo}%`}
-                pct={progetto.percentuale_tempo}
-                color={coloreTempo}
-                sub={`${trascorsiGg}gg / ${durataGg}gg`}
-              />
-            </Col>
-          </Row>
+          <>
+            <Row gutter={16} style={{ marginBottom: 16 }}>
+              <Col span={8}>
+                <GaugeCard
+                  label="Rendicontato / Pianificato"
+                  value={`${progetto.pct_rendicontato}%`}
+                  pct={progetto.pct_rendicontato}
+                  color={coloreBudget}
+                  exact={`${formatEuro(progetto.rendicontato)} / ${formatEuro(progetto.pianificato)}`}
+                />
+              </Col>
+              <Col span={8}>
+                <GaugeCard
+                  label="Spese vs Contributo"
+                  value={`${pctSpese}%`}
+                  pct={pctSpese}
+                  color={coloreSpese}
+                  exact={`${formatEuro(speseDaUsare)} / ${formatEuro(limiteSpese)}`}
+                />
+              </Col>
+              <Col span={8}>
+                <GaugeCard
+                  label="Tempo trascorso"
+                  value={`${progetto.percentuale_tempo}%`}
+                  pct={progetto.percentuale_tempo}
+                  color={coloreTempo}
+                  exact={`${trascorsiGg}gg trascorsi / ${durataGg}gg totali`}
+                />
+              </Col>
+            </Row>
+            <Row gutter={16} style={{ marginBottom: 16 }}>
+              <Col span={8}>
+                <GaugeCard
+                  label="Spese (totale)"
+                  value={`${pctSpeso2}%`}
+                  pct={pctSpeso2}
+                  color="#E8863A"
+                  exact={formatEuro(totaleSpeso)}
+                />
+              </Col>
+              <Col span={8}>
+                <GaugeCard
+                  label="Impegnato (totale)"
+                  value={`${pctImpegnato}%`}
+                  pct={pctImpegnato}
+                  color="#722ed1"
+                  exact={formatEuro(totaleImpegnato)}
+                />
+              </Col>
+              <Col span={8}>
+                <GaugeCard
+                  label="Disponibile (totale)"
+                  value={`${pctDisponibile}%`}
+                  pct={pctDisponibile}
+                  color="#13c2c2"
+                  exact={formatEuro(totaleDisponibile)}
+                />
+              </Col>
+            </Row>
+          </>
         );
       })()}
 
-      {/* Riga 2: 3 KPI box */}
+      {/* Riga 2: 2 KPI box */}
       <Row gutter={16} style={{ marginBottom: 24 }}>
-        <Col span={8}>
+        <Col span={12}>
           <KpiBox label="Timesheet pendenti" value={tsPendenti}
             color={tsPendenti > 0 ? '#185FA5' : '#888'} />
         </Col>
-        <Col span={8}>
+        <Col span={12}>
           <KpiBox label="SAL in scadenza" value={salInScadenza}
             color={salInScadenza > 0 ? '#E24B4A' : '#888'} />
-        </Col>
-        <Col span={8}>
-          <KpiBox label="Spese registrate" value={`€ ${(speseTotali/1000).toFixed(0)}k`}
-            color="#185FA5" />
         </Col>
       </Row>
 
@@ -451,7 +521,8 @@ function DashboardPI() {
   }
 
   const d = data ?? { progetti_attivi: 0, timesheet_pendenti: 0, sal_in_scadenza: 0,
-    spese_totali: 0, budget_previsto: 0, budget_rendicontato: 0, percentuale_budget: 0, progetti: [] };
+    spese_totali: 0, budget_pianificato: 0, budget_rendicontato: 0, pct_rendicontato: 0, pct_speso: 0,
+    costo_totale_portfolio: 0, importo_finanziato_portfolio: 0, progetti: [] };
 
   const tsPendenti = (tsData as unknown[] ?? []).length;
   const salInScadenza = d.sal_in_scadenza;
@@ -543,7 +614,7 @@ function DashboardPI() {
 
                   <div style={{ display: 'flex', justifyContent: 'space-between', margin: '8px 0 4px' }}>
                     <span style={{ fontSize: 12, color: '#888' }}>
-                      Costo: <strong style={{ color: '#333' }}>€ {((p.costo_totale || p.budget_previsto || 0) / 1000).toFixed(0)}k</strong>
+                      Costo: <strong style={{ color: '#333' }}>€ {((p.costo_totale || p.pianificato || 0) / 1000).toFixed(0)}k</strong>
                     </span>
                     <span style={{ fontSize: 12, color: '#888' }}>
                       Finanziato: <strong style={{ color: '#185FA5' }}>€ {((p.importo_finanziato || 0) / 1000).toFixed(0)}k</strong>
@@ -555,14 +626,14 @@ function DashboardPI() {
                   <Row gutter={12}>
                     <Col span={12}>
                       <Text style={{ fontSize: 11, color: '#888', display: 'block', marginBottom: 4 }}>
-                        Budget utilizzato
+                        Rendicontato / Pianificato
                       </Text>
-                      <Text strong style={{ fontSize: 18, color: colore(p.percentuale_budget) }}>
-                        {p.percentuale_budget}%
+                      <Text strong style={{ fontSize: 18, color: colore(p.pct_rendicontato) }}>
+                        {p.pct_rendicontato}%
                       </Text>
                       <div style={{ height: 4, background: '#f0f0f0', borderRadius: 2, marginTop: 6 }}>
-                        <div style={{ height: 4, width: `${Math.min(p.percentuale_budget, 100)}%`,
-                          background: colore(p.percentuale_budget), borderRadius: 2 }} />
+                        <div style={{ height: 4, width: `${Math.min(p.pct_rendicontato, 100)}%`,
+                          background: colore(p.pct_rendicontato), borderRadius: 2 }} />
                       </div>
                     </Col>
                     <Col span={12}>
@@ -619,7 +690,8 @@ export function DashboardPage() {
   }
 
   const d = data ?? { progetti_attivi: 0, timesheet_pendenti: 0, sal_in_scadenza: 0,
-    spese_totali: 0, budget_previsto: 0, budget_rendicontato: 0, percentuale_budget: 0, progetti: [] };
+    spese_totali: 0, budget_pianificato: 0, budget_rendicontato: 0, pct_rendicontato: 0, pct_speso: 0,
+    costo_totale_portfolio: 0, importo_finanziato_portfolio: 0, progetti: [] };
 
   return (
     <div>
@@ -660,7 +732,7 @@ export function DashboardPage() {
                   </div>
 
                   <div style={{ display: 'flex', justifyContent: 'space-between', margin: '8px 0 4px' }}>
-                    <span style={{ fontSize: 12, color: '#888' }}>Costo progetto: <strong style={{ color: '#333' }}>€ {((p.costo_totale || p.budget_previsto || 0) / 1000).toFixed(0)}k</strong></span>
+                    <span style={{ fontSize: 12, color: '#888' }}>Costo progetto: <strong style={{ color: '#333' }}>€ {((p.costo_totale || p.pianificato || 0) / 1000).toFixed(0)}k</strong></span>
                     <span style={{ fontSize: 12, color: '#888' }}>Finanziato: <strong style={{ color: '#185FA5' }}>€ {((p.importo_finanziato || 0) / 1000).toFixed(0)}k</strong></span>
                   </div>
 
@@ -669,14 +741,14 @@ export function DashboardPage() {
                   <Row gutter={12}>
                     <Col span={12}>
                       <Text style={{ fontSize: 11, color: '#888', display: 'block', marginBottom: 4 }}>
-                        Budget utilizzato
+                        Rendicontato / Pianificato
                       </Text>
-                      <Text strong style={{ fontSize: 18, color: colore(p.percentuale_budget) }}>
-                        {p.percentuale_budget}%
+                      <Text strong style={{ fontSize: 18, color: colore(p.pct_rendicontato) }}>
+                        {p.pct_rendicontato}%
                       </Text>
                       <div style={{ height: 4, background: '#f0f0f0', borderRadius: 2, marginTop: 6 }}>
-                        <div style={{ height: 4, width: `${Math.min(p.percentuale_budget,100)}%`,
-                          background: colore(p.percentuale_budget), borderRadius: 2 }} />
+                        <div style={{ height: 4, width: `${Math.min(p.pct_rendicontato,100)}%`,
+                          background: colore(p.pct_rendicontato), borderRadius: 2 }} />
                       </div>
                     </Col>
                     <Col span={12}>

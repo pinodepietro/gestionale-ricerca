@@ -3,6 +3,7 @@ import { AppLayout } from './components/layout/AppLayout';
 import { DashboardPage } from './pages/dashboard/DashboardPage';
 import { ProgettiPage } from './pages/progetti/ProgettiPage';
 import { ProgettoPage } from './pages/progetti/ProgettoPage';
+import { PortfolioPage } from './pages/progetti/PortfolioPage';
 import { ConfigurazionePage } from './pages/configurazione/ConfigurazionePage';
 import { WizardProgetto } from './pages/configurazione/WizardProgetto/WizardProgetto';
 import { PersonalePage } from './pages/personale/PersonalePage';
@@ -27,6 +28,7 @@ export const router = createBrowserRouter([
       { path: 'dashboard', element: <DashboardPage /> },
       { path: 'progetti', element: <ProgettiPage /> },
       { path: 'progetti/:id', element: <ProgettoPage /> },
+      { path: 'portfolio', element: <PortfolioPage /> },
       { path: 'configurazione', element: <ConfigurazionePage /> },
       { path: 'configurazione/nuovo', element: <WizardProgetto /> },
       { path: 'configurazione/:id', element: <WizardProgetto /> },

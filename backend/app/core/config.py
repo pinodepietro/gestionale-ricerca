@@ -10,6 +10,8 @@ class Settings(BaseSettings):
     # Per più origini separate da virgola: http://localhost:5173,https://gestionale.ateneo.it
     ALLOWED_ORIGINS: str = "http://localhost:5173"
     UPLOAD_DIR: str = "/app/uploads"
+    SYNC_API_KEY: str = "gestionale-missioni-sync-key-dev"
+    MISSIONI_URL: str = "http://missioni:8001"
 
     # LDAP — opzionali, vuoti in sviluppo
     LDAP_URL: str = ""

@@ -90,6 +90,8 @@ export function Step5Personale({ progettoId, onCompletato, onIndietro }: Props) 
     { title: 'Ore assegnate', dataIndex: 'ore_assegnate', width: 130, render: formatOre },
     { title: 'PI', dataIndex: 'is_pi', width: 60,
       render: (v: boolean) => v ? <Tag color="green">PI</Tag> : null },
+    { title: 'Ammin', dataIndex: 'is_ammin', width: 70,
+      render: (v: boolean) => v ? <Tag color="orange">Ammin</Tag> : null },
     { title: 'Dal', dataIndex: 'data_inizio', width: 110, render: formatData },
     { title: 'Al', dataIndex: 'data_fine', width: 110, render: formatData },
     { title: '', width: 100,
@@ -149,6 +151,9 @@ export function Step5Personale({ progettoId, onCompletato, onIndietro }: Props) 
                 setShowPiWarning(false);
               }
             }} />
+          </Form.Item>
+          <Form.Item name="is_ammin" label="Responsabile Amministrativo" valuePropName="checked" initialValue={false}>
+            <Switch />
           </Form.Item>
           {showPiWarning && (
             <Alert

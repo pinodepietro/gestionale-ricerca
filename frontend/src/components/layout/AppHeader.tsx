@@ -84,6 +84,7 @@ export function AppHeader() {
   const handleLogout = () => {
     queryClient.clear();
     logout();
+    window.location.href = 'http://localhost:8001/';
   };
 
   const userMenuItems = [{ key: 'logout', icon: <LogoutOutlined />, label: 'Esci', onClick: handleLogout }];

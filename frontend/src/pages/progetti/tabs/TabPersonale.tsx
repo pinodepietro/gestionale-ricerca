@@ -18,6 +18,7 @@ interface Allocazione {
   data_fine: string;
   note?: string;
   is_pi?: boolean;
+  is_ammin?: boolean;
 }
 
 interface Props { progettoId: string; }
@@ -78,6 +79,7 @@ export function TabPersonale({ progettoId }: Props) {
               {nomPersona(r.persona_id)}
             </Text>
             {r.is_pi && <Tag color="blue" style={{ fontSize: 11, padding: '0 4px' }}>PI</Tag>}
+            {r.is_ammin && <Tag color="orange" style={{ fontSize: 11, padding: '0 4px' }}>Ammin</Tag>}
           </Space>
           <Text type="secondary" style={{ fontSize: 12 }}>{ruoloPersona(r.persona_id)}</Text>
         </Space>

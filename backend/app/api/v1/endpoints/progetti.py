@@ -2,19 +2,35 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status, UploadFile, File
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from sqlalchemy import or_
+from sqlalchemy import or_, func
 from app.core.database import get_db
 from app.core.deps import tutti_i_ruoli, solo_amministrativo, solo_superadmin
 from app.models.progetto import Progetto
 from app.models.partner import Partner, ProgettoPartner, TipoFinanziamento, Finanziamento
 from app.models.struttura import WorkPackage, Milestone, Deliverable
-from app.models.budget import VoceDiCosto, BudgetVoce, Spesa, Sal
+from app.models.budget import VoceDiCosto, BudgetVoce, Spesa, Sal, Impegno
 from app.models.personale import Allocazione, MonteOreAnnuale
 from app.models.timesheet import TimesheetTestata
 from app.models.persona import Persona
 from datetime import date, datetime
+from fastapi import BackgroundTasks
+from app.core.config import settings
 import math
 import io
+import urllib.request
+
+
+def _notifica_sync_missioni():
+    try:
+        req = urllib.request.Request(
+            f"{settings.MISSIONI_URL}/internal/sync-progetti/",
+            data=b"",
+            method="POST",
+            headers={"X-Sync-Key": settings.SYNC_API_KEY},
+        )
+        urllib.request.urlopen(req, timeout=5)
+    except Exception:
+        pass  # non blocca mai l'operazione principale
 
 router = APIRouter()
 # Router separato per endpoint che non hanno prefisso /progetti
@@ -47,6 +63,7 @@ def progetto_dict(p: Progetto) -> dict:
         "percentuale_finanziamento": round(float(p.importo_finanziato or 0) / float(p.costo_totale or 1) * 100, 2),
         "cup": p.cup, "budget_per_partner": p.budget_per_partner,
         "template_timesheet_id": str(p.template_timesheet_id) if p.template_timesheet_id else None,
+        "riferimento_bando": p.riferimento_bando,
         "note": p.note,
         "amministrativo_id": str(p.amministrativo_id) if p.amministrativo_id else None,
         "pi_id": str(p.pi_id) if p.pi_id else None,
@@ -138,7 +155,11 @@ def cruscotto_globale(
     ).all()
 
     # KPI globali
-    budget_previsto = db.query(func.sum(BudgetVoce.importo_previsto)).filter(
+    costo_totale_portfolio = sum(float(p.costo_totale or 0) for p in progetti)
+    importo_finanziato_portfolio = sum(float(p.importo_finanziato or 0) for p in progetti)
+
+    # pianificato = somma voci di budget
+    budget_pianificato = db.query(func.sum(BudgetVoce.importo_previsto)).filter(
         BudgetVoce.progetto_id.in_(progetti_ids)
     ).scalar() or 0
 
@@ -204,9 +225,14 @@ def cruscotto_globale(
             "tipo": p.tipo,
             "data_inizio": str(p.data_inizio) if p.data_inizio else None,
             "data_fine": str(p.data_fine) if p.data_fine else None,
-            "budget_previsto": prev,
-            "budget_rendicontato": rend,
-            "percentuale_budget": round(rend / prev * 100, 1) if prev > 0 else 0,
+            "pianificato": prev,
+            "rendicontato": rend,
+            "pct_rendicontato": round(rend / prev * 100, 1) if prev > 0 else 0,
+            "pct_speso": round(
+                float(db.query(func.sum(Spesa.importo)).filter(
+                    Spesa.progetto_id == p.id, Spesa.stato == "registrata"
+                ).scalar() or 0) / float(p.importo_finanziato) * 100, 1
+            ) if p.importo_finanziato else 0,
             "percentuale_tempo": pct_tempo,
             "importo_finanziato": float(p.importo_finanziato) if p.importo_finanziato else 0,
             "costo_totale": float(p.costo_totale) if p.costo_totale else 0,
@@ -235,10 +261,13 @@ def cruscotto_globale(
 
     return {"data": {
         "progetti_attivi": len(progetti),
-        "budget_previsto": float(budget_previsto),
+        "costo_totale_portfolio": costo_totale_portfolio,
+        "importo_finanziato_portfolio": importo_finanziato_portfolio,
+        "budget_pianificato": float(budget_pianificato),
         "budget_rendicontato": float(budget_rendicontato),
-        "percentuale_budget": round(float(budget_rendicontato) / float(budget_previsto) * 100, 1) if budget_previsto > 0 else 0,
+        "pct_rendicontato": round(float(budget_rendicontato) / float(budget_pianificato) * 100, 1) if budget_pianificato > 0 else 0,
         "spese_totali": float(spese_totali),
+        "pct_speso": round(float(spese_totali) / importo_finanziato_portfolio * 100, 1) if importo_finanziato_portfolio > 0 else 0,
         "timesheet_pendenti": timesheet_pendenti,
         "sal_in_scadenza": sal_in_scadenza,
         "progetti": progetti_detail,
@@ -278,18 +307,20 @@ def crea_progetto(body: dict, db: Session = Depends(get_db), utente: Persona = D
 
 
 @router.patch("/{id}")
-def aggiorna_progetto(id: str, body: dict, db: Session = Depends(get_db), utente: Persona = Depends(solo_amministrativo)):
+def aggiorna_progetto(id: str, body: dict, background_tasks: BackgroundTasks, db: Session = Depends(get_db), utente: Persona = Depends(solo_amministrativo)):
     p = _get_or_404(id, db)
     for k, v in body.items():
         if hasattr(Progetto, k) and k not in ("id", "stato"):
             setattr(p, k, v)
     db.commit()
     db.refresh(p)
+    if p.stato != "bozza":
+        background_tasks.add_task(_notifica_sync_missioni)
     return {"data": progetto_dict(p)}
 
 
 @router.post("/{id}/attiva")
-def attiva(id: str, db: Session = Depends(get_db), utente: Persona = Depends(solo_amministrativo)):
+def attiva(id: str, background_tasks: BackgroundTasks, db: Session = Depends(get_db), utente: Persona = Depends(solo_amministrativo)):
     p = _get_or_404(id, db)
     errori = []
 
@@ -315,7 +346,9 @@ def attiva(id: str, db: Session = Depends(get_db), utente: Persona = Depends(sol
             }},
         )
 
-    return _transizione(id, "attiva", db)
+    result = _transizione(id, "attiva", db)
+    background_tasks.add_task(_notifica_sync_missioni)
+    return result
 
 
 @router.post("/{id}/chiudi")
@@ -362,13 +395,24 @@ def rimuovi_partner(id: str, pp_id: str, db: Session = Depends(get_db), utente: 
 
 @router.get("/{id}/budget")
 def lista_budget(id: str, db: Session = Depends(get_db), utente: Persona = Depends(tutti_i_ruoli)):
+    from sqlalchemy import func as sqlfunc
     _get_or_404(id, db)
     voci = db.query(BudgetVoce).filter(BudgetVoce.progetto_id == id).all()
+    # speso per voce (da tabella spesa)
+    spese_per_voce = dict(
+        db.query(Spesa.voce_id, sqlfunc.sum(Spesa.importo))
+        .filter(Spesa.progetto_id == id, Spesa.stato == "registrata")
+        .group_by(Spesa.voce_id)
+        .all()
+    )
     return {"data": [{"id": str(v.id), "progetto_id": str(v.progetto_id),
                       "voce_id": str(v.voce_id),
                       "voce": {"codice": v.voce.codice, "descrizione": v.voce.descrizione, "categoria": v.voce.categoria} if v.voce else None,
                       "importo_previsto": float(v.importo_previsto),
                       "importo_rendicontato": float(v.importo_rendicontato),
+                      "importo_impegnato": float(v.importo_impegnato),
+                      "importo_speso": float(spese_per_voce.get(v.voce_id, 0)),
+                      "importo_disponibile": float(v.importo_previsto) - float(v.importo_impegnato) - float(spese_per_voce.get(v.voce_id, 0)),
                       "importo_residuo": float(v.importo_previsto) - float(v.importo_rendicontato),
                       "percentuale_utilizzata": round(float(v.importo_rendicontato) / float(v.importo_previsto) * 100, 2)
                                                 if float(v.importo_previsto) > 0 else 0}
@@ -487,6 +531,7 @@ def lista_allocazioni(id: str, db: Session = Depends(get_db), utente: Persona = 
                       "data_inizio": str(a.data_inizio), "data_fine": str(a.data_fine),
                       "note": a.note,
                       "is_pi": bool(a.is_pi),
+                      "is_ammin": bool(a.is_ammin),
                       "persona": {"nome": a.persona.nome, "cognome": a.persona.cognome} if a.persona else None}
                      for a in alloc]}
 
@@ -534,12 +579,20 @@ def crea_allocazione(id: str, body: dict, db: Session = Depends(get_db), utente:
             Allocazione.is_pi == True
         ).update({"is_pi": False})
 
+    # Se is_ammin=True, rimuovi il ruolo AMMIN da eventuali allocazioni precedenti
+    if body.get("is_ammin"):
+        db.query(Allocazione).filter(
+            Allocazione.progetto_id == id,
+            Allocazione.is_ammin == True
+        ).update({"is_ammin": False})
+
     a = Allocazione(progetto_id=id, persona_id=body["persona_id"],
                     ore_assegnate=body["ore_assegnate"],
                     data_inizio=date.fromisoformat(body["data_inizio"]),
                     data_fine=date.fromisoformat(body["data_fine"]),
                     note=body.get("note"),
-                    is_pi=bool(body.get("is_pi", False)))
+                    is_pi=bool(body.get("is_pi", False)),
+                    is_ammin=bool(body.get("is_ammin", False)))
     db.add(a)
     db.commit()
     db.refresh(a)
@@ -584,6 +637,14 @@ def aggiorna_allocazione(id: str, alloc_id: str, body: dict, db: Session = Depen
             Allocazione.is_pi == True,
             Allocazione.id != alloc_id,
         ).update({"is_pi": False})
+
+    # Se is_ammin=True, rimuovi AMMIN da tutte le altre allocazioni del progetto
+    if body.get("is_ammin"):
+        db.query(Allocazione).filter(
+            Allocazione.progetto_id == id,
+            Allocazione.is_ammin == True,
+            Allocazione.id != alloc_id,
+        ).update({"is_ammin": False})
 
     for k, v in body.items():
         if hasattr(Allocazione, k) and k not in ("id", "persona_id", "progetto_id"):
@@ -708,12 +769,14 @@ def registra_spesa(
     from app.models.budget import Spesa, BudgetVoce
     import uuid as _uuid
     p = _get_or_404(id, db)
+    impegno_id = body.get("impegno_id")
     spesa = Spesa(
         id=_uuid.uuid4(),
         progetto_id=id,
         voce_id=body.get("voce_id"),
         persona_id=body.get("persona_id"),
         sal_id=body.get("sal_id"),
+        impegno_id=impegno_id,
         spesa_origine_id=body.get("spesa_origine_id"),
         importo=body.get("importo", 0),
         data=body.get("data"),
@@ -722,13 +785,19 @@ def registra_spesa(
         stato="registrata",
     )
     db.add(spesa)
-    # Aggiorna importo_rendicontato sulla voce di budget
+    # Recupera BudgetVoce per aggiornare l'impegno (se presente)
     bv = db.query(BudgetVoce).filter(
         BudgetVoce.progetto_id == id,
         BudgetVoce.voce_id == spesa.voce_id,
     ).first()
-    if bv:
-        bv.importo_rendicontato = float(bv.importo_rendicontato or 0) + float(spesa.importo)
+    # Scala l'impegno collegato
+    if impegno_id:
+        imp = db.query(Impegno).filter(Impegno.id == impegno_id).first()
+        if imp:
+            storno = min(float(spesa.importo), float(imp.importo))
+            imp.importo = max(0, float(imp.importo) - float(spesa.importo))
+            if bv:
+                bv.importo_impegnato = max(0, float(bv.importo_impegnato) - storno)
     db.commit()
     db.refresh(spesa)
     return {"data": _spesa_dict(spesa)}
@@ -744,19 +813,20 @@ def annulla_spesa(
     spesa = db.query(Spesa).filter(Spesa.id == id).first()
     if not spesa:
         raise HTTPException(status_code=404, detail={"error": {"code": "NOT_FOUND", "message": "Spesa non trovata"}})
-    if spesa.stato == "annullata":
-        raise HTTPException(status_code=409, detail={"error": {"code": "GIA_ANNULLATA", "message": "Spesa già annullata"}})
     # Storna importo_rendicontato
     bv = db.query(BudgetVoce).filter(
         BudgetVoce.progetto_id == spesa.progetto_id,
         BudgetVoce.voce_id == spesa.voce_id,
     ).first()
-    if bv:
-        bv.importo_rendicontato = max(0, float(bv.importo_rendicontato or 0) - float(spesa.importo))
-    spesa.stato = "annullata"
+    # Ripristina l'impegno collegato
+    if spesa.impegno_id:
+        imp = db.query(Impegno).filter(Impegno.id == spesa.impegno_id).first()
+        if imp and bv:
+            imp.importo = float(imp.importo) + float(spesa.importo)
+            bv.importo_impegnato = float(bv.importo_impegnato) + float(spesa.importo)
+    db.delete(spesa)
     db.commit()
-    db.refresh(spesa)
-    return {"data": _spesa_dict(spesa)}
+    return {"data": {"deleted": True}}
 
 
 @router.post("/spese/{id}/allegato")
@@ -780,6 +850,7 @@ def _spesa_dict(s) -> dict:
         "voce_id": str(s.voce_id) if s.voce_id else None,
         "persona_id": str(s.persona_id) if s.persona_id else None,
         "sal_id": str(s.sal_id) if s.sal_id else None,
+        "impegno_id": str(s.impegno_id) if s.impegno_id else None,
         "spesa_origine_id": str(s.spesa_origine_id) if s.spesa_origine_id else None,
         "importo": float(s.importo),
         "data": str(s.data) if s.data else None,
@@ -788,6 +859,116 @@ def _spesa_dict(s) -> dict:
         "stato": s.stato,
         "allegato_path": s.allegato_path,
     }
+
+
+# ─── Impegni ──────────────────────────────────────────────────────────────────
+
+def _impegno_dict(i: "Impegno") -> dict:
+    return {
+        "id": str(i.id),
+        "progetto_id": str(i.progetto_id),
+        "voce_id": str(i.voce_id),
+        "voce": {"codice": i.voce.codice, "descrizione": i.voce.descrizione} if i.voce else None,
+        "data": str(i.data) if i.data else None,
+        "descrizione": i.descrizione,
+        "importo": float(i.importo),
+        "created_at": str(i.created_at) if i.created_at else None,
+    }
+
+
+def _get_bv_or_404(progetto_id: str, voce_id: str, db: Session) -> "BudgetVoce":
+    bv = db.query(BudgetVoce).filter(
+        BudgetVoce.progetto_id == progetto_id,
+        BudgetVoce.voce_id == voce_id,
+    ).first()
+    if not bv:
+        raise HTTPException(status_code=404, detail={"error": {"code": "VOCE_NON_TROVATA", "message": "Voce di costo non presente nel budget del progetto"}})
+    return bv
+
+
+@router.get("/{id}/impegni")
+def lista_impegni(id: str, voce_id: str = Query(None), db: Session = Depends(get_db), utente: Persona = Depends(tutti_i_ruoli)):
+    _get_or_404(id, db)
+    q = db.query(Impegno).filter(Impegno.progetto_id == id)
+    if voce_id:
+        q = q.filter(Impegno.voce_id == voce_id)
+    impegni = q.order_by(Impegno.data.desc()).all()
+    return {"data": [_impegno_dict(i) for i in impegni]}
+
+
+@router.post("/{id}/impegni")
+def crea_impegno(id: str, body: dict, db: Session = Depends(get_db), utente: Persona = Depends(solo_amministrativo)):
+    _get_or_404(id, db)
+    voce_id = body.get("voce_id")
+    importo = float(body.get("importo", 0))
+    bv = _get_bv_or_404(id, voce_id, db)
+    speso = float(db.query(func.sum(Spesa.importo)).filter(
+        Spesa.progetto_id == id, Spesa.voce_id == voce_id, Spesa.stato == "registrata"
+    ).scalar() or 0)
+    disponibile = float(bv.importo_previsto) - float(bv.importo_impegnato) - speso
+    if importo > disponibile:
+        raise HTTPException(status_code=422, detail={"error": {
+            "code": "CAPIENZA_INSUFFICIENTE",
+            "message": f"Capienza insufficiente sulla voce. Disponibile: {disponibile:,.2f} €",
+        }})
+    impegno = Impegno(
+        progetto_id=id,
+        voce_id=voce_id,
+        data=body.get("data"),
+        descrizione=body.get("descrizione", ""),
+        importo=importo,
+        created_by=utente.id,
+    )
+    db.add(impegno)
+    bv.importo_impegnato = float(bv.importo_impegnato) + importo
+    db.commit()
+    db.refresh(impegno)
+    return {"data": _impegno_dict(impegno)}
+
+
+@router.put("/impegni/{impegno_id}")
+def modifica_impegno(impegno_id: str, body: dict, db: Session = Depends(get_db), utente: Persona = Depends(solo_amministrativo)):
+    impegno = db.query(Impegno).filter(Impegno.id == impegno_id).first()
+    if not impegno:
+        raise HTTPException(status_code=404, detail={"error": {"code": "NOT_FOUND", "message": "Impegno non trovato"}})
+    nuovo_importo = float(body.get("importo", impegno.importo))
+    delta = nuovo_importo - float(impegno.importo)
+    if delta != 0:
+        bv = _get_bv_or_404(str(impegno.progetto_id), str(impegno.voce_id), db)
+        speso = float(db.query(func.sum(Spesa.importo)).filter(
+            Spesa.progetto_id == impegno.progetto_id, Spesa.voce_id == impegno.voce_id, Spesa.stato == "registrata"
+        ).scalar() or 0)
+        disponibile = float(bv.importo_previsto) - float(bv.importo_impegnato) - speso
+        if delta > disponibile:
+            raise HTTPException(status_code=422, detail={"error": {
+                "code": "CAPIENZA_INSUFFICIENTE",
+                "message": f"Capienza insufficiente sulla voce. Disponibile aggiuntivo: {disponibile:,.2f} €",
+            }})
+        bv.importo_impegnato = float(bv.importo_impegnato) + delta
+    if "data" in body:
+        impegno.data = body["data"]
+    if "descrizione" in body:
+        impegno.descrizione = body["descrizione"]
+    impegno.importo = nuovo_importo
+    db.commit()
+    db.refresh(impegno)
+    return {"data": _impegno_dict(impegno)}
+
+
+@router.delete("/impegni/{impegno_id}")
+def elimina_impegno(impegno_id: str, db: Session = Depends(get_db), utente: Persona = Depends(solo_amministrativo)):
+    impegno = db.query(Impegno).filter(Impegno.id == impegno_id).first()
+    if not impegno:
+        raise HTTPException(status_code=404, detail={"error": {"code": "NOT_FOUND", "message": "Impegno non trovato"}})
+    bv = db.query(BudgetVoce).filter(
+        BudgetVoce.progetto_id == impegno.progetto_id,
+        BudgetVoce.voce_id == impegno.voce_id,
+    ).first()
+    if bv:
+        bv.importo_impegnato = max(0, float(bv.importo_impegnato) - float(impegno.importo))
+    db.delete(impegno)
+    db.commit()
+    return {"data": {"deleted": True}}
 
 
 # ─── Documenti ────────────────────────────────────────────────────────────────
@@ -901,6 +1082,7 @@ def _doc_dict(d) -> dict:
 @router.delete("/{id}")
 def elimina_progetto(
     id: str,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     utente: Persona = Depends(solo_amministrativo),
 ):
@@ -912,7 +1094,7 @@ def elimina_progetto(
     from app.models.timesheet import TimesheetTestata
 
     p = _get_or_404(id, db)
-    if p.stato != "bozza":
+    if p.stato != "bozza" and utente.ruolo != "superadmin":
         raise HTTPException(status_code=409, detail={"error": {
             "code": "PROGETTO_NON_ELIMINABILE",
             "message": "Solo i progetti in stato bozza possono essere eliminati"
@@ -934,6 +1116,7 @@ def elimina_progetto(
 
     db.delete(p)
     db.commit()
+    background_tasks.add_task(_notifica_sync_missioni)
     return {"data": {"deleted": True}}
 
 
@@ -1058,6 +1241,227 @@ def _raccogli_dati_report(id: str, db: Session):
     partner_map = {str(pa.id): pa for pa in db.query(Partner).all()}
 
     return p, pi, amm, budget_voci, voci_map, spese, timesheet, persone_map, sal_list, partner_rows, partner_map
+
+
+# ─── Riepilogo dashboard Excel ────────────────────────────────────────────────
+
+@router.get("/{id}/riepilogo-dashboard/xlsx")
+def riepilogo_dashboard_xlsx(id: str, db: Session = Depends(get_db), utente: Persona = Depends(tutti_i_ruoli)):
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment
+    from openpyxl.utils import get_column_letter
+
+    p = _get_or_404(id, db)
+
+    # ── dati ──────────────────────────────────────────────────────────────────
+    # PI
+    pi_alloc = db.query(Allocazione).filter(Allocazione.progetto_id == id, Allocazione.is_pi == True).first()
+    pi_nome = None
+    if pi_alloc:
+        pi_p = db.query(Persona).filter(Persona.id == pi_alloc.persona_id).first()
+        pi_nome = f"{pi_p.nome} {pi_p.cognome}" if pi_p else None
+
+    # budget voci con speso
+    budget_voci = db.query(BudgetVoce).filter(BudgetVoce.progetto_id == id).all()
+    spese_per_voce = dict(
+        db.query(Spesa.voce_id, func.sum(Spesa.importo))
+        .filter(Spesa.progetto_id == id, Spesa.stato == "registrata")
+        .group_by(Spesa.voce_id).all()
+    )
+
+    # spese
+    spese = db.query(Spesa).filter(Spesa.progetto_id == id, Spesa.stato == "registrata").order_by(Spesa.data).all()
+    voci_map = {str(v.id): v for v in db.query(VoceDiCosto).all()}
+
+    # impegni
+    impegni = db.query(Impegno).filter(Impegno.progetto_id == id).order_by(Impegno.data).all()
+
+    # SAL
+    sal_list = db.query(Sal).filter(Sal.progetto_id == id).order_by(Sal.numero).all()
+
+    # KPI aggregati
+    tot_pianificato = sum(float(v.importo_previsto) for v in budget_voci)
+    tot_impegnato   = sum(float(v.importo_impegnato) for v in budget_voci)
+    tot_speso       = sum(float(spese_per_voce.get(v.voce_id, 0)) for v in budget_voci)
+    tot_rendicontato = sum(float(v.importo_rendicontato) for v in budget_voci)
+    tot_disponibile = max(0, tot_pianificato - tot_impegnato - tot_speso)
+
+    oggi = date.today()
+    if p.data_inizio and p.data_fine:
+        durata = (p.data_fine - p.data_inizio).days
+        trascorsi = (oggi - p.data_inizio).days
+        pct_tempo = round(max(0, min(trascorsi / durata * 100, 100)), 1) if durata > 0 else 0
+    else:
+        pct_tempo = 0
+
+    # ── workbook ──────────────────────────────────────────────────────────────
+    wb = openpyxl.Workbook()
+
+    ROSSO  = "FFC5174E"
+    BIANCO = "FFFFFFFF"
+    GRIGIO = "FFF5F5F5"
+    VIOLA  = "FF722ED1"
+    TEAL   = "FF13C2C2"
+    ORANGE = "FFE8863A"
+
+    def hdr(ws, row, n_cols, colore=ROSSO):
+        for c in range(1, n_cols + 1):
+            cell = ws.cell(row=row, column=c)
+            cell.font = Font(bold=True, color=BIANCO)
+            cell.fill = PatternFill("solid", fgColor=colore)
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+
+    def auto_w(ws):
+        for col in ws.columns:
+            w = max((len(str(c.value or "")) for c in col), default=0)
+            ws.column_dimensions[get_column_letter(col[0].column)].width = min(w + 4, 55)
+
+    def eur(v):
+        return round(float(v or 0), 2)
+
+    def row_grigio(ws, row, n_cols):
+        for c in range(1, n_cols + 1):
+            ws.cell(row=row, column=c).fill = PatternFill("solid", fgColor="FFE8E8E8")
+
+    # ── Sheet 1: Riepilogo ────────────────────────────────────────────────────
+    ws1 = wb.active
+    ws1.title = "Riepilogo"
+    ws1.column_dimensions["A"].width = 30
+    ws1.column_dimensions["B"].width = 50
+
+    def kv(label, value, bold_val=False):
+        r = ws1.max_row + 1
+        ws1.cell(r, 1, label).font = Font(bold=True, color="FF555555")
+        c = ws1.cell(r, 2, value)
+        if bold_val:
+            c.font = Font(bold=True)
+
+    # Titolo
+    ws1.merge_cells("A1:B1")
+    t = ws1.cell(1, 1, f"RIEPILOGO PROGETTO — {p.acronimo}")
+    t.font = Font(bold=True, size=14, color=BIANCO)
+    t.fill = PatternFill("solid", fgColor=ROSSO)
+    t.alignment = Alignment(horizontal="center", vertical="center")
+    ws1.row_dimensions[1].height = 28
+
+    ws1.append([])
+    ws1.append(["ANAGRAFICA", ""])
+    hdr(ws1, ws1.max_row, 2, "FF888888")
+    kv("Codice", p.codice)
+    kv("Acronimo", p.acronimo)
+    kv("Titolo", p.titolo)
+    kv("Tipo", str(p.tipo) if p.tipo else "—")
+    kv("Riferimento bando", p.riferimento_bando or "—")
+    kv("PI", pi_nome or "—")
+    kv("Data inizio", str(p.data_inizio) if p.data_inizio else "—")
+    kv("Data fine", str(p.data_fine) if p.data_fine else "—")
+    kv("Stato", p.stato)
+    ws1.append([])
+    ws1.append(["IMPORTI", ""])
+    hdr(ws1, ws1.max_row, 2, "FF888888")
+    kv("Costo totale progetto", eur(p.costo_totale), True)
+    kv("Importo finanziato", eur(p.importo_finanziato), True)
+    kv("Cofinanziamento", eur(float(p.costo_totale or 0) - float(p.importo_finanziato or 0)), True)
+    ws1.append([])
+    ws1.append(["KPI FINANZIARI", ""])
+    hdr(ws1, ws1.max_row, 2, "FF888888")
+    kv("Budget pianificato", eur(tot_pianificato))
+    kv("Rendicontato", eur(tot_rendicontato))
+    kv("Spese totali", eur(tot_speso))
+    kv("Impegnato totale", eur(tot_impegnato))
+    kv("Disponibile", eur(tot_disponibile))
+    kv("Avanzamento temporale", f"{pct_tempo}%")
+
+    # ── Sheet 2: Budget per voce ──────────────────────────────────────────────
+    ws2 = wb.create_sheet("Budget per voce")
+    headers2 = ["Voce di costo", "Pianificato €", "Impegnato €", "Speso €", "Rendicontato €", "Disponibile €", "% Utilizzato"]
+    ws2.append(headers2)
+    hdr(ws2, 1, len(headers2))
+    for i, v in enumerate(budget_voci):
+        speso_v = float(spese_per_voce.get(v.voce_id, 0))
+        disp_v  = max(0, float(v.importo_previsto) - float(v.importo_impegnato) - speso_v)
+        pct_v   = round(float(v.importo_rendicontato) / float(v.importo_previsto) * 100, 1) if float(v.importo_previsto) > 0 else 0
+        row = [
+            v.voce.descrizione if v.voce else str(v.voce_id),
+            eur(v.importo_previsto),
+            eur(v.importo_impegnato),
+            eur(speso_v),
+            eur(v.importo_rendicontato),
+            eur(disp_v),
+            f"{pct_v}%",
+        ]
+        ws2.append(row)
+        if i % 2 == 1:
+            row_grigio(ws2, ws2.max_row, len(headers2))
+    # totali
+    tr = ws2.max_row + 1
+    ws2.append(["TOTALE", eur(tot_pianificato), eur(tot_impegnato), eur(tot_speso), eur(tot_rendicontato), eur(tot_disponibile), ""])
+    for c in range(1, len(headers2) + 1):
+        ws2.cell(tr, c).font = Font(bold=True)
+        ws2.cell(tr, c).fill = PatternFill("solid", fgColor="FFE0E0E0")
+    auto_w(ws2)
+
+    # ── Sheet 3: Impegni ──────────────────────────────────────────────────────
+    ws3 = wb.create_sheet("Impegni")
+    headers3 = ["Data", "Voce di costo", "Descrizione", "Importo €"]
+    ws3.append(headers3)
+    hdr(ws3, 1, len(headers3), VIOLA)
+    for i, imp in enumerate(impegni):
+        voce_desc = imp.voce.descrizione if imp.voce else str(imp.voce_id)
+        ws3.append([str(imp.data), voce_desc, imp.descrizione, eur(imp.importo)])
+        if i % 2 == 1:
+            row_grigio(ws3, ws3.max_row, len(headers3))
+    if impegni:
+        tr3 = ws3.max_row + 1
+        ws3.append(["", "", "TOTALE", eur(sum(float(i.importo) for i in impegni))])
+        ws3.cell(tr3, 3).font = Font(bold=True)
+        ws3.cell(tr3, 4).font = Font(bold=True)
+    auto_w(ws3)
+
+    # ── Sheet 4: Spese ────────────────────────────────────────────────────────
+    ws4 = wb.create_sheet("Spese")
+    headers4 = ["Data", "Voce di costo", "N° documento", "Descrizione", "Importo €"]
+    ws4.append(headers4)
+    hdr(ws4, 1, len(headers4), ORANGE)
+    for i, s in enumerate(spese):
+        voce_desc = voci_map.get(str(s.voce_id), VoceDiCosto()).descrizione if s.voce_id else "—"
+        ws4.append([str(s.data), voce_desc, s.numero_documento or "—", s.descrizione or "—", eur(s.importo)])
+        if i % 2 == 1:
+            row_grigio(ws4, ws4.max_row, len(headers4))
+    if spese:
+        tr4 = ws4.max_row + 1
+        ws4.append(["", "", "", "TOTALE", eur(sum(float(s.importo) for s in spese))])
+        ws4.cell(tr4, 4).font = Font(bold=True)
+        ws4.cell(tr4, 5).font = Font(bold=True)
+    auto_w(ws4)
+
+    # ── Sheet 5: SAL ─────────────────────────────────────────────────────────
+    ws5 = wb.create_sheet("SAL")
+    headers5 = ["N° SAL", "Data inizio", "Data fine", "Stato", "Importo tranche €", "Importo erogato €", "Scadenza rendiconto"]
+    ws5.append(headers5)
+    hdr(ws5, 1, len(headers5), TEAL)
+    for i, s in enumerate(sal_list):
+        ws5.append([
+            s.numero, str(s.data_inizio), str(s.data_fine), s.stato,
+            eur(s.importo_tranche) if s.importo_tranche else "—",
+            eur(s.importo_erogato) if s.importo_erogato else "—",
+            str(s.data_scadenza_rendiconto) if s.data_scadenza_rendiconto else "—",
+        ])
+        if i % 2 == 1:
+            row_grigio(ws5, ws5.max_row, len(headers5))
+    auto_w(ws5)
+
+    # ── output ────────────────────────────────────────────────────────────────
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    sigla = (p.acronimo or p.codice or str(p.id)).replace(' ', '_')
+    nome = f"Riepilogo_{sigla}_{oggi.strftime('%Y%m%d')}.xlsx"
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{nome}"'},
+    )
 
 
 # ─── Report Excel ─────────────────────────────────────────────────────────────

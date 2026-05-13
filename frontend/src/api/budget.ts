@@ -1,7 +1,7 @@
 // frontend/src/api/budget.ts
 import { apiClient } from './client';
 import type { ApiResponse, PaginatedResponse } from '../types/api';
-import type { BudgetVoce, Spesa } from '../types/budget';
+import type { BudgetVoce, Spesa, Impegno } from '../types/budget';
 
 export const budgetApi = {
   voci: {
@@ -35,5 +35,16 @@ export const budgetApi = {
       apiClient.post<ApiResponse<{ allegato_path: string }>>(`/spese/${id}/allegato`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       }),
+  },
+
+  impegni: {
+    list: (progettoId: string, params?: { voce_id?: string }) =>
+      apiClient.get<ApiResponse<Impegno[]>>(`/progetti/${progettoId}/impegni`, { params }),
+    create: (progettoId: string, data: Partial<Impegno>) =>
+      apiClient.post<ApiResponse<Impegno>>(`/progetti/${progettoId}/impegni`, data),
+    update: (id: string, data: Partial<Impegno>) =>
+      apiClient.put<ApiResponse<Impegno>>(`/progetti/impegni/${id}`, data),
+    delete: (id: string) =>
+      apiClient.delete<ApiResponse<{ deleted: boolean }>>(`/progetti/impegni/${id}`),
   },
 };

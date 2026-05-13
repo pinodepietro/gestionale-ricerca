@@ -1,9 +1,10 @@
 # backend/app/models/budget.py
 import uuid
-from sqlalchemy import String, Date, Numeric, Text, ForeignKey, Column, Integer
+from sqlalchemy import String, Date, Numeric, Text, ForeignKey, Column, Integer, DateTime
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.core.database import Base
+from datetime import datetime
 
 
 class VoceDiCosto(Base):
@@ -27,6 +28,7 @@ class BudgetVoce(Base):
     partner_id = Column(UUID(as_uuid=True), ForeignKey("partner.id"), nullable=True)
     importo_previsto = Column(Numeric(14, 2), nullable=False, default=0)
     importo_rendicontato = Column(Numeric(14, 2), nullable=False, default=0)
+    importo_impegnato = Column(Numeric(14, 2), nullable=False, default=0)
 
     progetto = relationship("Progetto", back_populates="budget_voci")
     voce = relationship("VoceDiCosto")
@@ -41,6 +43,7 @@ class Spesa(Base):
     persona_id = Column(UUID(as_uuid=True), ForeignKey("persona.id"), nullable=True)
     partner_id = Column(UUID(as_uuid=True), ForeignKey("partner.id"), nullable=True)
     sal_id = Column(UUID(as_uuid=True), ForeignKey("sal.id"), nullable=True)
+    impegno_id = Column(UUID(as_uuid=True), ForeignKey("impegno.id"), nullable=True)
     spesa_origine_id = Column(UUID(as_uuid=True), ForeignKey("spesa.id"), nullable=True)
     importo = Column(Numeric(14, 2), nullable=False)
     data = Column(Date, nullable=False)
@@ -71,3 +74,18 @@ class Sal(Base):
 
     progetto = relationship("Progetto", back_populates="sal")
     spese = relationship("Spesa", back_populates="sal", foreign_keys="[Spesa.sal_id]")
+
+
+class Impegno(Base):
+    __tablename__ = "impegno"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    progetto_id = Column(UUID(as_uuid=True), ForeignKey("progetto.id"), nullable=False)
+    voce_id = Column(UUID(as_uuid=True), ForeignKey("voce_di_costo.id"), nullable=False)
+    data = Column(Date, nullable=False)
+    descrizione = Column(Text, nullable=False)
+    importo = Column(Numeric(14, 2), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    created_by = Column(UUID(as_uuid=True), ForeignKey("persona.id"), nullable=True)
+
+    voce = relationship("VoceDiCosto")
