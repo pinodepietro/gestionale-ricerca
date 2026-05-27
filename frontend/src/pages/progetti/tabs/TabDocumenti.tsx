@@ -6,8 +6,10 @@ import { UploadOutlined, DownloadOutlined, DeleteOutlined, PlusOutlined,
          FileOutlined, FilePdfOutlined, FileExcelOutlined, FileWordOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../../../api/client';
-import { RbacGuard } from '../../../components/common/RbacGuard';
+import { env } from '../../../config/env';
 import { queryKeys } from '../../../utils/queryKeys';
+import { useAuthStore } from '../../../store/useAuthStore';
+import { canDo } from '../../../utils/rbac';
 
 const { Text } = Typography;
 
@@ -43,10 +45,15 @@ interface Documento {
   uploaded_at?: string;
 }
 
-interface Props { progettoId: string; }
+interface Props { progettoId: string; piId: string | null; }
 
-export function TabDocumenti({ progettoId }: Props) {
+export function TabDocumenti({ progettoId, piId }: Props) {
   const { notification } = App.useApp();
+  const user = useAuthStore(s => s.user);
+  const puoCaricareDocumenti = user && (
+    canDo(user.ruolo, 'documento:carica') &&
+    (user.ruolo !== 'ricercatore' || user.id === piId)
+  );
   const queryClient = useQueryClient();
   const [modalAperta, setModalAperta] = useState(false);
   const [fileSelezionato, setFileSelezionato] = useState<File | null>(null);
@@ -92,7 +99,7 @@ export function TabDocumenti({ progettoId }: Props) {
   const scarica = async (doc: Documento) => {
     const token = localStorage.getItem('access_token');
     const response = await fetch(
-      `http://localhost:8000/api/v1/progetti/documenti/${doc.id}/download`,
+      `${env.apiUrl}/api/v1/progetti/documenti/${doc.id}/download`,
       { headers: { Authorization: `Bearer ${token}` } }
     );
     if (!response.ok) { notification.error({ message: 'Errore download' }); return; }
@@ -135,13 +142,13 @@ export function TabDocumenti({ progettoId }: Props) {
         <Space>
           <Button size="small" icon={<DownloadOutlined />} type="text"
             onClick={() => scarica(r)} />
-          <RbacGuard azione="documento:carica">
+          {puoCaricareDocumenti && (
             <Popconfirm title="Eliminare questo documento?"
               onConfirm={() => elimina.mutate(r.id)}
               okText="Elimina" cancelText="No" okButtonProps={{ danger: true }}>
               <Button size="small" icon={<DeleteOutlined />} type="text" danger />
             </Popconfirm>
-          </RbacGuard>
+          )}
         </Space>
       ),
     },
@@ -151,11 +158,11 @@ export function TabDocumenti({ progettoId }: Props) {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <Text strong>Documenti del progetto</Text>
-        <RbacGuard azione="documento:carica">
+        {puoCaricareDocumenti && (
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalAperta(true)}>
             Carica documento
           </Button>
-        </RbacGuard>
+        )}
       </div>
 
       <Table

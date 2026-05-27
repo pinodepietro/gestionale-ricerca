@@ -18,6 +18,7 @@ from app.core.config import settings
 import math
 import io
 import urllib.request
+from app.api.v1.endpoints.personale import _trigger_sync_progetti
 
 
 def _notifica_sync_missioni():
@@ -537,7 +538,7 @@ def lista_allocazioni(id: str, db: Session = Depends(get_db), utente: Persona = 
 
 
 @router.post("/{id}/allocazioni")
-def crea_allocazione(id: str, body: dict, db: Session = Depends(get_db), utente: Persona = Depends(solo_amministrativo)):
+def crea_allocazione(id: str, body: dict, background_tasks: BackgroundTasks, db: Session = Depends(get_db), utente: Persona = Depends(solo_amministrativo)):
     p = _get_or_404(id, db)
     data_inizio = date.fromisoformat(body["data_inizio"])
     data_fine = date.fromisoformat(body["data_fine"])
@@ -596,11 +597,13 @@ def crea_allocazione(id: str, body: dict, db: Session = Depends(get_db), utente:
     db.add(a)
     db.commit()
     db.refresh(a)
+    if a.is_pi or a.is_ammin:
+        background_tasks.add_task(_trigger_sync_progetti)
     return {"data": {"id": str(a.id), "ore_assegnate": float(a.ore_assegnate)}}
 
 
 @sub_router.patch("/progetti/{id}/allocazioni/{alloc_id}")
-def aggiorna_allocazione(id: str, alloc_id: str, body: dict, db: Session = Depends(get_db), utente: Persona = Depends(solo_amministrativo)):
+def aggiorna_allocazione(id: str, alloc_id: str, body: dict, background_tasks: BackgroundTasks, db: Session = Depends(get_db), utente: Persona = Depends(solo_amministrativo)):
     a = db.query(Allocazione).filter(Allocazione.id == alloc_id, Allocazione.progetto_id == id).first()
     if not a:
         raise HTTPException(status_code=404, detail={"error": {"code": "NOT_FOUND", "message": "Allocazione non trovata"}})
@@ -651,11 +654,13 @@ def aggiorna_allocazione(id: str, alloc_id: str, body: dict, db: Session = Depen
             setattr(a, k, v)
     db.commit()
     db.refresh(a)
+    if "is_pi" in body or "is_ammin" in body:
+        background_tasks.add_task(_trigger_sync_progetti)
     return {"data": {"id": str(a.id), "ore_assegnate": float(a.ore_assegnate)}}
 
 
 @sub_router.delete("/progetti/{id}/allocazioni/{alloc_id}")
-def elimina_allocazione(id: str, alloc_id: str, db: Session = Depends(get_db), utente: Persona = Depends(solo_amministrativo)):
+def elimina_allocazione(id: str, alloc_id: str, background_tasks: BackgroundTasks, db: Session = Depends(get_db), utente: Persona = Depends(solo_amministrativo)):
     a = db.query(Allocazione).filter(Allocazione.id == alloc_id, Allocazione.progetto_id == id).first()
     if not a:
         raise HTTPException(status_code=404, detail={"error": {"code": "NOT_FOUND", "message": "Allocazione non trovata"}})
@@ -667,8 +672,12 @@ def elimina_allocazione(id: str, alloc_id: str, db: Session = Depends(get_db), u
     ).first()
     if monte:
         monte.ore_allocate = max(0, float(monte.ore_allocate) - float(a.ore_assegnate))
+    era_pi = a.is_pi
+    era_ammin = a.is_ammin
     db.delete(a)
     db.commit()
+    if era_pi or era_ammin:
+        background_tasks.add_task(_trigger_sync_progetti)
     return {"data": {"deleted": True}}
 
 

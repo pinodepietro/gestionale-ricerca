@@ -53,7 +53,7 @@ export function ProgettoPage() {
           { key: 'budget', label: 'Budget', children: <TabBudget progettoId={id!} /> },
           { key: 'sal', label: 'SAL', children: <TabSal progettoId={id!} /> },
           { key: 'personale', label: 'Personale', children: <TabPersonale progettoId={id!} /> },
-          { key: 'documenti', label: 'Documenti', children: <TabDocumenti progettoId={id!} /> },
+          { key: 'documenti', label: 'Documenti', children: <TabDocumenti progettoId={id!} piId={null} /> },
         ]}
       />
     </div>

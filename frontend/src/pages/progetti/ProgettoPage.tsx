@@ -186,7 +186,7 @@ export function ProgettoPage() {
           { key: 'budget', label: 'Budget', children: <TabBudget progettoId={id!} /> },
           { key: 'sal', label: 'SAL', children: <TabSal progettoId={id!} stato={data.stato} /> },
           { key: 'personale', label: 'Personale', children: <TabPersonale progettoId={id!} /> },
-          { key: 'documenti', label: 'Documenti', children: <TabDocumenti progettoId={id!} /> },
+          { key: 'documenti', label: 'Documenti', children: <TabDocumenti progettoId={id!} piId={data.pi_id ?? null} /> },
           { key: 'timesheet', label: 'Timesheet', children: <TabTimesheet progettoId={id!} stato={data.stato} /> },
           { key: 'spese', label: 'Spese', children: <TabSpese progettoId={id!} stato={data.stato} /> },
           { key: 'impegni', label: 'Impegni', children: <TabImpegni progettoId={id!} stato={data.stato} /> },

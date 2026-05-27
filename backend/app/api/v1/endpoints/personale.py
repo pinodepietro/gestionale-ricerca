@@ -13,7 +13,7 @@ import math
 import urllib.request
 import json
 
-RUOLI_DA_SINCRONIZZARE = {"ricercatore", "amministrativo"}
+RUOLI_DA_SINCRONIZZARE = {"ricercatore", "amministrativo", "monitor"}
 
 
 import re
@@ -45,7 +45,21 @@ def _sync_utente_missioni(email: str, nome: str, cognome: str, password: str | N
         )
         urllib.request.urlopen(req, timeout=5)
     except Exception:
-        pass  # non blocca mai l'operazione principale
+        pass
+
+
+def _trigger_sync_progetti():
+    try:
+        req = urllib.request.Request(
+            f"{settings.MISSIONI_URL}/internal/sync-progetti/",
+            data=b"{}",
+            method="POST",
+            headers={"X-Sync-Key": settings.SYNC_API_KEY, "Content-Type": "application/json"},
+        )
+        urllib.request.urlopen(req, timeout=10)
+    except Exception:
+        pass
+
 
 router = APIRouter()
 
@@ -222,6 +236,8 @@ def aggiorna_persona(
         background_tasks.add_task(
             _sync_utente_missioni, p.email, p.nome, p.cognome, password, p.attivo
         )
+        if "email" in body:
+            background_tasks.add_task(_trigger_sync_progetti)
 
     return {"data": persona_dict(p)}
 

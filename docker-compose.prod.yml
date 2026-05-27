@@ -2,9 +2,8 @@
 #
 # PRIMA DI USARE:
 #   1. Copia .env.prod.example → .env.prod e compila tutte le variabili
-#   2. Scegli SSL: vedi sezione nginx (OPZIONE A / OPZIONE B)
-#   3. Scegli storage file: vedi sezione backend volumes (OPZIONE A / OPZIONE B)
-#   4. Avvio: docker compose -f docker-compose.prod.yml --env-file .env.prod up -d
+#   2. Posiziona missioni-app nella directory ../missioni-app (stessa cartella padre)
+#   3. Avvio: docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
 
 services:
 
@@ -34,17 +33,12 @@ services:
       DATABASE_URL: postgresql://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRE_MINUTES: ${JWT_EXPIRE_MINUTES:-480}
-      LDAP_URL: ${LDAP_URL:-}
-      LDAP_BASE_DN: ${LDAP_BASE_DN:-}
-      LDAP_BIND_DN: ${LDAP_BIND_DN:-}
-      LDAP_BIND_PASSWORD: ${LDAP_BIND_PASSWORD:-}
       UPLOAD_DIR: ${UPLOAD_DIR:-/app/uploads}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
+      SYNC_API_KEY: ${SYNC_API_KEY}
+      MISSIONI_URL: http://missioni:8001
     volumes:
-      # OPZIONE A (default): volume Docker locale
       - uploads_data:/app/uploads
-      # OPZIONE B: NAS montato sul server — decommentare e commentare la riga sopra
-      # - ${NAS_MOUNT_PATH}:/app/uploads
     expose:
       - "8000"
     depends_on:
@@ -55,30 +49,62 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile.prod
+      args:
+        VITE_API_URL: ""
+        VITE_MISSIONI_URL: "http://${ALLOWED_HOSTS}:8001"
     restart: always
     expose:
       - "80"
     depends_on:
       - backend
 
+  missioni:
+    build:
+      context: ../missioni-app
+      dockerfile: Dockerfile.prod
+    restart: always
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ${MISSIONI_DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      SECRET_KEY: ${DJANGO_SECRET_KEY}
+      DEBUG: "false"
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS}
+      CSRF_TRUSTED_ORIGINS: ${CSRF_TRUSTED_ORIGINS}
+      GESTIONALE_URL: http://backend:8000
+      GESTIONALE_SYNC_KEY: ${SYNC_API_KEY}
+      GESTIONALE_FRONTEND_URL: ${GESTIONALE_FRONTEND_URL}
+      SITE_URL: ${MISSIONI_SITE_URL}
+      GESTIONALE_DB_NAME: ${DB_NAME}
+    volumes:
+      - missioni_media:/app/media
+      - missioni_static:/app/staticfiles
+    expose:
+      - "8001"
+    depends_on:
+      db:
+        condition: service_healthy
+
   nginx:
     image: nginx:alpine
     restart: always
     ports:
-      # OPZIONE A — Nessun SSL (rete interna protetta da firewall di ateneo)
       - "80:80"
-      # OPZIONE B — SSL (decommentare e commentare la riga sopra)
-      # - "80:80"
+      - "8001:8001"
+      # SSL (decommentare quando si aggiunge il dominio + Certbot):
       # - "443:443"
     volumes:
-      # OPZIONE A: no SSL
       - ./nginx/nginx.prod.conf:/etc/nginx/nginx.conf:ro
-      # OPZIONE B: SSL (decommentare)
-      # - ./nginx/nginx.prod.ssl.conf:/etc/nginx/nginx.conf:ro
+      - missioni_static:/app/staticfiles:ro
+      - missioni_media:/app/media:ro
+      # SSL (decommentare):
       # - ./nginx/certs:/etc/nginx/certs:ro
     depends_on:
       - frontend
       - backend
+      - missioni
 
   backup:
     image: postgres:16
@@ -100,3 +126,5 @@ volumes:
   postgres_data:
   uploads_data:
   backup_data:
+  missioni_media:
+  missioni_static:

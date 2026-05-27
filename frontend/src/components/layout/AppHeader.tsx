@@ -9,6 +9,7 @@ import { useAuthStore } from '../../store/useAuthStore';
 import { useLayoutStore } from '../../store/useLayoutStore';
 import { MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons';
 import { apiClient } from '../../api/client';
+import { env } from '../../config/env';
 
 const { Header } = Layout;
 const { Text } = Typography;
@@ -84,7 +85,7 @@ export function AppHeader() {
   const handleLogout = () => {
     queryClient.clear();
     logout();
-    window.location.href = 'http://localhost:8001/';
+    window.location.href = `${env.missioniUrl}/`;
   };
 
   const userMenuItems = [{ key: 'logout', icon: <LogoutOutlined />, label: 'Esci', onClick: handleLogout }];
