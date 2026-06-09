@@ -196,6 +196,7 @@ export function PersonaPage() {
               <Descriptions.Item label="Codice fiscale">{persona.codice_fiscale ?? '—'}</Descriptions.Item>
               <Descriptions.Item label="Ruolo ente">{persona.ruolo_ente ?? '—'}</Descriptions.Item>
               <Descriptions.Item label="Livello contratto">{persona.livello_contratto ?? '—'}</Descriptions.Item>
+              <Descriptions.Item label="SSD">{persona.ssd ?? '—'}</Descriptions.Item>
               <Descriptions.Item label="In servizio dal">{formatData(persona.data_inizio_servizio)}</Descriptions.Item>
             </Descriptions>
             </>
@@ -328,9 +329,18 @@ export function PersonaPage() {
               <Form.Item name="codice_fiscale" label="Codice fiscale"><Input /></Form.Item>
             </Col>
           </Row>
-          <Form.Item name="data_inizio_servizio" label="In servizio dal">
-            <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
-          </Form.Item>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item name="ssd" label="SSD (Settore Scientifico Disciplinare)">
+                <Input placeholder="es. ING-INF/05" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="data_inizio_servizio" label="In servizio dal">
+                <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
+              </Form.Item>
+            </Col>
+          </Row>
         </Form>
       </Modal>
 

@@ -1,6 +1,6 @@
 # backend/app/api/v1/router.py
 from fastapi import APIRouter
-from app.api.v1.endpoints import auth, progetti, personale, sal, timesheet, config, partner, admin, notifiche, sync
+from app.api.v1.endpoints import auth, progetti, personale, sal, timesheet, config, partner, admin, notifiche, sync, proposte
 from app.api.v1.endpoints.progetti import sub_router as wp_sub_router
 
 api_router = APIRouter()
@@ -16,3 +16,4 @@ api_router.include_router(wp_sub_router,    prefix="",            tags=["wp"])
 api_router.include_router(admin.router,      prefix="/admin",      tags=["admin"])
 api_router.include_router(notifiche.router,  prefix="/notifiche",  tags=["notifiche"])
 api_router.include_router(sync.router,       prefix="",            tags=["sync"])
+api_router.include_router(proposte.router,   prefix="",            tags=["proposte"])

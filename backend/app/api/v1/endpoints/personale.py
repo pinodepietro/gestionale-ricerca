@@ -87,6 +87,7 @@ def persona_dict(p: Persona) -> dict:
         "ruolo": p.ruolo,
         "ruolo_ente": p.ruolo_ente,
         "livello_contratto": p.livello_contratto,
+        "ssd": p.ssd,
         "data_inizio_servizio": str(p.data_inizio_servizio) if p.data_inizio_servizio else None,
         "attivo": p.attivo,
     }

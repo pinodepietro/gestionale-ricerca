@@ -10,6 +10,7 @@ export interface Persona {
   ruolo_ente?: string;
   livello_contratto?: string;
   data_inizio_servizio?: string;
+  ssd?: string;
   attivo: boolean;
 }
 

@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import {
   DashboardOutlined, ProjectOutlined, TeamOutlined,
   FileTextOutlined, BarChartOutlined, SettingOutlined, BankOutlined, ToolOutlined,
-  FundOutlined,
+  FundOutlined, FormOutlined,
 } from '@ant-design/icons';
 import { useLayoutStore } from '../../store/useLayoutStore';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -20,6 +20,7 @@ export function AppSidebar() {
 
   const menuItems = [
     { key: '/dashboard', icon: <DashboardOutlined />, label: 'Dashboard' },
+    { key: '/proposte', icon: <FormOutlined />, label: 'Proposte' },
     { key: '/progetti', icon: <ProjectOutlined />, label: 'Progetti' },
     { key: '/portfolio', icon: <FundOutlined />, label: 'Portfolio' },
     ...(user && canDo(user.ruolo, 'timesheet:accedi')

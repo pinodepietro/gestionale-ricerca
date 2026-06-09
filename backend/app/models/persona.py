@@ -20,6 +20,7 @@ class Persona(Base):
     ruolo_ente = Column(String(100), nullable=True)
     livello_contratto = Column(String(50), nullable=True)
     data_inizio_servizio = Column(Date, nullable=True)
+    ssd = Column(String(100), nullable=True)
     attivo = Column(Boolean, nullable=False, default=True)
     deve_cambiare_password = Column(Boolean, nullable=False, default=False)
 

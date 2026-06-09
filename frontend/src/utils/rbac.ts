@@ -29,7 +29,9 @@ export type Azione =
   | 'personale:gestisci'           // crea/modifica persone, costi orari, monte ore
   | 'partner:gestisci'
   | 'config:gestisci'             // tipi finanziamento, voci di costo, template
-  | 'documento:carica';            // upload documenti progetto
+  | 'documento:carica'             // upload documenti progetto
+  | 'proposta:crea'                // qualsiasi utente autenticato
+  | 'proposta:converti';           // solo amministrativo/superadmin
 
 const PERMESSI: Record<Azione, Ruolo[]> = {
   'progetto:crea':               ['superadmin'],
@@ -61,6 +63,8 @@ const PERMESSI: Record<Azione, Ruolo[]> = {
   'partner:gestisci':            ['amministrativo'],
   'config:gestisci':             ['amministrativo'],
   'documento:carica':            ['amministrativo', 'ricercatore', 'superadmin'],
+  'proposta:crea':               ['amministrativo', 'ricercatore', 'management', 'superadmin', 'monitor'],
+  'proposta:converti':           ['amministrativo', 'superadmin'],
 };
 
 export function canDo(ruolo: Ruolo, azione: Azione): boolean {

@@ -16,6 +16,9 @@ import { AdminPage } from './pages/admin/AdminPage';
 import { SalDettaglioPage } from './pages/sal/SalDettaglioPage';
 import { LoginPage } from './pages/auth/LoginPage';
 import { CambioPasswordPage } from './pages/auth/CambioPasswordPage';
+import { PropostePage } from './pages/proposte/PropostePage';
+import { PropostaFormPage } from './pages/proposte/PropostaFormPage';
+import { PropostaDettaglioPage } from './pages/proposte/PropostaDettaglioPage';
 
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
@@ -40,6 +43,10 @@ export const router = createBrowserRouter([
       { path: 'sal', element: <SalPage /> },
       { path: 'sal/:id', element: <SalDettaglioPage /> },
       { path: 'admin', element: <AdminPage /> },
+      { path: 'proposte', element: <PropostePage /> },
+      { path: 'proposte/nuova', element: <PropostaFormPage /> },
+      { path: 'proposte/:id', element: <PropostaDettaglioPage /> },
+      { path: 'proposte/:id/modifica', element: <PropostaFormPage /> },
     ],
   },
 ]);

@@ -21,3 +21,4 @@ from app.models.partner import Partner, ProgettoPartner, Finanziamento, TipoFina
 from app.models.documento import DocumentoProgetto  # noqa: F401
 
 from app.models.notifica import Notifica  # noqa: F401
+from app.models.proposta import Proposta, PropostaPartner  # noqa: F401
