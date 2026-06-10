@@ -51,7 +51,7 @@ services:
       dockerfile: Dockerfile.prod
       args:
         VITE_API_URL: ""
-        VITE_MISSIONI_URL: "http://${ALLOWED_HOSTS}:8001"
+        VITE_MISSIONI_URL: "http://${SERVER_HOST}:8001"
     restart: always
     expose:
       - "80"

@@ -21,6 +21,8 @@ import { TabTimesheet } from './tabs/TabTimesheet';
 import { TabSpese } from './tabs/TabSpese';
 import { TabImpegni } from './tabs/TabImpegni';
 import { TabPartner } from './tabs/TabPartner';
+import { TabErogazioni } from './tabs/TabErogazioni';
+import { TabDisponibilita } from './tabs/TabDisponibilita';
 import { ModificaProgettoDrawer } from './ModificaProgettoDrawer';
 
 const { Title, Text } = Typography;
@@ -190,6 +192,8 @@ export function ProgettoPage() {
           { key: 'timesheet', label: 'Timesheet', children: <TabTimesheet progettoId={id!} stato={data.stato} /> },
           { key: 'spese', label: 'Spese', children: <TabSpese progettoId={id!} stato={data.stato} /> },
           { key: 'impegni', label: 'Impegni', children: <TabImpegni progettoId={id!} stato={data.stato} /> },
+          { key: 'erogazioni', label: 'Erogazioni', children: <TabErogazioni progettoId={id!} stato={data.stato} /> },
+          { key: 'disponibilita', label: 'Disponibilità Fondi', children: <TabDisponibilita progettoId={id!} /> },
           { key: 'partner', label: 'Partner', children: <TabPartner progettoId={id!} /> },
         ]}
       />

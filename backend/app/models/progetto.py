@@ -46,3 +46,4 @@ class Progetto(Base):
     allocazioni = relationship("Allocazione", back_populates="progetto")
     documenti = relationship("DocumentoProgetto", back_populates="progetto")
     partner = relationship("ProgettoPartner", back_populates="progetto")
+    erogazioni = relationship("Erogazione", back_populates="progetto", cascade="all, delete-orphan")

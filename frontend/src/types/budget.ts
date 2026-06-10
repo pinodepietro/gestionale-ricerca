@@ -34,6 +34,7 @@ export interface Impegno {
   data: string;
   descrizione: string;
   importo: number;
+  stabilizzato?: boolean;
   created_at?: string;
 }
 

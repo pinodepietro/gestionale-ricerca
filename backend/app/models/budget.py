@@ -89,3 +89,19 @@ class Impegno(Base):
     created_by = Column(UUID(as_uuid=True), ForeignKey("persona.id"), nullable=True)
 
     voce = relationship("VoceDiCosto")
+
+
+class Erogazione(Base):
+    __tablename__ = "erogazione"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    progetto_id = Column(UUID(as_uuid=True), ForeignKey("progetto.id"), nullable=False)
+    importo = Column(Numeric(14, 2), nullable=False)
+    data_erogazione = Column(Date, nullable=False)
+    tipo = Column(String(50), nullable=False)
+    documento_path = Column(String(500), nullable=True)
+    descrizione = Column(Text, nullable=True)
+    created_by = Column(UUID(as_uuid=True), ForeignKey("persona.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+
+    progetto = relationship("Progetto", back_populates="erogazioni")

@@ -147,12 +147,99 @@ def elimina_sal(
 
 
 @router.post("/sal/{id}/chiudi")
-def chiudi_sal(
+def chiudi_sal(id: str, db: Session = Depends(get_db), utente: Persona = Depends(solo_amministrativo)):
+    return _transizione_sal(id, "chiudi", db)
+
+
+@router.post("/sal/{id}/invia")
+def invia_sal(id: str, db: Session = Depends(get_db), utente: Persona = Depends(solo_amministrativo)):
+    return _transizione_sal(id, "invia", db)
+
+
+@router.post("/sal/{id}/riapri")
+def riapri_sal(id: str, db: Session = Depends(get_db), utente: Persona = Depends(solo_amministrativo)):
+    return _transizione_sal(id, "riapri", db)
+
+
+@router.post("/sal/{id}/contesta")
+def contesta_sal(id: str, body: dict, db: Session = Depends(get_db), utente: Persona = Depends(solo_amministrativo)):
+    return _transizione_sal(id, "contesta", db, extra={"motivo_contestazione": body.get("motivo_contestazione")})
+
+
+@router.post("/sal/{id}/rendiconta")
+def rendiconta_sal(
     id: str,
     db: Session = Depends(get_db),
     utente: Persona = Depends(solo_amministrativo),
 ):
-    return _transizione_sal(id, "chiudi", db)
+    from app.models.budget import Spesa, BudgetVoce, VoceDiCosto
+    from app.models.timesheet import TimesheetTestata, TimesheetCella, TimesheetRiga
+    from datetime import date as _date
+    import uuid as _uuid
+
+    s = _get_sal_or_404(id, db)
+
+    # Prima cerca timesheet esplicitamente associati al SAL
+    timesheet_associati = db.query(TimesheetTestata).filter(
+        TimesheetTestata.sal_id == s.id,
+        TimesheetTestata.stato == "approvato",
+    ).all()
+
+    # Fallback: se nessuno è stato associato esplicitamente,
+    # usa tutti gli approvati del progetto nel periodo del SAL
+    if not timesheet_associati:
+        import calendar as _cal
+        tutti = db.query(TimesheetTestata).filter(
+            TimesheetTestata.progetto_id == s.progetto_id,
+            TimesheetTestata.stato == "approvato",
+        ).all()
+        for ts in tutti:
+            ultimo = _cal.monthrange(ts.anno, ts.mese)[1]
+            ts_fine = _date(ts.anno, ts.mese, ultimo)
+            ts_inizio = _date(ts.anno, ts.mese, 1)
+            if ts_fine >= s.data_inizio and ts_inizio <= s.data_fine:
+                timesheet_associati.append(ts)
+
+    # Blocca se non ci sono timesheet approvati nel periodo
+    if not timesheet_associati:
+        raise HTTPException(status_code=422, detail={"error": {
+            "code": "NESSUN_TIMESHEET_APPROVATO",
+            "message": (
+                f"Impossibile rendicontare il SAL: nessun timesheet approvato trovato "
+                f"nel periodo {s.data_inizio} — {s.data_fine}. "
+                "Approva i timesheet del personale prima di procedere."
+            ),
+        }})
+
+    costo_personale = 0.0
+    for ts in timesheet_associati:
+        for riga in ts.righe:
+            if riga.tipo_riga != "progetto":
+                continue
+            for cella in riga.celle:
+                costo_personale += float(cella.costo_calcolato or 0)
+
+    # Crea automaticamente la Spesa su "A.1 Personale dipendente" se ci sono costi
+    if costo_personale > 0:
+        voce_personale = db.query(VoceDiCosto).filter(VoceDiCosto.codice == "A.1").first()
+        if voce_personale:
+            bv = db.query(BudgetVoce).filter(
+                BudgetVoce.progetto_id == s.progetto_id,
+                BudgetVoce.voce_id == voce_personale.id,
+            ).first()
+            spesa_personale = Spesa(
+                id=_uuid.uuid4(),
+                progetto_id=s.progetto_id,
+                voce_id=voce_personale.id,
+                sal_id=s.id,
+                importo=costo_personale,
+                data=s.data_fine,
+                descrizione=f"Personale dipendente — SAL #{s.numero}",
+                stato="registrata",
+            )
+            db.add(spesa_personale)
+
+    return _transizione_sal(id, "rendiconta", db)
 
 
 def _transizione_sal(id: str, azione: str, db: Session, extra: dict = {}):

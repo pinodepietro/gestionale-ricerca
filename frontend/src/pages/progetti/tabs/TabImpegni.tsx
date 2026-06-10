@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Table, Button, Space, Modal, Form, Input, InputNumber, DatePicker,
-         Select, Typography, App, Popconfirm, Alert } from 'antd';
+         Select, Typography, App, Popconfirm, Alert, Tag } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
@@ -114,7 +114,9 @@ export function TabImpegni({ progettoId, stato }: Props) {
   }
 
   const impegni: Impegno[] = data ?? [];
-  const totale = impegni.reduce((s, i) => s + i.importo, 0);
+  const impegniAttivi = impegni.filter(i => !i.stabilizzato);
+  const impegniStabilizzati = impegni.filter(i => i.stabilizzato);
+  const totale = impegniAttivi.reduce((s, i) => s + i.importo, 0);
 
   const vociSelectedWatch = Form.useWatch('voce_id', form);
   const vociSelezionataInfo = vociDisponibili.find(v => v.value === vociSelectedWatch);
@@ -135,25 +137,33 @@ export function TabImpegni({ progettoId, stato }: Props) {
       width: 130, render: formatEuro,
     },
     {
+      title: 'Stato', width: 120, align: 'center' as const,
+      render: (_: unknown, r: Impegno) =>
+        r.stabilizzato
+          ? <Tag color="volcano">Utilizzato</Tag>
+          : <Tag color="green">Attivo</Tag>,
+    },
+    {
       title: '', key: 'azioni', width: 90,
-      render: (_: unknown, r: Impegno) => (
-        <RbacGuard azione="progetto:modifica">
-          <Space>
-            <Button size="small" icon={<EditOutlined />} type="text"
-              onClick={() => apriModifica(r)} />
-            <Popconfirm
-              title="Eliminare questo impegno?"
-              description="L'importo sarà restituito alla disponibilità della voce di costo."
-              onConfirm={() => eliminaImpegno.mutate(r.id)}
-              okText="Elimina"
-              okButtonProps={{ danger: true }}
-              cancelText="Annulla"
-            >
-              <Button size="small" danger icon={<DeleteOutlined />} type="text" />
-            </Popconfirm>
-          </Space>
-        </RbacGuard>
-      ),
+      render: (_: unknown, r: Impegno) =>
+        r.stabilizzato ? null : (
+          <RbacGuard azione="progetto:modifica">
+            <Space>
+              <Button size="small" icon={<EditOutlined />} type="text"
+                onClick={() => apriModifica(r)} />
+              <Popconfirm
+                title="Eliminare questo impegno?"
+                description="L'importo sarà restituito alla disponibilità della voce di costo."
+                onConfirm={() => eliminaImpegno.mutate(r.id)}
+                okText="Elimina"
+                okButtonProps={{ danger: true }}
+                cancelText="Annulla"
+              >
+                <Button size="small" danger icon={<DeleteOutlined />} type="text" />
+              </Popconfirm>
+            </Space>
+          </RbacGuard>
+        ),
     },
   ];
 
@@ -172,7 +182,12 @@ export function TabImpegni({ progettoId, stato }: Props) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <Space>
           <Text strong>Impegni del progetto</Text>
-          <Text type="secondary">Totale impegnato: <Text strong>{formatEuro(totale)}</Text></Text>
+          <Text type="secondary">
+            Totale attivi: <Text strong>{formatEuro(totale)}</Text>
+            {impegniStabilizzati.length > 0 && (
+              <Text type="secondary"> — {impegniStabilizzati.length} utilizzat{impegniStabilizzati.length === 1 ? 'o' : 'i'} (non contabilizzat{impegniStabilizzati.length === 1 ? 'o' : 'i'})</Text>
+            )}
+          </Text>
         </Space>
         <RbacGuard azione="progetto:modifica">
           <Button type="primary" icon={<PlusOutlined />} onClick={apriNuovo}>
@@ -186,6 +201,10 @@ export function TabImpegni({ progettoId, stato }: Props) {
         dataSource={impegni}
         rowKey="id"
         loading={isLoading}
+        rowClassName={(r: Impegno) => r.stabilizzato ? 'impegno-stabilizzato' : ''}
+        onRow={(r: Impegno) => ({
+          style: r.stabilizzato ? { background: '#fff2f0', color: '#cf1322' } : {},
+        })}
         pagination={{ pageSize: 20 }}
         size="middle"
         locale={{ emptyText: 'Nessun impegno registrato' }}

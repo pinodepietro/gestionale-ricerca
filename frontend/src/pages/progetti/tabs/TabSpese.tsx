@@ -45,8 +45,8 @@ export function TabSpese({ progettoId, stato }: Props) {
   });
 
   const { data: impegniVoce } = useQuery({
-    queryKey: queryKeys.progetti.impegni(progettoId + (vociSelectedWatch ?? '')),
-    queryFn: () => budgetApi.impegni.list(progettoId, { voce_id: vociSelectedWatch }).then(r => r.data.data),
+    queryKey: queryKeys.progetti.impegni(progettoId + (vociSelectedWatch ?? '') + '_disp'),
+    queryFn: () => budgetApi.impegni.list(progettoId, { voce_id: vociSelectedWatch, solo_disponibili: true }).then(r => r.data.data),
     enabled: !!progettoId && !!vociSelectedWatch && modalAperta,
   });
 
@@ -221,17 +221,19 @@ export function TabSpese({ progettoId, stato }: Props) {
             />
           </Form.Item>
           {vociSelectedWatch && (
-            <Form.Item name="impegno_id" label="Impegno di riferimento (facoltativo)">
+            <Form.Item
+              name="impegno_id"
+              label="Impegno di riferimento"
+              rules={[{ required: true, message: 'Seleziona un impegno di riferimento' }]}
+            >
               <Select
-                placeholder="Seleziona un impegno esistente per questa voce"
-                allowClear
+                placeholder="Seleziona un impegno disponibile per questa voce"
                 options={(impegniVoce as Impegno[] | undefined)
-                  ?.filter(i => i.importo > 0)
-                  .map(i => ({
+                  ?.map(i => ({
                     value: i.id,
                     label: `${i.data ? i.data.substring(0, 10) : ''} — ${i.descrizione} (${formatEuro(i.importo)})`,
                   })) ?? []}
-                notFoundContent="Nessun impegno attivo per questa voce"
+                notFoundContent="Nessun impegno disponibile per questa voce"
               />
             </Form.Item>
           )}

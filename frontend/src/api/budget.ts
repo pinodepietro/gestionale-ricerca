@@ -38,7 +38,7 @@ export const budgetApi = {
   },
 
   impegni: {
-    list: (progettoId: string, params?: { voce_id?: string }) =>
+    list: (progettoId: string, params?: { voce_id?: string; solo_disponibili?: boolean }) =>
       apiClient.get<ApiResponse<Impegno[]>>(`/progetti/${progettoId}/impegni`, { params }),
     create: (progettoId: string, data: Partial<Impegno>) =>
       apiClient.post<ApiResponse<Impegno>>(`/progetti/${progettoId}/impegni`, data),

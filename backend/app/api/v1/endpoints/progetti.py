@@ -799,14 +799,23 @@ def registra_spesa(
         BudgetVoce.progetto_id == id,
         BudgetVoce.voce_id == spesa.voce_id,
     ).first()
-    # Scala l'impegno collegato
+    # Stabilizza l'impegno collegato (opzione A: rimuove l'intero impegno dal contabilizzato)
     if impegno_id:
         imp = db.query(Impegno).filter(Impegno.id == impegno_id).first()
         if imp:
-            storno = min(float(spesa.importo), float(imp.importo))
-            imp.importo = max(0, float(imp.importo) - float(spesa.importo))
+            # Blocca se l'impegno è già stabilizzato
+            gia_usato = db.query(Spesa).filter(
+                Spesa.impegno_id == impegno_id,
+                Spesa.id != spesa.id,
+            ).first()
+            if gia_usato:
+                db.rollback()
+                raise HTTPException(status_code=400, detail={"error": {
+                    "code": "IMPEGNO_GIA_STABILIZZATO",
+                    "message": "L'impegno selezionato è già collegato a un'altra spesa",
+                }})
             if bv:
-                bv.importo_impegnato = max(0, float(bv.importo_impegnato) - storno)
+                bv.importo_impegnato = max(0, float(bv.importo_impegnato) - float(imp.importo))
     db.commit()
     db.refresh(spesa)
     return {"data": _spesa_dict(spesa)}
@@ -827,12 +836,11 @@ def annulla_spesa(
         BudgetVoce.progetto_id == spesa.progetto_id,
         BudgetVoce.voce_id == spesa.voce_id,
     ).first()
-    # Ripristina l'impegno collegato
+    # Ripristina l'impegno collegato (destabilizza)
     if spesa.impegno_id:
         imp = db.query(Impegno).filter(Impegno.id == spesa.impegno_id).first()
         if imp and bv:
-            imp.importo = float(imp.importo) + float(spesa.importo)
-            bv.importo_impegnato = float(bv.importo_impegnato) + float(spesa.importo)
+            bv.importo_impegnato = float(bv.importo_impegnato) + float(imp.importo)
     db.delete(spesa)
     db.commit()
     return {"data": {"deleted": True}}
@@ -872,7 +880,7 @@ def _spesa_dict(s) -> dict:
 
 # ─── Impegni ──────────────────────────────────────────────────────────────────
 
-def _impegno_dict(i: "Impegno") -> dict:
+def _impegno_dict(i: "Impegno", stabilizzato: bool = False) -> dict:
     return {
         "id": str(i.id),
         "progetto_id": str(i.progetto_id),
@@ -881,8 +889,18 @@ def _impegno_dict(i: "Impegno") -> dict:
         "data": str(i.data) if i.data else None,
         "descrizione": i.descrizione,
         "importo": float(i.importo),
+        "stabilizzato": stabilizzato,
         "created_at": str(i.created_at) if i.created_at else None,
     }
+
+
+def _impegni_stabilizzati_ids(progetto_id: str, db: Session) -> set:
+    """Restituisce gli ID degli impegni già collegati a una spesa (stabilizzati)."""
+    rows = db.query(Spesa.impegno_id).filter(
+        Spesa.impegno_id.isnot(None),
+        Spesa.progetto_id == progetto_id,
+    ).all()
+    return {str(r[0]) for r in rows}
 
 
 def _get_bv_or_404(progetto_id: str, voce_id: str, db: Session) -> "BudgetVoce":
@@ -896,13 +914,22 @@ def _get_bv_or_404(progetto_id: str, voce_id: str, db: Session) -> "BudgetVoce":
 
 
 @router.get("/{id}/impegni")
-def lista_impegni(id: str, voce_id: str = Query(None), db: Session = Depends(get_db), utente: Persona = Depends(tutti_i_ruoli)):
+def lista_impegni(
+    id: str,
+    voce_id: str = Query(None),
+    solo_disponibili: bool = Query(False),
+    db: Session = Depends(get_db),
+    utente: Persona = Depends(tutti_i_ruoli),
+):
     _get_or_404(id, db)
     q = db.query(Impegno).filter(Impegno.progetto_id == id)
     if voce_id:
         q = q.filter(Impegno.voce_id == voce_id)
+    stabilizzati = _impegni_stabilizzati_ids(id, db)
+    if solo_disponibili:
+        q = q.filter(~Impegno.id.in_([s for s in stabilizzati]))
     impegni = q.order_by(Impegno.data.desc()).all()
-    return {"data": [_impegno_dict(i) for i in impegni]}
+    return {"data": [_impegno_dict(i, stabilizzato=str(i.id) in stabilizzati) for i in impegni]}
 
 
 @router.post("/{id}/impegni")
@@ -940,6 +967,9 @@ def modifica_impegno(impegno_id: str, body: dict, db: Session = Depends(get_db),
     impegno = db.query(Impegno).filter(Impegno.id == impegno_id).first()
     if not impegno:
         raise HTTPException(status_code=404, detail={"error": {"code": "NOT_FOUND", "message": "Impegno non trovato"}})
+    if db.query(Spesa).filter(Spesa.impegno_id == impegno_id).first():
+        raise HTTPException(status_code=400, detail={"error": {"code": "IMPEGNO_STABILIZZATO",
+                                                                "message": "Impossibile modificare un impegno già collegato a una spesa"}})
     nuovo_importo = float(body.get("importo", impegno.importo))
     delta = nuovo_importo - float(impegno.importo)
     if delta != 0:
@@ -969,6 +999,9 @@ def elimina_impegno(impegno_id: str, db: Session = Depends(get_db), utente: Pers
     impegno = db.query(Impegno).filter(Impegno.id == impegno_id).first()
     if not impegno:
         raise HTTPException(status_code=404, detail={"error": {"code": "NOT_FOUND", "message": "Impegno non trovato"}})
+    if db.query(Spesa).filter(Spesa.impegno_id == impegno_id).first():
+        raise HTTPException(status_code=400, detail={"error": {"code": "IMPEGNO_STABILIZZATO",
+                                                                "message": "Impossibile eliminare un impegno già collegato a una spesa"}})
     bv = db.query(BudgetVoce).filter(
         BudgetVoce.progetto_id == impegno.progetto_id,
         BudgetVoce.voce_id == impegno.voce_id,
