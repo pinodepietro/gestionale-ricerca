@@ -7,6 +7,7 @@ from app.models.persona import Persona
 from app.models.budget import Sal
 from app.models.progetto import Progetto
 import uuid
+from datetime import date
 
 router = APIRouter()
 
@@ -89,9 +90,22 @@ def crea_sal(
     if p.stato != "attivo":
         raise HTTPException(status_code=409, detail={"error": {"code": "PROGETTO_NON_ATTIVO", "message": "Il progetto deve essere in stato attivo per creare un SAL"}})
 
-    # Numero progressivo automatico
+    # Numero progressivo automatico + controllo continuità
+    from datetime import timedelta as _td
     ultimo = db.query(Sal).filter(Sal.progetto_id == progetto_id).order_by(Sal.numero.desc()).first()
     numero = (ultimo.numero + 1) if ultimo else 1
+
+    if ultimo and data_inizio:
+        data_inizio_dt = date.fromisoformat(str(data_inizio))
+        attesa = ultimo.data_fine + _td(days=1)
+        if data_inizio_dt != attesa:
+            raise HTTPException(status_code=422, detail={"error": {
+                "code": "SAL_NON_CONTINUO",
+                "message": (
+                    f"La data di inizio deve essere immediatamente successiva alla fine del SAL precedente. "
+                    f"Data attesa: {attesa.strftime('%d/%m/%Y')}"
+                ),
+            }})
 
     s = Sal(
         id=uuid.uuid4(),
@@ -197,7 +211,9 @@ def rendiconta_sal(
             ultimo = _cal.monthrange(ts.anno, ts.mese)[1]
             ts_fine = _date(ts.anno, ts.mese, ultimo)
             ts_inizio = _date(ts.anno, ts.mese, 1)
+            # overlap: mese del timesheet si sovrappone al periodo del SAL
             if ts_fine >= s.data_inizio and ts_inizio <= s.data_fine:
+                ts.sal_id = s.id
                 timesheet_associati.append(ts)
 
     # Blocca se non ci sono timesheet approvati nel periodo
@@ -206,7 +222,7 @@ def rendiconta_sal(
             "code": "NESSUN_TIMESHEET_APPROVATO",
             "message": (
                 f"Impossibile rendicontare il SAL: nessun timesheet approvato trovato "
-                f"nel periodo {s.data_inizio} — {s.data_fine}. "
+                f"nel periodo {s.data_inizio.strftime('%d/%m/%Y')} — {s.data_fine.strftime('%d/%m/%Y')}. "
                 "Approva i timesheet del personale prima di procedere."
             ),
         }})
@@ -515,9 +531,9 @@ def export_sal_xlsx(
 
     info = [
         ("Progetto", progetto.titolo if progetto else "—"),
-        ("Periodo", f"{s.data_inizio} → {s.data_fine}"),
+        ("Periodo", f"{s.data_inizio.strftime('%d/%m/%Y')} → {s.data_fine.strftime('%d/%m/%Y')}"),
         ("Stato", s.stato.upper()),
-        ("Scad. rendiconto", str(s.data_scadenza_rendiconto) if s.data_scadenza_rendiconto else "—"),
+        ("Scad. rendiconto", s.data_scadenza_rendiconto.strftime('%d/%m/%Y') if s.data_scadenza_rendiconto else "—"),
     ]
     for label, val in info:
         ws.cell(riga, 1, label).font = Font(bold=True)

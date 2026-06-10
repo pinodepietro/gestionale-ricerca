@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   Table, Button, Space, Modal, Form, Input, InputNumber, DatePicker,
-  Select, Typography, App, Popconfirm, Row, Col, Statistic, Upload, Tag,
+  Select, Typography, App, Popconfirm, Row, Col, Statistic, Upload,
 } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, PaperClipOutlined, DownloadOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -203,7 +203,7 @@ export function TabErogazioni({ progettoId, stato }: Props) {
                 <InputNumber
                   min={0} precision={2} style={{ width: '100%' }}
                   formatter={v => v !== undefined ? `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, '.') : ''}
-                  parser={v => parseFloat((v || '').replace(/\./g, '').replace(',', '.')) || 0}
+                  parser={v => (parseFloat((v || '').replace(/\./g, '').replace(',', '.')) || 0) as unknown as 0}
                 />
               </Form.Item>
             </Col>

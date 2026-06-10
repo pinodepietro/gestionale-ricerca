@@ -281,7 +281,7 @@ def inserisci_costo_orario(
             status_code=422,
             detail={"error": {
                 "code": "COSTO_ORARIO_SOVRAPPOSTO",
-                "message": f"Esiste già un costo orario con data di inizio {sovrapposto.data_inizio} successiva o uguale a quella inserita. Inserire una data precedente.",
+                "message": f"Esiste già un costo orario con data di inizio {sovrapposto.data_inizio.strftime('%d/%m/%Y')} successiva o uguale a quella inserita. Inserire una data precedente.",
             }},
         )
 

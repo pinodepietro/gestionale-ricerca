@@ -711,13 +711,13 @@ def _valida_date_nel_progetto(progetto: Progetto, data_inizio: date, data_fine: 
         raise HTTPException(
             status_code=422,
             detail={"error": {"code": "DATE_FUORI_PROGETTO",
-                               "message": f"{entita}: la data di inizio ({data_inizio}) è precedente all'inizio del progetto ({progetto.data_inizio})"}},
+                               "message": f"{entita}: la data di inizio ({data_inizio.strftime('%d/%m/%Y')}) è precedente all'inizio del progetto ({progetto.data_inizio.strftime('%d/%m/%Y')})"}},
         )
     if data_fine > progetto.data_fine:
         raise HTTPException(
             status_code=422,
             detail={"error": {"code": "DATE_FUORI_PROGETTO",
-                               "message": f"{entita}: la data di fine ({data_fine}) è successiva alla fine del progetto ({progetto.data_fine})"}},
+                               "message": f"{entita}: la data di fine ({data_fine.strftime('%d/%m/%Y')}) è successiva alla fine del progetto ({progetto.data_fine.strftime('%d/%m/%Y')})"}},
         )
     if data_inizio > data_fine:
         raise HTTPException(
