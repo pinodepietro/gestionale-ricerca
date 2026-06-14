@@ -44,4 +44,6 @@ export interface Allocazione {
   data_inizio: string;
   data_fine: string;
   note?: string;
+  is_pi?: boolean;
+  is_ammin?: boolean;
 }

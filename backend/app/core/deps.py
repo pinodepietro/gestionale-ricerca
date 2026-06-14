@@ -55,7 +55,7 @@ def amministrativo_o_pi(utente: Persona = Depends(richiedi_ruolo("amministrativo
 def tutti_i_ruoli(utente: Persona = Depends(get_utente_corrente)) -> Persona:
     return utente
 
-def solo_direttore_generale(utente: Persona = Depends(richiedi_ruolo("direttore_generale", "superadmin"))) -> Persona:
+def solo_direttore_generale(utente: Persona = Depends(richiedi_ruolo("direttore_generale"))) -> Persona:
     return utente
 
 def solo_superadmin(utente: Persona = Depends(richiedi_ruolo("superadmin"))) -> Persona:

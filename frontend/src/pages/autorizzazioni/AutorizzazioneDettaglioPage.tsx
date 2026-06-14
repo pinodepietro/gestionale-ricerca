@@ -6,13 +6,14 @@ import {
 } from 'antd';
 import {
   ArrowLeftOutlined, CheckOutlined, CloseOutlined, SendOutlined,
-  RedoOutlined, FilePdfOutlined, WarningOutlined,
+  RedoOutlined, FilePdfOutlined, WarningOutlined, EditOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { autorizzazioniApi, type AutorizzazioneSpesa, type BudgetVoceDisponibile } from '../../api/autorizzazioni';
 import { useAuthStore } from '../../store/useAuthStore';
 import { formatData } from '../../utils/formatters';
 import { apiErrorMessage } from '../../utils/apiError';
+import { env } from '../../config/env';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -61,6 +62,8 @@ export function AutorizzazioneDettaglioPage() {
   const [modalBudgetVoce, setModalBudgetVoce] = useState(false);
   const [budgetVoceSelezionata, setBudgetVoceSelezionata] = useState<string | undefined>();
 
+  const isSuperAdmin = user?.ruolo === 'superadmin';
+
   const { data: ras, isLoading } = useQuery({
     queryKey: ['autorizzazione', id],
     queryFn: () => autorizzazioniApi.get(id!).then(r => r.data.data),
@@ -70,7 +73,8 @@ export function AutorizzazioneDettaglioPage() {
   const { data: budgetVoci } = useQuery({
     queryKey: ['autorizzazione-budget-voci', id],
     queryFn: () => autorizzazioniApi.budgetVociDisponibili(id!).then(r => r.data.data),
-    enabled: !!id && ras?.stato === 'attesa_ammin' && ras?.tipo === 'progetto',
+    enabled: !!id && ras?.stato === 'attesa_ammin' && ras?.tipo === 'progetto'
+      && (isSuperAdmin || ras?.amministrativo_id === user?.id),
   });
 
   const invalidate = () => {
@@ -120,12 +124,39 @@ export function AutorizzazioneDettaglioPage() {
     onError: (e: unknown) => message.error(apiErrorMessage(e, 'Errore')),
   });
 
+  const scaricaPdf = async () => {
+    const token = localStorage.getItem('access_token');
+    const response = await fetch(`${env.apiUrl}/api/v1/autorizzazioni-spesa/${id}/pdf`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) {
+      message.error('Errore nello scaricamento del PDF');
+      return;
+    }
+    const blob = await response.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `Autorizzazione_${id}.pdf`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
   if (isLoading || !ras) return <Spin style={{ display: 'block', marginTop: 60, textAlign: 'center' }} />;
 
   const r = ras as AutorizzazioneSpesa;
   const isOwner = r.richiedente_id === user?.id;
-  const isSuperAdmin = user?.ruolo === 'superadmin';
-  const isDG = user?.ruolo === 'direttore_generale' || isSuperAdmin;
+  const isDG = user?.ruolo === 'direttore_generale';
+  const isAmministrativo = r.amministrativo_id === user?.id;
+  const isPI = r.pi_id === user?.id;
+  const isDirDip = r.direttore_dipartimento_id === user?.id;
+
+  // L'utente è l'approvatore atteso per lo step corrente del flusso di firme.
+  // Lo step del Direttore Generale non ammette override del superadmin.
+  const puoApprovareStep =
+    (r.stato === 'attesa_ammin' && (isAmministrativo || isSuperAdmin))
+    || (r.stato === 'attesa_rs' && (isPI || isSuperAdmin))
+    || (r.stato === 'attesa_dir_dip' && (isDirDip || isSuperAdmin))
+    || (r.stato === 'attesa_dg' && isDG);
 
   // Step corrente nella barra di avanzamento
   const stepIdx = STATI_STEPS.findIndex(s => s.key === r.stato);
@@ -171,6 +202,12 @@ export function AutorizzazioneDettaglioPage() {
         </Col>
         <Col>
           <Space>
+            {/* Richiedente: modifica bozza */}
+            {r.stato === 'bozza' && isOwner && (
+              <Button icon={<EditOutlined />} onClick={() => navigate(`/autorizzazioni/${id}/modifica`)}>
+                Modifica
+              </Button>
+            )}
             {/* Richiedente: invia da bozza */}
             {r.stato === 'bozza' && isOwner && (
               <Button type="primary" icon={<SendOutlined />} loading={invia.isPending} onClick={() => invia.mutate()}>
@@ -184,25 +221,25 @@ export function AutorizzazioneDettaglioPage() {
               </Button>
             )}
             {/* Admin: approva scegliendo voce budget */}
-            {r.stato === 'attesa_ammin' && (
+            {r.stato === 'attesa_ammin' && puoApprovareStep && (
               <Button type="primary" icon={<CheckOutlined />} onClick={() => setModalBudgetVoce(true)}>
                 Approva (seleziona voce budget)
               </Button>
             )}
             {/* RS: approva */}
-            {r.stato === 'attesa_rs' && (
+            {r.stato === 'attesa_rs' && puoApprovareStep && (
               <Button type="primary" icon={<CheckOutlined />} loading={approvaRs.isPending} onClick={() => approvaRs.mutate()}>
                 Approva
               </Button>
             )}
             {/* Dir. Dip.: approva */}
-            {r.stato === 'attesa_dir_dip' && (
+            {r.stato === 'attesa_dir_dip' && puoApprovareStep && (
               <Button type="primary" icon={<CheckOutlined />} loading={approvaDirDip.isPending} onClick={() => approvaDirDip.mutate()}>
                 Approva
               </Button>
             )}
             {/* DG: approva */}
-            {r.stato === 'attesa_dg' && isDG && (
+            {r.stato === 'attesa_dg' && puoApprovareStep && (
               <Popconfirm
                 title="Approvare definitivamente?"
                 description="Verrà creato un Impegno sul budget del progetto e generato il PDF."
@@ -214,15 +251,15 @@ export function AutorizzazioneDettaglioPage() {
                 </Button>
               </Popconfirm>
             )}
-            {/* Rigetta (qualsiasi approvatore) */}
-            {['attesa_ammin','attesa_rs','attesa_dir_dip','attesa_dg'].includes(r.stato) && (
+            {/* Rigetta (solo l'approvatore dello step corrente) */}
+            {['attesa_ammin','attesa_rs','attesa_dir_dip','attesa_dg'].includes(r.stato) && puoApprovareStep && (
               <Button danger icon={<CloseOutlined />} onClick={() => setModalRigetto(true)}>
                 Rigetta
               </Button>
             )}
             {/* PDF */}
             {r.stato === 'approvata' && r.ha_pdf && (
-              <Button icon={<FilePdfOutlined />} href={autorizzazioniApi.pdfUrl(id!)} target="_blank">
+              <Button icon={<FilePdfOutlined />} onClick={scaricaPdf}>
                 Scarica PDF
               </Button>
             )}

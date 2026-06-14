@@ -46,6 +46,10 @@ class RichiestaAutorizzazioneSpesa(Base):
     motivazione_rigetto = Column(Text, nullable=True)
     impegno_id = Column(UUID(as_uuid=True), ForeignKey("impegno.id"), nullable=True)
     pdf_path = Column(String(500), nullable=True)
+    data_invio = Column(DateTime(timezone=True), nullable=True)
+    data_approvazione_rs = Column(DateTime(timezone=True), nullable=True)
+    data_approvazione_dir_dip = Column(DateTime(timezone=True), nullable=True)
+    data_approvazione_dg = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

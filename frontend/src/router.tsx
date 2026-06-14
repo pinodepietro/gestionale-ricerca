@@ -53,6 +53,7 @@ export const router = createBrowserRouter([
       { path: 'autorizzazioni', element: <AutorizzazioniPage /> },
       { path: 'autorizzazioni/nuova', element: <AutorizzazioneFormPage /> },
       { path: 'autorizzazioni/:id', element: <AutorizzazioneDettaglioPage /> },
+      { path: 'autorizzazioni/:id/modifica', element: <AutorizzazioneFormPage /> },
     ],
   },
 ]);

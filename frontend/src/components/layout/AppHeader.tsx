@@ -69,7 +69,7 @@ export function AppHeader() {
     queryFn: () => apiClient.get<{ data: Notifica[]; meta: { totale: number } }>('/notifiche')
       .then(r => r.data),
     refetchInterval: 60000,
-    enabled: !!user && ['ricercatore', 'amministrativo', 'management', 'superadmin'].includes(user.ruolo),
+    enabled: !!user && ['ricercatore', 'amministrativo', 'management', 'superadmin', 'direttore_generale'].includes(user.ruolo),
   });
 
   const totaleNotifiche = notifiche?.meta?.totale ?? 0;

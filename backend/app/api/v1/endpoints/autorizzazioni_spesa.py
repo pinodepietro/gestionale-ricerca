@@ -1,6 +1,6 @@
 # backend/app/api/v1/endpoints/autorizzazioni_spesa.py
 import uuid as _uuid
-from datetime import date
+from datetime import date, datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
@@ -26,9 +26,15 @@ STATI_VALIDI = {
 
 # ── Serializzazione ───────────────────────────────────────────────────────────
 
-def _ras_dict(r: RichiestaAutorizzazioneSpesa) -> dict:
+def _ras_dict(r: RichiestaAutorizzazioneSpesa, db: Session) -> dict:
+    amministrativo_id = _persona_ammin(r, db)
+    pi_id = _persona_pi(r, db)
+    direttore_dip_id = _persona_dir_dip(r, db)
     return {
         "id": str(r.id),
+        "amministrativo_id": str(amministrativo_id) if amministrativo_id else None,
+        "pi_id": str(pi_id) if pi_id else None,
+        "direttore_dipartimento_id": str(direttore_dip_id) if direttore_dip_id else None,
         "tipo": r.tipo,
         "progetto_id": str(r.progetto_id) if r.progetto_id else None,
         "progetto_titolo": r.progetto.titolo if r.progetto else None,
@@ -101,7 +107,7 @@ def lista_autorizzazioni(
     total = q.count()
     items = q.order_by(RichiestaAutorizzazioneSpesa.created_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
     return {
-        "data": [_ras_dict(r) for r in items],
+        "data": [_ras_dict(r, db) for r in items],
         "meta": {"total": total, "page": page, "page_size": page_size,
                  "total_pages": math.ceil(total / page_size) if page_size else 1},
     }
@@ -109,7 +115,7 @@ def lista_autorizzazioni(
 
 @router.get("/autorizzazioni-spesa/{id}")
 def get_autorizzazione(id: str, db: Session = Depends(get_db), utente: Persona = Depends(tutti_i_ruoli)):
-    return {"data": _ras_dict(_get_or_404(id, db))}
+    return {"data": _ras_dict(_get_or_404(id, db), db)}
 
 
 @router.post("/autorizzazioni-spesa")
@@ -167,7 +173,7 @@ def crea_autorizzazione(
     db.add(r)
     db.commit()
     db.refresh(r)
-    return {"data": _ras_dict(r)}
+    return {"data": _ras_dict(r, db)}
 
 
 @router.patch("/autorizzazioni-spesa/{id}")
@@ -196,7 +202,7 @@ def aggiorna_autorizzazione(
 
     db.commit()
     db.refresh(r)
-    return {"data": _ras_dict(r)}
+    return {"data": _ras_dict(r, db)}
 
 
 @router.delete("/autorizzazioni-spesa/{id}")
@@ -321,6 +327,7 @@ def invia(id: str, db: Session = Depends(get_db), utente: Persona = Depends(tutt
         raise HTTPException(status_code=422, detail={"error": {"code": "ALLEGATO_MANCANTE", "message": "Per la voce g è obbligatorio allegare il Modulo Richiesta Incentivazione Personale Docente"}})
     # Stato successivo dipende dal tipo
     r.stato = "attesa_ammin" if r.tipo == "progetto" else "attesa_dir_dip"
+    r.data_invio = datetime.now(timezone.utc)
 
     # Notifica al primo approvatore
     if r.tipo == "progetto":
@@ -336,7 +343,7 @@ def invia(id: str, db: Session = Depends(get_db), utente: Persona = Depends(tutt
 
     db.commit()
     db.refresh(r)
-    return {"data": _ras_dict(r)}
+    return {"data": _ras_dict(r, db)}
 
 
 @router.post("/autorizzazioni-spesa/{id}/approva-ammin")
@@ -389,7 +396,7 @@ def approva_ammin(
 
     db.commit()
     db.refresh(r)
-    return {"data": _ras_dict(r)}
+    return {"data": _ras_dict(r, db)}
 
 
 @router.post("/autorizzazioni-spesa/{id}/approva-rs")
@@ -407,6 +414,7 @@ def approva_rs(id: str, db: Session = Depends(get_db), utente: Persona = Depends
         raise HTTPException(status_code=403, detail={"error": {"code": "FORBIDDEN", "message": "Solo il Responsabile Scientifico (PI) del progetto può approvare in questo step"}})
 
     r.stato = "attesa_dir_dip"
+    r.data_approvazione_rs = datetime.now(timezone.utc)
 
     dest = _persona_dir_dip(r, db)
     if dest:
@@ -416,7 +424,7 @@ def approva_rs(id: str, db: Session = Depends(get_db), utente: Persona = Depends
 
     db.commit()
     db.refresh(r)
-    return {"data": _ras_dict(r)}
+    return {"data": _ras_dict(r, db)}
 
 
 @router.post("/autorizzazioni-spesa/{id}/approva-dir-dip")
@@ -430,6 +438,7 @@ def approva_dir_dip(id: str, db: Session = Depends(get_db), utente: Persona = De
         raise HTTPException(status_code=403, detail={"error": {"code": "FORBIDDEN", "message": "Solo il Direttore di Dipartimento può approvare in questo step"}})
 
     r.stato = "attesa_dg"
+    r.data_approvazione_dir_dip = datetime.now(timezone.utc)
 
     dest = _persona_dg(db)
     if dest:
@@ -439,7 +448,7 @@ def approva_dir_dip(id: str, db: Session = Depends(get_db), utente: Persona = De
 
     db.commit()
     db.refresh(r)
-    return {"data": _ras_dict(r)}
+    return {"data": _ras_dict(r, db)}
 
 
 @router.post("/autorizzazioni-spesa/{id}/approva-dg")
@@ -470,6 +479,7 @@ def approva_dg(
             r.impegno_id = impegno.id
 
     r.stato = "approvata"
+    r.data_approvazione_dg = datetime.now(timezone.utc)
 
     # Notifica al richiedente
     _notifica_step(db, r, r.richiedente_id,
@@ -480,14 +490,14 @@ def approva_dg(
     try:
         from app.services.pdf_autorizzazione import genera_pdf_autorizzazione
         output_dir = os.path.join(settings.UPLOAD_DIR, "autorizzazioni", str(r.id))
-        pdf_path = genera_pdf_autorizzazione(r, output_dir)
+        pdf_path = genera_pdf_autorizzazione(r, db, output_dir)
         r.pdf_path = pdf_path
     except Exception as e:
         pass  # Il PDF è non bloccante — la richiesta è approvata comunque
 
     db.commit()
     db.refresh(r)
-    return {"data": _ras_dict(r)}
+    return {"data": _ras_dict(r, db)}
 
 
 @router.post("/autorizzazioni-spesa/{id}/rigetta")
@@ -500,6 +510,22 @@ def rigetta(
     r = _get_or_404(id, db)
     if r.stato in ("bozza", "approvata", "rigettata"):
         raise HTTPException(status_code=409, detail={"error": {"code": "TRANSIZIONE_NON_VALIDA", "message": "Impossibile rigettare in questo stato"}})
+
+    if r.stato == "attesa_dg":
+        # Lo step del Direttore Generale non ammette override del superadmin
+        if utente.ruolo != "direttore_generale":
+            raise HTTPException(status_code=403, detail={"error": {"code": "FORBIDDEN", "message": "Solo il Direttore Generale può rigettare in questo step"}})
+    elif utente.ruolo != "superadmin":
+        if r.stato == "attesa_ammin":
+            autorizzato = str(_persona_ammin(r, db)) == str(utente.id)
+        elif r.stato == "attesa_rs":
+            autorizzato = str(_persona_pi(r, db)) == str(utente.id)
+        elif r.stato == "attesa_dir_dip":
+            autorizzato = str(_persona_dir_dip(r, db)) == str(utente.id)
+        else:
+            autorizzato = False
+        if not autorizzato:
+            raise HTTPException(status_code=403, detail={"error": {"code": "FORBIDDEN", "message": "Non sei l'approvatore di questo step e non puoi rigettare la richiesta"}})
 
     motivazione = body.get("motivazione", "").strip()
     if not motivazione:
@@ -514,7 +540,7 @@ def rigetta(
 
     db.commit()
     db.refresh(r)
-    return {"data": _ras_dict(r)}
+    return {"data": _ras_dict(r, db)}
 
 
 @router.post("/autorizzazioni-spesa/{id}/riapri")
@@ -530,7 +556,7 @@ def riapri(id: str, db: Session = Depends(get_db), utente: Persona = Depends(tut
     r.budget_voce_id = None  # L'admin dovrà riselezionare
     db.commit()
     db.refresh(r)
-    return {"data": _ras_dict(r)}
+    return {"data": _ras_dict(r, db)}
 
 
 # ── Endpoint di supporto ──────────────────────────────────────────────────────

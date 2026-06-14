@@ -37,19 +37,19 @@ export function AutorizzazioniPage() {
 
   const colonne = [
     {
-      title: 'Data', dataIndex: 'created_at', width: 100,
-      render: (v: string) => formatData(v),
+      title: 'Data', dataIndex: 'created_at', width: 110,
+      render: (v: string) => <span style={{ whiteSpace: 'nowrap' }}>{formatData(v)}</span>,
     },
     {
-      title: 'Richiedente', dataIndex: 'richiedente_nome', width: 160, ellipsis: true,
+      title: 'Richiedente', dataIndex: 'richiedente_nome', width: 160,
     },
     {
-      title: 'Progetto / Tipo', width: 200, ellipsis: true,
+      title: 'Progetto / Tipo', width: 200,
       render: (_: unknown, r: AutorizzazioneSpesa) =>
         r.progetto_titolo ?? <em style={{ color: '#999' }}>Fondi individuali</em>,
     },
     {
-      title: 'Oggetto', dataIndex: 'oggetto', ellipsis: true,
+      title: 'Oggetto', dataIndex: 'oggetto',
     },
     {
       title: 'Importo', dataIndex: 'importo', width: 120, align: 'right' as const,

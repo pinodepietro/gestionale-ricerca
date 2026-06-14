@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import {
   Form, Input, InputNumber, DatePicker, Button, Typography, Row, Col,
   Select, Radio, Upload, Alert, Space, Divider, message,
@@ -9,7 +9,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { autorizzazioniApi, dipartimentiApi } from '../../api/autorizzazioni';
 import { progettiApi } from '../../api/progetti';
+import { personaleApi } from '../../api/personale';
 import { useAuthStore } from '../../store/useAuthStore';
+import type { Allocazione } from '../../types/personale';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -72,6 +74,8 @@ const parseEuro = (v: string | undefined) =>
   parseFloat((v || '').replace(/\./g, '').replace(',', '.')) || 0;
 
 export function AutorizzazioneFormPage() {
+  const { id } = useParams<{ id: string }>();
+  const isEdit = !!id;
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const user = useAuthStore(s => s.user);
@@ -93,6 +97,28 @@ export function AutorizzazioneFormPage() {
     queryFn: () => dipartimentiApi.list().then(r => r.data.data),
   });
 
+  const { data: esistente, isLoading: caricamentoEsistente } = useQuery({
+    queryKey: ['autorizzazione', id],
+    queryFn: () => autorizzazioniApi.get(id!).then(r => r.data.data),
+    enabled: isEdit,
+  });
+
+  // Precarica il form con i dati della bozza in modifica
+  useEffect(() => {
+    if (esistente) {
+      setTipo(esistente.tipo);
+      setMacro(esistente.macrocategoria);
+      setVoce(esistente.voce_lettera);
+      setProgettoId(esistente.progetto_id);
+      form.setFieldsValue({
+        ...esistente,
+        durata_da: esistente.durata_da ? dayjs(esistente.durata_da) : undefined,
+        durata_a: esistente.durata_a ? dayjs(esistente.durata_a) : undefined,
+        anticipazione_spesa: esistente.anticipazione_spesa ? 'si' : 'no',
+      });
+    }
+  }, [esistente, form]);
+
   // Quando si seleziona il progetto, auto-imposta il dipartimento
   const progetto = (progetti as { id: string; titolo: string; acronimo?: string; cup?: string; dipartimento_id?: string }[] | undefined)
     ?.find(p => p.id === progettoId);
@@ -103,6 +129,41 @@ export function AutorizzazioneFormPage() {
     }
   }, [progetto, form]);
 
+  // Pre-compila "In qualità di" e "A tempo" dal "Ruolo nell'ente" della scheda personale
+  const { data: personaCorrente } = useQuery({
+    queryKey: ['persona', user?.id],
+    queryFn: () => personaleApi.get(user!.id).then(r => r.data.data),
+    enabled: !!user?.id && !isEdit,
+  });
+
+  useEffect(() => {
+    if (!personaCorrente) return;
+    const re = (personaCorrente.ruolo_ente || '').toLowerCase();
+    if (re.includes('ordinario')) form.setFieldValue('qualita_richiedente', 'professore_ordinario');
+    else if (re.includes('associato')) form.setFieldValue('qualita_richiedente', 'professore_associato');
+    else if (re.includes('ricercatore') || re.includes('rtd')) form.setFieldValue('qualita_richiedente', 'ricercatore');
+
+    if (re.includes('definito')) form.setFieldValue('tipo_contratto', 'definito');
+    else if (re.includes('pieno')) form.setFieldValue('tipo_contratto', 'pieno');
+  }, [personaCorrente, form]);
+
+  // Pre-compila "In qualità di (nel progetto)" in base all'allocazione (PI o componente)
+  const { data: allocazioniProgetto } = useQuery({
+    queryKey: ['allocazioni', progettoId],
+    queryFn: () => personaleApi.allocazioni.list(progettoId!).then(r => r.data.data),
+    enabled: !!progettoId && tipo === 'progetto' && !isEdit,
+  });
+
+  useEffect(() => {
+    if (!allocazioniProgetto) return;
+    const mia = (allocazioniProgetto as Allocazione[]).find(a => a.persona_id === user?.id);
+    if (mia) {
+      form.setFieldValue('qualita_progetto', mia.is_pi
+        ? 'Responsabile Scientifico del Progetto'
+        : 'Componente del Gruppo di Ricerca');
+    }
+  }, [allocazioniProgetto, user, form]);
+
   const { mutate: salva, isPending } = useMutation({
     mutationFn: async (values: Record<string, unknown>) => {
       const payload = {
@@ -112,7 +173,9 @@ export function AutorizzazioneFormPage() {
         durata_a: values.durata_a ? (values.durata_a as dayjs.Dayjs).format('YYYY-MM-DD') : undefined,
         anticipazione_spesa: values.anticipazione_spesa === 'si',
       };
-      const resp = await autorizzazioniApi.create(payload).then(r => r.data.data);
+      const resp = isEdit
+        ? await autorizzazioniApi.update(id!, payload).then(r => r.data.data)
+        : await autorizzazioniApi.create(payload).then(r => r.data.data);
       // Upload allegati
       if (allegatoG) await autorizzazioniApi.uploadAllegatoG(resp.id, allegatoG);
       if (allegatoPreventivo) await autorizzazioniApi.uploadPreventivo(resp.id, allegatoPreventivo);
@@ -120,7 +183,8 @@ export function AutorizzazioneFormPage() {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['autorizzazioni'] });
-      message.success('Richiesta creata. Ora puoi inviarla per approvazione.');
+      queryClient.invalidateQueries({ queryKey: ['autorizzazione', id] });
+      message.success(isEdit ? 'Modifiche salvate.' : 'Richiesta creata. Ora puoi inviarla per approvazione.');
       navigate(`/autorizzazioni/${data.id}`);
     },
     onError: (e: unknown) => {
@@ -130,6 +194,8 @@ export function AutorizzazioneFormPage() {
     },
   });
 
+  if (isEdit && caricamentoEsistente) return null;
+
   const sezione = voce ? (SEZIONE1.has(voce) ? 1 : SEZIONE2.has(voce) ? 2 : voce === 'g' ? 3 : null) : null;
 
   return (
@@ -137,15 +203,15 @@ export function AutorizzazioneFormPage() {
       <Row justify="space-between" align="middle" style={{ marginBottom: 24 }}>
         <Col>
           <Space align="center">
-            <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/autorizzazioni')}>Indietro</Button>
-            <Title level={3} style={{ margin: 0 }}>Nuova richiesta autorizzazione spesa</Title>
+            <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(isEdit ? `/autorizzazioni/${id}` : '/autorizzazioni')}>Indietro</Button>
+            <Title level={3} style={{ margin: 0 }}>{isEdit ? 'Modifica richiesta autorizzazione spesa' : 'Nuova richiesta autorizzazione spesa'}</Title>
           </Space>
         </Col>
         <Col>
           <Space>
-            <Button onClick={() => navigate('/autorizzazioni')}>Annulla</Button>
+            <Button onClick={() => navigate(isEdit ? `/autorizzazioni/${id}` : '/autorizzazioni')}>Annulla</Button>
             <Button type="primary" icon={<SaveOutlined />} loading={isPending} onClick={() => form.submit()}>
-              Salva in bozza
+              {isEdit ? 'Salva modifiche' : 'Salva in bozza'}
             </Button>
           </Space>
         </Col>
@@ -156,10 +222,14 @@ export function AutorizzazioneFormPage() {
         {/* ── Tipo richiesta ── */}
         <div style={{ background: '#fff', padding: 24, borderRadius: 8, marginBottom: 16 }}>
           <Text strong style={{ fontSize: 15, display: 'block', marginBottom: 16 }}>Tipo di richiesta</Text>
-          <Radio.Group value={tipo} onChange={e => { setTipo(e.target.value); form.resetFields(['progetto_id', 'dipartimento_id']); }}>
+          <Radio.Group
+            value={tipo} disabled={isEdit}
+            onChange={e => { setTipo(e.target.value); form.resetFields(['progetto_id', 'dipartimento_id']); }}
+          >
             <Radio value="progetto">Su progetto di ricerca</Radio>
             <Radio value="fondi_individuali">Su fondi individuali</Radio>
           </Radio.Group>
+          {isEdit && <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 8 }}>Tipo, progetto e dipartimento non sono modificabili: elimina la bozza e creane una nuova per cambiarli.</Text>}
         </div>
 
         {/* ── Dati richiedente ── */}
@@ -197,11 +267,12 @@ export function AutorizzazioneFormPage() {
               <Form.Item name="progetto_id" label="Progetto" rules={[{ required: true, message: 'Seleziona il progetto' }]}>
                 <Select
                   showSearch
+                  disabled={isEdit}
                   placeholder="Seleziona progetto..."
                   filterOption={(input, opt) => (opt?.label as string)?.toLowerCase().includes(input.toLowerCase())}
                   options={(progetti as { id: string; titolo: string; acronimo?: string }[] | undefined)
                     ?.map(p => ({ value: p.id, label: `[${p.acronimo || '—'}] ${p.titolo}` })) ?? []}
-                  onChange={id => setProgettoId(id as string)}
+                  onChange={progettoId => setProgettoId(progettoId as string)}
                 />
               </Form.Item>
               <Form.Item name="qualita_progetto" label="In qualità di (nel progetto)">
@@ -221,7 +292,7 @@ export function AutorizzazioneFormPage() {
           >
             <Select
               placeholder="Seleziona dipartimento"
-              disabled={tipo === 'progetto' && !!progetto?.dipartimento_id}
+              disabled={isEdit || (tipo === 'progetto' && !!progetto?.dipartimento_id)}
               options={(dipartimenti as { id: string; nome: string }[] | undefined)
                 ?.map(d => ({ value: d.id, label: d.nome })) ?? []}
             />
@@ -312,6 +383,9 @@ export function AutorizzazioneFormPage() {
             {/* Allegato voce g */}
             {voce === 'g' && (
               <Form.Item label="Modulo Incentivazione Personale Docente (obbligatorio)">
+                {isEdit && esistente?.ha_allegato_g && !allegatoG && (
+                  <Text type="success" style={{ display: 'block', marginBottom: 8 }}>✓ Documento già allegato — seleziona un file per sostituirlo</Text>
+                )}
                 <Upload
                   maxCount={1} beforeUpload={f => { setAllegatoG(f); return false; }}
                   onRemove={() => setAllegatoG(null)}
@@ -325,6 +399,9 @@ export function AutorizzazioneFormPage() {
             {/* Allegato preventivo opzionale per sezione 2 */}
             {sezione === 2 && (
               <Form.Item label="Preventivo (opzionale)">
+                {isEdit && esistente?.ha_allegato_preventivo && !allegatoPreventivo && (
+                  <Text type="success" style={{ display: 'block', marginBottom: 8 }}>✓ Preventivo già allegato — seleziona un file per sostituirlo</Text>
+                )}
                 <Upload
                   maxCount={1} beforeUpload={f => { setAllegatoPreventivo(f); return false; }}
                   onRemove={() => setAllegatoPreventivo(null)}

@@ -10,6 +10,9 @@ export interface Dipartimento {
 
 export interface AutorizzazioneSpesa {
   id: string;
+  amministrativo_id?: string;
+  pi_id?: string;
+  direttore_dipartimento_id?: string;
   tipo: 'progetto' | 'fondi_individuali';
   progetto_id?: string;
   progetto_titolo?: string;
@@ -88,8 +91,6 @@ export const autorizzazioniApi = {
     fd.append('file', file);
     return apiClient.post(`/autorizzazioni-spesa/${id}/allegato-preventivo`, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
   },
-
-  pdfUrl: (id: string) => `/api/v1/autorizzazioni-spesa/${id}/pdf`,
 
   budgetVociDisponibili: (id: string) =>
     apiClient.get<ApiResponse<BudgetVoceDisponibile[]>>(`/autorizzazioni-spesa/${id}/budget-voci-disponibili`),

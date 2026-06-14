@@ -320,6 +320,7 @@ export function PersonaPage() {
                   { value: 'ricercatore', label: 'Ricercatore' },
                   { value: 'management', label: 'Management' },
                   { value: 'monitor', label: 'Monitor' },
+                  { value: 'direttore_generale', label: 'Direttore Generale' },
                   { value: 'superadmin', label: 'Super Admin' },
                 ]} />
               </Form.Item>

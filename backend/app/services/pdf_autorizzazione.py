@@ -1,43 +1,55 @@
 # backend/app/services/pdf_autorizzazione.py
 import os
-from datetime import date
+from sqlalchemy.orm import Session
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable, Image
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 
-MACROCATEGORIE = {
+LOGO_PATH = os.path.join(os.path.dirname(__file__), "..", "assets", "logo_pegaso.png")
+
+MACRO_TITOLI = {
     "personale": "MACROCATEGORIA PERSONALE",
     "spese_generali": "MACROCATEGORIA SPESE GENERALI",
     "consulenze_servizi": "MACROCATEGORIA ACQUISIZIONE DI CONSULENZE E/O SERVIZI",
     "strumentazioni": "MACROCATEGORIA STRUMENTAZIONI E ATTREZZATURE",
 }
 
-VOCI_DESCRIZIONE = {
-    "a": "a) Contratti di Ricerca",
-    "b": "b) RTDA",
-    "c": "c) RTD o forme analoghe",
-    "d": "d) Assegni di ricerca",
-    "e": "e) Borse di ricerca",
-    "f": "f) Co.Co.Co/Co.Co.Pro",
-    "g": "g) Incentivazione Personale Docente",
-    "h": "h) Altro",
-    "i": "i) Consulenze",
-    "j": "j) Prestazioni Professionali",
-    "k": "k) Contratti di edizione per articoli e libri (Pubblicazioni)",
-    "l": "l) Materiali di consumo",
-    "m": "m) Altro",
-    "n": "n) Consulenze",
-    "o": "o) Prestazioni Professionali",
-    "p": "p) Altro",
-    "q": "q) PC",
-    "r": "r) Software",
-    "s": "s) Server",
-    "t": "t) Arredi",
-    "u": "u) Altro",
+MACRO_VOCI = {
+    "personale": ["a", "b", "c", "d", "e", "f", "g", "h"],
+    "spese_generali": ["i", "j", "k", "l", "m"],
+    "consulenze_servizi": ["n", "o", "p"],
+    "strumentazioni": ["q", "r", "s", "t", "u"],
 }
+
+VOCI_LABEL = {
+    "a": "Contratti di Ricerca",
+    "b": "RTDA",
+    "c": "RTD o forme analoghe",
+    "d": "Assegni di ricerca",
+    "e": "Borse di ricerca",
+    "f": "Co.Co.Co/Co.Co.Pro",
+    "g": "Incentivazione Personale Docente",
+    "h": "Altro",
+    "i": "Consulenze",
+    "j": "Prestazioni Professionali",
+    "k": "Contratti di edizione per articoli e libri, validi ai fini VQR (Pubblicazioni, libri, monografie, etc.)",
+    "l": "Materiali di consumo",
+    "m": "Altro",
+    "n": "Consulenze",
+    "o": "Prestazioni Professionali",
+    "p": "Altro",
+    "q": "PC",
+    "r": "Software",
+    "s": "Server",
+    "t": "Arredi",
+    "u": "Altro",
+}
+
+# Voci "Altro" che ammettono una specifica testuale
+VOCI_ALTRO = {"h", "m", "p", "u"}
 
 QUALITA_LABEL = {
     "professore_ordinario": "Professore Ordinario",
@@ -49,17 +61,43 @@ SEZIONE1_VOCI = set("abcdefhijknop")
 SEZIONE2_VOCI = set("lmqrstu")
 
 
-def _campo(label: str, valore: str, styles) -> list:
-    """Riga campo con label grassetto e valore."""
-    return [
-        Paragraph(f"<b>{label}:</b> {valore or '—'}", styles["Normal"]),
-        Spacer(1, 2 * mm),
-    ]
+def _euro(value) -> str:
+    if value is None:
+        return "—"
+    testo = f"{float(value):,.2f}"
+    return testo.replace(",", "X").replace(".", ",").replace("X", ".") + " €"
 
 
-def genera_pdf_autorizzazione(richiesta, output_dir: str) -> str:
+def _data(dt) -> str:
+    if not dt:
+        return "—"
+    return dt.strftime("%d/%m/%Y")
+
+
+def _checkbox(selezionato: bool) -> str:
+    return "[X]" if selezionato else "[ ]"
+
+
+def _persona_pi(richiesta, db: Session):
+    from app.models.personale import Allocazione
+    alloc = db.query(Allocazione).filter(
+        Allocazione.progetto_id == richiesta.progetto_id, Allocazione.is_pi == True).first()
+    return alloc.persona if alloc else None
+
+
+def _persona_dg(db: Session):
+    from app.models.persona import Persona
+    return db.query(Persona).filter(Persona.ruolo == "direttore_generale", Persona.attivo == True).first()
+
+
+def _nome_persona(persona) -> str:
+    return f"{persona.cognome} {persona.nome}" if persona else "—"
+
+
+def genera_pdf_autorizzazione(richiesta, db: Session, output_dir: str) -> str:
     """
-    Genera il PDF del Modulo Richiesta Autorizzazione alla Spesa.
+    Genera il PDF del Modulo Richiesta Autorizzazione alla Spesa (Allegato E0),
+    compilato con i dati della richiesta e le date di approvazione del flusso di firme.
     Restituisce il path del file generato.
     """
     os.makedirs(output_dir, exist_ok=True)
@@ -74,79 +112,72 @@ def genera_pdf_autorizzazione(richiesta, output_dir: str) -> str:
     )
 
     styles = getSampleStyleSheet()
-    stile_titolo = ParagraphStyle("Titolo", parent=styles["Heading1"], fontSize=13,
-                                  alignment=TA_CENTER, spaceAfter=6)
-    stile_sezione = ParagraphStyle("Sezione", parent=styles["Heading2"], fontSize=10,
-                                   spaceBefore=8, spaceAfter=4, textColor=colors.HexColor("#1a3d6e"))
-    stile_normale = ParagraphStyle("Normale", parent=styles["Normal"], fontSize=9, leading=13)
-    stile_firma = ParagraphStyle("Firma", parent=styles["Normal"], fontSize=9,
-                                 alignment=TA_RIGHT, spaceBefore=8)
-    stile_piccolo = ParagraphStyle("Piccolo", parent=styles["Normal"], fontSize=8,
-                                   textColor=colors.grey)
-    styles.add(stile_titolo, "TitoloDoc")
-    styles.add(stile_normale, "Normale")
+    stile_titolo = ParagraphStyle("TitoloDoc", parent=styles["Heading1"], fontSize=13,
+                                   alignment=TA_CENTER, spaceAfter=6)
+    stile_sezione = ParagraphStyle("SezioneDoc", parent=styles["Heading2"], fontSize=10,
+                                    spaceBefore=8, spaceAfter=4, textColor=colors.HexColor("#1a3d6e"))
+    stile_normale = ParagraphStyle("NormaleDoc", parent=styles["Normal"], fontSize=9, leading=13)
+    stile_dest = ParagraphStyle("DestDoc", parent=styles["Normal"], fontSize=9,
+                                 alignment=TA_RIGHT, leading=13)
+    stile_check = ParagraphStyle("CheckDoc", parent=styles["Normal"], fontSize=9, leading=13,
+                                  leftIndent=8 * mm)
+    stile_piccolo = ParagraphStyle("PiccoloDoc", parent=styles["Normal"], fontSize=8)
 
     story = []
 
     # ── Intestazione ──────────────────────────────────────────────────────────
-    story.append(Paragraph("Università Telematica Pegaso", stile_titolo))
+    if os.path.exists(LOGO_PATH):
+        img = Image(LOGO_PATH, width=40 * mm, height=40 * mm * 148 / 374)
+        img.hAlign = "CENTER"
+        story.append(img)
+        story.append(Spacer(1, 2 * mm))
+
+    story.append(Paragraph("Richiesta Prot. n. _______________ del _______________", stile_piccolo))
+    story.append(Spacer(1, 2 * mm))
     story.append(Paragraph("<u><b>MODULO RICHIESTA AUTORIZZAZIONE ALLA SPESA</b></u>", stile_titolo))
-    story.append(Spacer(1, 4 * mm))
-    story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor("#1a3d6e")))
     story.append(Spacer(1, 3 * mm))
 
-    # Destinatari
+    # ── Destinatari ───────────────────────────────────────────────────────────
     dip_nome = richiesta.dipartimento.nome if richiesta.dipartimento else "—"
-    dir_dip = f"{richiesta.dipartimento.direttore.cognome} {richiesta.dipartimento.direttore.nome}" \
-        if richiesta.dipartimento and richiesta.dipartimento.direttore else "—"
-    rs_nome = "—"
-    if richiesta.progetto:
-        from app.models.personale import Allocazione
-        from app.models.persona import Persona as P
-        # Non possiamo fare query qui, usiamo il dato serializzato
-        pass
+    dir_dip_persona = richiesta.dipartimento.direttore if richiesta.dipartimento else None
+    dir_dip_nome = _nome_persona(dir_dip_persona)
 
-    dest_data = [
-        ["A:", f"Direttore del Dipartimento di {dip_nome}, Prof. {dir_dip}"],
-        ["", "Responsabile Scientifico del Progetto"],
-        ["", "Direttore Generale dell'Università Telematica Pegaso"],
-        ["", "Magnifico Rettore dell'Università Telematica Pegaso"],
-        ["", "Ufficio Ricerca (ufficio.ricerca@unipegaso.it)"],
-    ]
-    dest_table = Table(dest_data, colWidths=[15 * mm, None])
-    dest_table.setStyle(TableStyle([
-        ("FONTSIZE", (0, 0), (-1, -1), 8),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
-    ]))
-    story.append(dest_table)
+    pi_persona = _persona_pi(richiesta, db) if richiesta.progetto_id else None
+    dg_persona = _persona_dg(db)
+
+    story.append(Paragraph(f"A:<br/>Direttore del Dipartimento di {dip_nome}, Prof. {dir_dip_nome};", stile_dest))
+    if richiesta.tipo == "progetto":
+        story.append(Paragraph(f"Responsabile Scientifico, Prof. {_nome_persona(pi_persona)};", stile_dest))
+    story.append(Paragraph("Direttore Generale dell'Università Telematica Pegaso;", stile_dest))
+    story.append(Paragraph("Magnifico Rettore dell'Università Telematica Pegaso;", stile_dest))
+    story.append(Paragraph("Ufficio Ricerca dell'Università Telematica Pegaso (ufficio.ricerca@unipegaso.it);", stile_dest))
+    story.append(Spacer(1, 2 * mm))
+    story.append(Paragraph("SEDE: Centro Direzionale isola F2, SNC — 80143, Napoli", stile_dest))
     story.append(Spacer(1, 4 * mm))
     story.append(HRFlowable(width="100%", thickness=0.5, color=colors.lightgrey))
     story.append(Spacer(1, 3 * mm))
 
     # ── Richiedente ───────────────────────────────────────────────────────────
-    story.append(Paragraph("<b>DATI DEL RICHIEDENTE</b>", stile_sezione))
     richiedente = richiesta.richiedente
-    nome_richiedente = f"{richiedente.cognome} {richiedente.nome}" if richiedente else "—"
+    nome_richiedente = _nome_persona(richiedente)
     qualita = QUALITA_LABEL.get(richiesta.qualita_richiedente, richiesta.qualita_richiedente)
-    contratto = "Pieno" if richiesta.tipo_contratto == "pieno" else "Definito"
 
-    dati_rich = [
-        ["Il sottoscritto:", nome_richiedente, "In qualità di:", qualita],
-        ["A tempo:", contratto, "", ""],
-    ]
-    t = Table(dati_rich, colWidths=[35 * mm, 70 * mm, 30 * mm, None])
-    t.setStyle(TableStyle([
-        ("FONTSIZE", (0, 0), (-1, -1), 9),
-        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
-        ("FONTNAME", (2, 0), (2, 0), "Helvetica-Bold"),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-    ]))
-    story.append(t)
+    story.append(Paragraph(f"<b>Il/La sottoscritto/a:</b> {nome_richiedente}", stile_normale))
+    story.append(Spacer(1, 1 * mm))
+
+    qualifica_riga = "   ".join(
+        f"{_checkbox(richiesta.qualita_richiedente == k)} {v}" for k, v in QUALITA_LABEL.items()
+    )
+    story.append(Paragraph(f"<b>In qualità di:</b> {qualifica_riga}", stile_check))
+
+    tempo_riga = "   ".join([
+        f"{_checkbox(richiesta.tipo_contratto == 'pieno')} Pieno",
+        f"{_checkbox(richiesta.tipo_contratto == 'definito')} Definito",
+    ])
+    story.append(Paragraph(f"<b>A tempo:</b> {tempo_riga}", stile_check))
     story.append(Spacer(1, 3 * mm))
 
-    # ── Progetto ──────────────────────────────────────────────────────────────
-    story.append(Paragraph("<b>DATI DEL PROGETTO</b>", stile_sezione))
+    # ── Progetto / Fondi individuali ─────────────────────────────────────────
     if richiesta.progetto:
         p = richiesta.progetto
         dati_prog = [
@@ -156,43 +187,50 @@ def genera_pdf_autorizzazione(richiesta, output_dir: str) -> str:
             ["In qualità di:", richiesta.qualita_progetto or "—"],
         ]
     else:
-        dati_prog = [["Tipo richiesta:", "Fondi individuali"]]
+        dati_prog = [["Fondo per la Ricerca Individuale del Prof.:", nome_richiedente]]
 
-    t2 = Table(dati_prog, colWidths=[35 * mm, None])
-    t2.setStyle(TableStyle([
+    t_prog = Table(dati_prog, colWidths=[55 * mm, None])
+    t_prog.setStyle(TableStyle([
         ("FONTSIZE", (0, 0), (-1, -1), 9),
         ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
     ]))
-    story.append(t2)
+    story.append(t_prog)
+    story.append(Spacer(1, 4 * mm))
+    story.append(HRFlowable(width="100%", thickness=0.5, color=colors.lightgrey))
     story.append(Spacer(1, 3 * mm))
 
-    # ── Tipo di spesa ─────────────────────────────────────────────────────────
-    story.append(HRFlowable(width="100%", thickness=0.5, color=colors.lightgrey))
+    # ── Macrocategorie / voce di costo ───────────────────────────────────────
     story.append(Paragraph("<b>CHIEDE AUTORIZZAZIONE A EFFETTUARE LA SEGUENTE SPESA</b>", stile_sezione))
 
-    macro_label = MACROCATEGORIE.get(richiesta.macrocategoria, richiesta.macrocategoria)
-    voce_label = VOCI_DESCRIZIONE.get(richiesta.voce_lettera, richiesta.voce_lettera)
-    if richiesta.voce_altro:
-        voce_label += f": {richiesta.voce_altro}"
+    for macro_key, voci in MACRO_VOCI.items():
+        story.append(Paragraph(f"<b>{MACRO_TITOLI[macro_key]}:</b>", stile_normale))
+        for v in voci:
+            selezionata = (richiesta.macrocategoria == macro_key and richiesta.voce_lettera == v)
+            etichetta = f"{v}) {VOCI_LABEL[v]}"
+            if selezionata and v in VOCI_ALTRO and richiesta.voce_altro:
+                etichetta += f": {richiesta.voce_altro}"
+            stile_riga = stile_check
+            if selezionata:
+                etichetta = f"<b>{etichetta}</b>"
+            story.append(Paragraph(f"{_checkbox(selezionata)} {etichetta}", stile_riga))
+        story.append(Spacer(1, 2 * mm))
 
-    story.append(Paragraph(f"<b>{macro_label}:</b> {voce_label}", stile_normale))
-    story.append(Spacer(1, 4 * mm))
+    story.append(HRFlowable(width="100%", thickness=0.5, color=colors.lightgrey))
+    story.append(Spacer(1, 3 * mm))
 
-    # ── Dettagli spesa ────────────────────────────────────────────────────────
+    # ── Dettagli della spesa (Sezione 1 / Sezione 2) ─────────────────────────
     voce = richiesta.voce_lettera
     if voce in SEZIONE1_VOCI:
         story.append(Paragraph("<b>Sezione 1 — Dettagli della richiesta</b>", stile_sezione))
         dati_sp = [
             ["Oggetto:", richiesta.oggetto],
             ["Descrizione:", richiesta.descrizione],
-            ["Importo:", f"€ {float(richiesta.importo):,.2f}"],
+            ["Importo:", _euro(richiesta.importo)],
         ]
         if richiesta.durata_da or richiesta.durata_a:
-            da = richiesta.durata_da.strftime("%d/%m/%Y") if richiesta.durata_da else "—"
-            a = richiesta.durata_a.strftime("%d/%m/%Y") if richiesta.durata_a else "—"
-            dati_sp.append(["Durata:", f"Dal {da} al {a}"])
+            dati_sp.append(["Durata:", f"Dal {_data(richiesta.durata_da)} al {_data(richiesta.durata_a)}"])
         if richiesta.termini_pagamento:
             dati_sp.append(["Termini di pagamento:", richiesta.termini_pagamento])
     else:
@@ -200,7 +238,7 @@ def genera_pdf_autorizzazione(richiesta, output_dir: str) -> str:
         dati_sp = [
             ["Oggetto:", richiesta.oggetto],
             ["Descrizione:", richiesta.descrizione],
-            ["Importo:", f"€ {float(richiesta.importo):,.2f}"],
+            ["Importo:", _euro(richiesta.importo)],
         ]
 
     t3 = Table(dati_sp, colWidths=[42 * mm, None])
@@ -216,41 +254,33 @@ def genera_pdf_autorizzazione(richiesta, output_dir: str) -> str:
     story.append(Spacer(1, 3 * mm))
 
     # Anticipazione
-    anticip = "SÌ" if richiesta.anticipazione_spesa else "NO"
-    story.append(Paragraph(f"<b>Il richiedente intende anticipare la spesa e richiedere successivo rimborso:</b> {anticip}", stile_normale))
+    anticip_riga = "   ".join([
+        f"{_checkbox(richiesta.anticipazione_spesa)} SI",
+        f"{_checkbox(not richiesta.anticipazione_spesa)} NO",
+    ])
+    story.append(Paragraph(
+        f"<b>Il richiedente intende anticipare la spesa e attivare successivamente procedura di rimborso:</b> {anticip_riga}",
+        stile_check,
+    ))
     story.append(Spacer(1, 6 * mm))
     story.append(HRFlowable(width="100%", thickness=0.5, color=colors.lightgrey))
     story.append(Spacer(1, 4 * mm))
 
     # ── Firme ─────────────────────────────────────────────────────────────────
     story.append(Paragraph("<b>FIRME</b>", stile_sezione))
-    firme_data = [
-        ["Firma del Richiedente", "Firma del Responsabile Scientifico"],
-        ["\n\n\n_______________________", "\n\n\n_______________________"],
-        ["Luogo e Data: ___________", "Luogo e Data: ___________"],
-        ["", ""],
-        ["Firma del Direttore di Dipartimento", "Firma del Direttore Generale"],
-        ["\n\n\n_______________________", "\n\n\n_______________________"],
-        ["Luogo e Data: ___________", "Luogo e Data: ___________"],
-    ]
-    t_firme = Table(firme_data, colWidths=[None, None])
-    t_firme.setStyle(TableStyle([
-        ("FONTSIZE", (0, 0), (-1, -1), 9),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTNAME", (0, 4), (-1, 4), "Helvetica-Bold"),
-        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
-    ]))
-    story.append(t_firme)
 
-    # ── Footer ────────────────────────────────────────────────────────────────
-    story.append(Spacer(1, 6 * mm))
-    story.append(HRFlowable(width="100%", thickness=0.3, color=colors.lightgrey))
-    story.append(Paragraph(
-        f"Documento generato il {date.today().strftime('%d/%m/%Y')} — Università Telematica Pegaso — Gestionale Ricerca",
-        stile_piccolo,
-    ))
+    firme = [
+        ("Firma del Richiedente", richiedente, richiesta.data_invio),
+    ]
+    if richiesta.tipo == "progetto":
+        firme.append(("Firma del Responsabile Scientifico di progetto", pi_persona, richiesta.data_approvazione_rs))
+    firme.append(("Firma del Direttore di Dipartimento", dir_dip_persona, richiesta.data_approvazione_dir_dip))
+    firme.append(("Firma del Direttore Generale", dg_persona, richiesta.data_approvazione_dg))
+
+    for etichetta, persona, quando in firme:
+        story.append(Paragraph(f"<b>{etichetta}</b>", stile_normale))
+        story.append(Paragraph(f"Approvato da {_nome_persona(persona)} il {_data(quando)}", stile_normale))
+        story.append(Spacer(1, 3 * mm))
 
     doc.build(story)
     return filepath
