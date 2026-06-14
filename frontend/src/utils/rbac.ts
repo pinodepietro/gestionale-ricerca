@@ -31,7 +31,8 @@ export type Azione =
   | 'config:gestisci'             // tipi finanziamento, voci di costo, template
   | 'documento:carica'             // upload documenti progetto
   | 'proposta:crea'                // qualsiasi utente autenticato
-  | 'proposta:converti';           // solo amministrativo/superadmin
+  | 'proposta:converti'            // solo amministrativo/superadmin
+  | 'dipartimento:gestisci';       // crea/modifica/elimina dipartimenti — solo superadmin
 
 const PERMESSI: Record<Azione, Ruolo[]> = {
   'progetto:crea':               ['superadmin'],
@@ -65,6 +66,7 @@ const PERMESSI: Record<Azione, Ruolo[]> = {
   'documento:carica':            ['amministrativo', 'ricercatore', 'superadmin'],
   'proposta:crea':               ['amministrativo', 'ricercatore', 'management', 'superadmin', 'monitor'],
   'proposta:converti':           ['amministrativo', 'superadmin'],
+  'dipartimento:gestisci':       ['superadmin'],
 };
 
 export function canDo(ruolo: Ruolo, azione: Azione): boolean {

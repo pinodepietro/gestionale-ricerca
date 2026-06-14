@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.core.database import get_db
-from app.core.deps import tutti_i_ruoli, solo_amministrativo
+from app.core.deps import tutti_i_ruoli, solo_superadmin
 from app.models.autorizzazione_spesa import Dipartimento
 from app.models.persona import Persona
 
@@ -29,7 +29,7 @@ def lista_dipartimenti(db: Session = Depends(get_db), utente: Persona = Depends(
 
 
 @router.post("/dipartimenti")
-def crea_dipartimento(body: dict, db: Session = Depends(get_db), utente: Persona = Depends(solo_amministrativo)):
+def crea_dipartimento(body: dict, db: Session = Depends(get_db), utente: Persona = Depends(solo_superadmin)):
     d = Dipartimento(nome=body["nome"], direttore_id=body.get("direttore_id"))
     db.add(d)
     db.commit()
@@ -38,7 +38,7 @@ def crea_dipartimento(body: dict, db: Session = Depends(get_db), utente: Persona
 
 
 @router.patch("/dipartimenti/{id}")
-def aggiorna_dipartimento(id: str, body: dict, db: Session = Depends(get_db), utente: Persona = Depends(solo_amministrativo)):
+def aggiorna_dipartimento(id: str, body: dict, db: Session = Depends(get_db), utente: Persona = Depends(solo_superadmin)):
     d = db.query(Dipartimento).filter(Dipartimento.id == id).first()
     if not d:
         raise HTTPException(status_code=404, detail={"error": {"code": "NOT_FOUND", "message": "Dipartimento non trovato"}})
@@ -52,7 +52,7 @@ def aggiorna_dipartimento(id: str, body: dict, db: Session = Depends(get_db), ut
 
 
 @router.delete("/dipartimenti/{id}")
-def elimina_dipartimento(id: str, db: Session = Depends(get_db), utente: Persona = Depends(solo_amministrativo)):
+def elimina_dipartimento(id: str, db: Session = Depends(get_db), utente: Persona = Depends(solo_superadmin)):
     d = db.query(Dipartimento).filter(Dipartimento.id == id).first()
     if not d:
         raise HTTPException(status_code=404, detail={"error": {"code": "NOT_FOUND", "message": "Dipartimento non trovato"}})

@@ -25,6 +25,8 @@ class Persona(Base):
     attivo = Column(Boolean, nullable=False, default=True)
     deve_cambiare_password = Column(Boolean, nullable=False, default=False)
 
+    dipartimento = relationship("Dipartimento", foreign_keys=[dipartimento_id])
+
     costi_orari = relationship(
         "CostoOrarioPersona",
         back_populates="persona",

@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { progettiApi } from '../../api/progetti';
 import { formatData } from '../../utils/formatters';
-import { VociDiCostoPage, TemplateTimesheetPage, TipiProgettaPage } from './ConfigurazioneTabella';
+import { VociDiCostoPage, TemplateTimesheetPage, TipiProgettaPage, DipartimentiPage } from './ConfigurazioneTabella';
 import { RbacGuard } from '../../components/common/RbacGuard';
 import type { Progetto } from '../../types/progetto';
 
@@ -89,6 +89,7 @@ export function ConfigurazionePage() {
           { key: 'progetti', label: 'Progetti in configurazione', children: tabProgetti },
           { key: 'voci', label: 'Voci di costo', children: <VociDiCostoPage /> },
           { key: 'tipi', label: 'Tipologie progetto', children: <TipiProgettaPage /> },
+          { key: 'dipartimenti', label: 'Dipartimenti', children: <DipartimentiPage /> },
           { key: 'template', label: 'Template Timesheet', children: <TemplateTimesheetPage /> },
         ]}
       />

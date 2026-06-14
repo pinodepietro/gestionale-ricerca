@@ -11,6 +11,8 @@ export interface Persona {
   livello_contratto?: string;
   data_inizio_servizio?: string;
   ssd?: string;
+  dipartimento_id?: string | null;
+  dipartimento_nome?: string | null;
   attivo: boolean;
 }
 

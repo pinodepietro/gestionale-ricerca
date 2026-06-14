@@ -6,6 +6,9 @@ import { PlusOutlined, EditOutlined, DeleteOutlined, UploadOutlined } from '@ant
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../../api/client';
 import { queryKeys } from '../../utils/queryKeys';
+import { dipartimentiApi } from '../../api/autorizzazioni';
+import { personaleApi } from '../../api/personale';
+import { RbacGuard } from '../../components/common/RbacGuard';
 
 const { Title, Text } = Typography;
 
@@ -233,6 +236,138 @@ export function TipiProgettaPage() {
         <Form form={form} layout="vertical" onFinish={v => salva.mutate(v)} style={{ marginTop: 16 }}>
           <Form.Item name="nome" label="Nome" rules={[{ required: true, message: 'Obbligatorio' }]}>
             <Input placeholder="es. PON, FESR, Contratto conto terzi" />
+          </Form.Item>
+        </Form>
+      </Modal>
+    </div>
+  );
+}
+
+export function DipartimentiPage() {
+  const { notification } = App.useApp();
+  const queryClient = useQueryClient();
+  const [modalAperta, setModalAperta] = useState(false);
+  const [inModifica, setInModifica] = useState<Record<string, unknown> | null>(null);
+  const [form] = Form.useForm();
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['dipartimenti'],
+    queryFn: () => dipartimentiApi.list().then(r => r.data.data),
+  });
+
+  const { data: persone } = useQuery({
+    queryKey: ['persone', { attivo: true, page_size: 100 }],
+    queryFn: () => personaleApi.list({ attivo: true, page_size: 100 }).then(r => r.data.data),
+  });
+
+  const salva = useMutation({
+    mutationFn: (values: Record<string, unknown>) =>
+      inModifica?.id
+        ? dipartimentiApi.update(inModifica.id as string, values)
+        : dipartimentiApi.create(values),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['dipartimenti'] });
+      notification.success({ message: inModifica?.id ? 'Dipartimento aggiornato' : 'Dipartimento creato' });
+      setModalAperta(false);
+      setInModifica(null);
+      form.resetFields();
+    },
+    onError: (error: unknown) => {
+      const err = (error as { response?: { data?: { detail?: { error?: { message?: string } } } } })
+        ?.response?.data?.detail?.error;
+      notification.error({ message: err?.message ?? 'Errore' });
+    },
+  });
+
+  const elimina = useMutation({
+    mutationFn: (id: string) => dipartimentiApi.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['dipartimenti'] });
+      notification.success({ message: 'Dipartimento eliminato' });
+    },
+    onError: (error: unknown) => {
+      const err = (error as { response?: { data?: { detail?: { error?: { message?: string } } } } })
+        ?.response?.data?.detail?.error;
+      notification.error({ message: err?.message ?? 'Impossibile eliminare: probabilmente in uso' });
+    },
+  });
+
+  const apriModifica = (r: Record<string, unknown>) => {
+    setInModifica(r);
+    form.setFieldsValue({ nome: r.nome, direttore_id: r.direttore_id });
+    setModalAperta(true);
+  };
+
+  const opzioniDirettore = (persone ?? []).map(p => ({
+    value: p.id,
+    label: `${p.cognome} ${p.nome}`,
+  }));
+
+  const colonne = [
+    { title: 'Nome', dataIndex: 'nome', ellipsis: true },
+    {
+      title: 'Direttore', key: 'direttore', width: 220,
+      render: (_: unknown, r: Record<string, unknown>) => {
+        const d = r.direttore as { nome: string; cognome: string } | null;
+        return d ? `${d.cognome} ${d.nome}` : '—';
+      },
+    },
+    {
+      title: '', key: 'azioni', width: 80,
+      render: (_: unknown, r: Record<string, unknown>) => (
+        <RbacGuard azione="dipartimento:gestisci">
+          <Space>
+            <Button size="small" icon={<EditOutlined />} type="text" onClick={() => apriModifica(r)} />
+            <Popconfirm title="Eliminare questo dipartimento?" onConfirm={() => elimina.mutate(r.id as string)}
+              okText="Elimina" cancelText="No" okButtonProps={{ danger: true }}>
+              <Button size="small" icon={<DeleteOutlined />} type="text" danger />
+            </Popconfirm>
+          </Space>
+        </RbacGuard>
+      ),
+    },
+  ];
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
+        <div>
+          <Title level={3} style={{ margin: 0 }}>Dipartimenti</Title>
+          <Text type="secondary">Dipartimenti di afferenza per progetti e personale</Text>
+        </div>
+        <RbacGuard azione="dipartimento:gestisci">
+          <Button type="primary" icon={<PlusOutlined />}
+            onClick={() => { setInModifica(null); form.resetFields(); setModalAperta(true); }}>
+            Nuovo dipartimento
+          </Button>
+        </RbacGuard>
+      </div>
+
+      <Table columns={colonne} dataSource={data as unknown as Record<string, unknown>[] ?? []}
+        rowKey="id" loading={isLoading} pagination={false} size="small" />
+
+      <Modal
+        title={inModifica?.id ? 'Modifica dipartimento' : 'Nuovo dipartimento'}
+        open={modalAperta}
+        onCancel={() => { setModalAperta(false); form.resetFields(); }}
+        onOk={() => form.submit()}
+        confirmLoading={salva.isPending}
+        okText="Salva"
+        width={480}
+      >
+        <Form form={form} layout="vertical" onFinish={v => salva.mutate(v)} style={{ marginTop: 16 }}>
+          <Form.Item name="nome" label="Nome" rules={[{ required: true, message: 'Obbligatorio' }]}>
+            <Input placeholder="es. Dipartimento di Ingegneria" />
+          </Form.Item>
+          <Form.Item name="direttore_id" label="Direttore">
+            <Select
+              placeholder="Seleziona il direttore di dipartimento"
+              allowClear
+              options={opzioniDirettore}
+              showSearch
+              filterOption={(input, option) =>
+                (option?.label as string)?.toLowerCase().includes(input.toLowerCase())}
+            />
           </Form.Item>
         </Form>
       </Modal>

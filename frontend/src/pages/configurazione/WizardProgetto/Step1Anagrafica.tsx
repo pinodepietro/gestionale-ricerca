@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { progettiApi } from '../../../api/progetti';
 import { personaleApi } from '../../../api/personale';
 import { configApi } from '../../../api/config';
+import { dipartimentiApi } from '../../../api/autorizzazioni';
 import { queryKeys } from '../../../utils/queryKeys';
 import { CreaTipoProgettoButton } from '../../../components/common/CreaTipoProgettoButton';
 import dayjs from 'dayjs';
@@ -33,6 +34,11 @@ export function Step1Anagrafica({ progettoId, onCompletato }: Props) {
   const { data: tipiProgetto } = useQuery({
     queryKey: queryKeys.config.tipiProgetto,
     queryFn: () => configApi.tipiProgetto().then(r => r.data.data),
+  });
+
+  const { data: dipartimenti } = useQuery({
+    queryKey: ['dipartimenti'],
+    queryFn: () => dipartimentiApi.list().then(r => r.data.data),
   });
 
   useEffect(() => {
@@ -157,6 +163,17 @@ export function Step1Anagrafica({ progettoId, onCompletato }: Props) {
             />
           </Form.Item>
         </Col>
+        <Col span={12}>
+          <Form.Item name="dipartimento_id" label="Dipartimento" rules={[{ required: true, message: 'Seleziona il dipartimento' }]}>
+            <Select
+              placeholder="Seleziona dipartimento di afferenza"
+              options={(dipartimenti as { id: string; nome: string }[] | undefined)
+                ?.map(d => ({ value: d.id, label: d.nome })) ?? []}
+            />
+          </Form.Item>
+        </Col>
+      </Row>
+      <Row gutter={16}>
         <Col span={12}>
           <Form.Item name="budget_per_partner" label="Budget per partner" initialValue={false}>
             <Select options={[

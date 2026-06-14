@@ -6,6 +6,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { personaleApi } from '../../api/personale';
 import { progettiApi } from '../../api/progetti';
 import { timesheetApi } from '../../api/timesheet';
+import { dipartimentiApi } from '../../api/autorizzazioni';
 import { queryKeys } from '../../utils/queryKeys';
 import { formatData, formatEuro, formatOre } from '../../utils/formatters';
 import { RbacGuard } from '../../components/common/RbacGuard';
@@ -43,6 +44,11 @@ export function PersonaPage() {
     queryKey: queryKeys.personale.monteOre(id!),
     queryFn: () => personaleApi.monteOre.list(id!).then(r => r.data.data),
     enabled: !!id,
+  });
+
+  const { data: dipartimenti } = useQuery({
+    queryKey: ['dipartimenti'],
+    queryFn: () => dipartimentiApi.list().then(r => r.data.data),
   });
 
   const { mutate: toggleAttivo } = useMutation({
@@ -197,6 +203,7 @@ export function PersonaPage() {
               <Descriptions.Item label="Ruolo ente">{persona.ruolo_ente ?? '—'}</Descriptions.Item>
               <Descriptions.Item label="Livello contratto">{persona.livello_contratto ?? '—'}</Descriptions.Item>
               <Descriptions.Item label="SSD">{persona.ssd ?? '—'}</Descriptions.Item>
+              <Descriptions.Item label="Dipartimento">{persona.dipartimento_nome ?? '—'}</Descriptions.Item>
               <Descriptions.Item label="In servizio dal">{formatData(persona.data_inizio_servizio)}</Descriptions.Item>
             </Descriptions>
             </>
@@ -341,6 +348,14 @@ export function PersonaPage() {
               </Form.Item>
             </Col>
           </Row>
+          <Form.Item name="dipartimento_id" label="Dipartimento">
+            <Select
+              placeholder="Seleziona dipartimento di afferenza"
+              allowClear
+              options={(dipartimenti as { id: string; nome: string }[] | undefined)
+                ?.map(d => ({ value: d.id, label: d.nome })) ?? []}
+            />
+          </Form.Item>
         </Form>
       </Modal>
 
