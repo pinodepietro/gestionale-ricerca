@@ -179,6 +179,12 @@ export function ProgettoPage() {
               <Text strong>{data.amministrativo_nome}</Text>
             </Text>
           )}
+          {data.dipartimento_nome && (
+            <Text style={{ fontSize: 13 }}>
+              <Text type="secondary">Dipartimento: </Text>
+              <Text strong>{data.dipartimento_nome}</Text>
+            </Text>
+          )}
         </Space>
       </div>
 

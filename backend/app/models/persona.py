@@ -1,6 +1,6 @@
 # backend/app/models/persona.py
 import uuid
-from sqlalchemy import String, Boolean, Date, Column
+from sqlalchemy import String, Boolean, Date, Column, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.core.database import Base
@@ -21,6 +21,7 @@ class Persona(Base):
     livello_contratto = Column(String(50), nullable=True)
     data_inizio_servizio = Column(Date, nullable=True)
     ssd = Column(String(100), nullable=True)
+    dipartimento_id = Column(UUID(as_uuid=True), ForeignKey('dipartimento.id'), nullable=True)
     attivo = Column(Boolean, nullable=False, default=True)
     deve_cambiare_password = Column(Boolean, nullable=False, default=False)
 

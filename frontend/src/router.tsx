@@ -19,6 +19,9 @@ import { CambioPasswordPage } from './pages/auth/CambioPasswordPage';
 import { PropostePage } from './pages/proposte/PropostePage';
 import { PropostaFormPage } from './pages/proposte/PropostaFormPage';
 import { PropostaDettaglioPage } from './pages/proposte/PropostaDettaglioPage';
+import { AutorizzazioniPage } from './pages/autorizzazioni/AutorizzazioniPage';
+import { AutorizzazioneFormPage } from './pages/autorizzazioni/AutorizzazioneFormPage';
+import { AutorizzazioneDettaglioPage } from './pages/autorizzazioni/AutorizzazioneDettaglioPage';
 
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
@@ -47,6 +50,9 @@ export const router = createBrowserRouter([
       { path: 'proposte/nuova', element: <PropostaFormPage /> },
       { path: 'proposte/:id', element: <PropostaDettaglioPage /> },
       { path: 'proposte/:id/modifica', element: <PropostaFormPage /> },
+      { path: 'autorizzazioni', element: <AutorizzazioniPage /> },
+      { path: 'autorizzazioni/nuova', element: <AutorizzazioneFormPage /> },
+      { path: 'autorizzazioni/:id', element: <AutorizzazioneDettaglioPage /> },
     ],
   },
 ]);

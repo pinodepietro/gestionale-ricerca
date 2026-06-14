@@ -24,6 +24,8 @@ export interface Progetto {
   pi_nome?: string;
   amministrativo_nome?: string;
   amministrativo_id?: string;
+  dipartimento_id?: string | null;
+  dipartimento_nome?: string | null;
 }
 
 export interface DocumentoProgetto {

@@ -22,3 +22,4 @@ from app.models.documento import DocumentoProgetto  # noqa: F401
 
 from app.models.notifica import Notifica  # noqa: F401
 from app.models.proposta import Proposta, PropostaPartner  # noqa: F401
+from app.models.autorizzazione_spesa import Dipartimento, RichiestaAutorizzazioneSpesa  # noqa: F401

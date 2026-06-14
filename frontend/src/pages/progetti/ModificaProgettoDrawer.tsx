@@ -9,6 +9,7 @@ import { progettiApi } from '../../api/progetti';
 import { budgetApi } from '../../api/budget';
 import { configApi } from '../../api/config';
 import { personaleApi } from '../../api/personale';
+import { dipartimentiApi } from '../../api/autorizzazioni';
 import { queryKeys } from '../../utils/queryKeys';
 import { formatData, formatOre } from '../../utils/formatters';
 import { CreaTipoProgettoButton } from '../../components/common/CreaTipoProgettoButton';
@@ -56,6 +57,11 @@ function TabAnagrafica({ progettoId, onSalvato }: { progettoId: string; onSalvat
   const { data: tipiProgetto } = useQuery({
     queryKey: queryKeys.config.tipiProgetto,
     queryFn: () => configApi.tipiProgetto().then(r => r.data.data),
+  });
+
+  const { data: dipartimenti } = useQuery({
+    queryKey: ['dipartimenti'],
+    queryFn: () => dipartimentiApi.list().then(r => r.data.data),
   });
 
   useEffect(() => {
@@ -157,6 +163,13 @@ function TabAnagrafica({ progettoId, onSalvato }: { progettoId: string; onSalvat
           </Form.Item>
         </Col>
       </Row>
+      <Form.Item name="dipartimento_id" label="Dipartimento" rules={[{ required: true, message: 'Seleziona il dipartimento' }]}>
+        <Select
+          placeholder="Seleziona dipartimento di afferenza"
+          options={(dipartimenti as { id: string; nome: string }[] | undefined)
+            ?.map(d => ({ value: d.id, label: d.nome })) ?? []}
+        />
+      </Form.Item>
       <Form.Item name="riferimento_bando" label="Riferimento bando">
         <Input.TextArea rows={2} placeholder="Estremi del bando di finanziamento, decreto, convenzione..." />
       </Form.Item>

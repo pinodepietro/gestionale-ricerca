@@ -8,7 +8,7 @@ from app.models.persona import Persona
 
 bearer_scheme = HTTPBearer()
 
-RUOLI = {"amministrativo", "ricercatore", "management", "superadmin", "monitor"}
+RUOLI = {"amministrativo", "ricercatore", "management", "superadmin", "monitor", "direttore_generale"}
 
 
 def get_utente_corrente(
@@ -53,6 +53,9 @@ def amministrativo_o_pi(utente: Persona = Depends(richiedi_ruolo("amministrativo
     return utente
 
 def tutti_i_ruoli(utente: Persona = Depends(get_utente_corrente)) -> Persona:
+    return utente
+
+def solo_direttore_generale(utente: Persona = Depends(richiedi_ruolo("direttore_generale", "superadmin"))) -> Persona:
     return utente
 
 def solo_superadmin(utente: Persona = Depends(richiedi_ruolo("superadmin"))) -> Persona:

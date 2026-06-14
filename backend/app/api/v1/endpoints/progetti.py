@@ -68,6 +68,8 @@ def progetto_dict(p: Progetto) -> dict:
         "note": p.note,
         "amministrativo_id": str(p.amministrativo_id) if p.amministrativo_id else None,
         "pi_id": str(p.pi_id) if p.pi_id else None,
+        "dipartimento_id": str(p.dipartimento_id) if p.dipartimento_id else None,
+        "dipartimento_nome": p.dipartimento.nome if hasattr(p, 'dipartimento') and p.dipartimento else None,
     }
 
 

@@ -28,6 +28,7 @@ class Progetto(Base):
     note = Column(Text, nullable=True)
     amministrativo_id = Column(UUID(as_uuid=True), ForeignKey('persona.id'), nullable=True)
     pi_id = Column(UUID(as_uuid=True), ForeignKey('persona.id'), nullable=True)
+    dipartimento_id = Column(UUID(as_uuid=True), ForeignKey('dipartimento.id'), nullable=True)
 
     # Relazioni con cascade delete
     partner = relationship("ProgettoPartner", back_populates="progetto", cascade="all, delete-orphan")
@@ -47,3 +48,4 @@ class Progetto(Base):
     documenti = relationship("DocumentoProgetto", back_populates="progetto")
     partner = relationship("ProgettoPartner", back_populates="progetto")
     erogazioni = relationship("Erogazione", back_populates="progetto", cascade="all, delete-orphan")
+    dipartimento = relationship("Dipartimento", foreign_keys=[dipartimento_id])
