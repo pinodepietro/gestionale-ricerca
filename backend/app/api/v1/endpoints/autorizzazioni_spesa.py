@@ -124,8 +124,8 @@ def crea_autorizzazione(
     db: Session = Depends(get_db),
     utente: Persona = Depends(tutti_i_ruoli),
 ):
-    if utente.ruolo == "superadmin":
-        raise HTTPException(status_code=403, detail={"error": {"code": "NON_CONSENTITO", "message": "Il superadmin non può creare richieste di autorizzazione alla spesa"}})
+    if utente.ruolo in ("superadmin", "monitor"):
+        raise HTTPException(status_code=403, detail={"error": {"code": "NON_CONSENTITO", "message": "Il ruolo non può creare richieste di autorizzazione alla spesa"}})
 
     tipo = body.get("tipo", "progetto")
     progetto_id = body.get("progetto_id")

@@ -49,16 +49,7 @@ def _tariffa_effettiva(persona_id, target_date: date, db: Session) -> float:
     return float(rate.costo_orario) if rate else 0.0
 
 
-@router.get("/progetti/{progetto_id}/gantt-personale")
-def gantt_personale(
-    progetto_id: str,
-    db: Session = Depends(get_db),
-    utente: Persona = Depends(tutti_i_ruoli),
-):
-    progetto = db.query(Progetto).filter(Progetto.id == progetto_id).first()
-    if not progetto:
-        raise HTTPException(status_code=404, detail={"error": {"code": "NOT_FOUND", "message": "Progetto non trovato"}})
-
+def _calcola_gantt_personale(progetto: Progetto, db: Session) -> dict:
     mesi = _mesi_progetto(progetto.data_inizio, progetto.data_fine)
     num_mesi = len(mesi)
 
@@ -67,7 +58,7 @@ def gantt_personale(
     importo_previsto_personale = 0.0
     if voce_personale:
         bv = db.query(BudgetVoce).filter(
-            BudgetVoce.progetto_id == progetto_id,
+            BudgetVoce.progetto_id == progetto.id,
             BudgetVoce.voce_id == voce_personale.id,
         ).first()
         if bv:
@@ -85,13 +76,13 @@ def gantt_personale(
     # {(persona_id, anno, mese): {"ore": float, "costo": float}}
     sal_rendicontati = {
         str(s.id) for s in db.query(Sal).filter(
-            Sal.progetto_id == progetto_id,
+            Sal.progetto_id == progetto.id,
             Sal.stato == "rendicontato",
         ).all()
     }
 
     ts_approvati = db.query(TimesheetTestata).filter(
-        TimesheetTestata.progetto_id == progetto_id,
+        TimesheetTestata.progetto_id == progetto.id,
         TimesheetTestata.stato == "approvato",
     ).all()
 
@@ -113,7 +104,7 @@ def gantt_personale(
 
     # ── Persone allocate ─────────────────────────────────────────────────────
     allocazioni = db.query(Allocazione).filter(
-        Allocazione.progetto_id == progetto_id,
+        Allocazione.progetto_id == progetto.id,
     ).all()
 
     # Raggruppa allocazioni per persona (somma ore_assegnate, prendi periodo più ampio)
@@ -242,16 +233,155 @@ def gantt_personale(
             })
 
     return {
-        "data": {
-            "mesi": [{"label": m["label"], "anno": m["anno"], "mese": m["mese"]} for m in mesi],
-            "num_mesi": num_mesi,
-            "pianificazione_iniziale": pianificazione_iniziale,
-            "pianificazione_corrente": {
-                "mesi": pianificazione_corrente_mesi,
-                "totale": round(importo_previsto_personale, 2),
-            },
-            "persone": righe_persone,
-            "totali_mese": [round(t, 2) for t in totali_mese],
-            "totale_complessivo": round(sum(totali_mese), 2),
-        }
+        "mesi": [{"label": m["label"], "anno": m["anno"], "mese": m["mese"]} for m in mesi],
+        "num_mesi": num_mesi,
+        "pianificazione_iniziale": pianificazione_iniziale,
+        "pianificazione_corrente": {
+            "mesi": pianificazione_corrente_mesi,
+            "totale": round(importo_previsto_personale, 2),
+        },
+        "persone": righe_persone,
+        "totali_mese": [round(t, 2) for t in totali_mese],
+        "totale_complessivo": round(sum(totali_mese), 2),
     }
+
+
+def _get_progetto_or_404(progetto_id: str, db: Session) -> Progetto:
+    progetto = db.query(Progetto).filter(Progetto.id == progetto_id).first()
+    if not progetto:
+        raise HTTPException(status_code=404, detail={"error": {"code": "NOT_FOUND", "message": "Progetto non trovato"}})
+    return progetto
+
+
+@router.get("/progetti/{progetto_id}/gantt-personale")
+def gantt_personale(
+    progetto_id: str,
+    db: Session = Depends(get_db),
+    utente: Persona = Depends(tutti_i_ruoli),
+):
+    progetto = _get_progetto_or_404(progetto_id, db)
+    return {"data": _calcola_gantt_personale(progetto, db)}
+
+
+@router.get("/progetti/{progetto_id}/gantt-personale/export/xlsx")
+def export_gantt_personale_xlsx(
+    progetto_id: str,
+    db: Session = Depends(get_db),
+    utente: Persona = Depends(tutti_i_ruoli),
+):
+    from fastapi.responses import StreamingResponse
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+    from openpyxl.utils import get_column_letter
+    from openpyxl.comments import Comment
+    import io
+
+    progetto = _get_progetto_or_404(progetto_id, db)
+    data = _calcola_gantt_personale(progetto, db)
+    mesi = data["mesi"]
+    num_mesi = data["num_mesi"]
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Gantt Personale"
+
+    blu = "185FA5"
+    viola = "722ED1"
+    verde = "F6FFED"
+    verde_testo = "389E0D"
+    grigio = "F5F5F5"
+    euro = '#,##0.00" €"'
+
+    b = Border(left=Side(style="thin"), right=Side(style="thin"),
+               top=Side(style="thin"), bottom=Side(style="thin"))
+    hfill = PatternFill("solid", fgColor=blu)
+    sf = Font(bold=True, size=10)
+    sfill = PatternFill("solid", fgColor=grigio)
+    center = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    left_al = Alignment(horizontal="left", vertical="center", wrap_text=True)
+
+    def st(cell, font=None, fill=None, align=None, number_format=None):
+        if font: cell.font = font
+        if fill: cell.fill = fill
+        if align: cell.alignment = align
+        if number_format: cell.number_format = number_format
+        cell.border = b
+
+    ncols = 2 + num_mesi
+    r = 1
+
+    # Titolo
+    ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=ncols)
+    titolo = f"GANTT PERSONALE — {progetto.acronimo or progetto.codice} — {progetto.titolo}"
+    st(ws.cell(r, 1, titolo), Font(bold=True, color="FFFFFF", size=12), hfill, center)
+    ws.row_dimensions[r].height = 26
+    r += 1
+
+    # Header
+    st(ws.cell(r, 1, "Persona"), sf, sfill, left_al)
+    st(ws.cell(r, 2, "Totale"), sf, sfill, center)
+    for idx, m in enumerate(mesi):
+        st(ws.cell(r, 3 + idx, f"{m['label']}\n{m['mese']}/{m['anno']}"), sf, sfill, center)
+    ws.row_dimensions[r].height = 30
+    ws.column_dimensions["A"].width = 32
+    ws.column_dimensions["B"].width = 16
+    for idx in range(num_mesi):
+        ws.column_dimensions[get_column_letter(3 + idx)].width = 12
+    r += 1
+
+    # Pianificazione Iniziale
+    pian_iniz = data["pianificazione_iniziale"]
+    font_blu = Font(bold=True, color=blu)
+    st(ws.cell(r, 1, "Pianificazione Iniziale"), font_blu, align=left_al)
+    st(ws.cell(r, 2, pian_iniz["importo_previsto"]), font_blu, align=center, number_format=euro)
+    for idx in range(num_mesi):
+        st(ws.cell(r, 3 + idx, pian_iniz["per_mese"]), Font(color=blu), align=center, number_format=euro)
+    r += 1
+
+    # Pianificazione Corrente
+    pian_corr = data["pianificazione_corrente"]
+    font_viola = Font(bold=True, color=viola)
+    st(ws.cell(r, 1, "Pianificazione Corrente"), font_viola, align=left_al)
+    st(ws.cell(r, 2, pian_corr["totale"]), font_viola, align=center, number_format=euro)
+    for idx, mc in enumerate(pian_corr["mesi"]):
+        if mc["rendicontato"]:
+            fill, font = PatternFill("solid", fgColor=verde), Font(bold=True, color=verde_testo)
+        else:
+            fill, font = None, Font(color=viola)
+        st(ws.cell(r, 3 + idx, mc["costo"]), font, fill, center, euro)
+    r += 1
+
+    # Persone
+    for p in data["persone"]:
+        intestazione = f"{p['cognome']} {p['nome']}\n{p['tariffa_corrente']:.2f} €/h · {p['alloc_inizio'][:7]} → {p['alloc_fine'][:7]}"
+        st(ws.cell(r, 1, intestazione), align=left_al)
+        c_tot = ws.cell(r, 2, p["totale_costo"])
+        st(c_tot, Font(bold=True), align=center, number_format=euro)
+        c_tot.comment = Comment(f"{p['totale_ore']:.1f} h", "Gestionale Ricerca")
+        for idx, md in enumerate(p["mesi"]):
+            c = ws.cell(r, 3 + idx)
+            if md["ore"] is None:
+                st(c, align=center)
+                continue
+            c.value = md["costo"]
+            fill = PatternFill("solid", fgColor=verde) if md["rendicontato"] else None
+            st(c, fill=fill, align=center, number_format=euro)
+            c.comment = Comment(f"{md['ore']:.1f} h", "Gestionale Ricerca")
+        ws.row_dimensions[r].height = 30
+        r += 1
+
+    # Totale
+    st(ws.cell(r, 1, "TOTALE COSTO MESE"), Font(bold=True), sfill, left_al)
+    st(ws.cell(r, 2, data["totale_complessivo"]), Font(bold=True), sfill, center, euro)
+    for idx in range(num_mesi):
+        st(ws.cell(r, 3 + idx, data["totali_mese"][idx]), Font(bold=True), sfill, center, euro)
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    nome = f"gantt_personale_{progetto.codice}.xlsx"
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={nome}"}
+    )

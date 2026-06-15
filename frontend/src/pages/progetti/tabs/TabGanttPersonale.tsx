@@ -1,8 +1,9 @@
 import { useState, useMemo } from 'react';
-import { Table, Typography, Select, Statistic, Row, Col, Tag, Tooltip, Spin } from 'antd';
-import { CheckCircleOutlined } from '@ant-design/icons';
+import { Table, Typography, Select, Statistic, Row, Col, Tag, Tooltip, Spin, Button } from 'antd';
+import { CheckCircleOutlined, FileExcelOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '../../../api/client';
+import { env } from '../../../config/env';
 
 const { Text } = Typography;
 
@@ -45,6 +46,20 @@ export function TabGanttPersonale({ progettoId }: Props) {
     queryFn: () => apiClient.get<{ data: GanttData }>(`/progetti/${progettoId}/gantt-personale`).then(r => r.data.data),
     enabled: !!progettoId,
   });
+
+  const downloadExcel = async () => {
+    const token = localStorage.getItem('access_token');
+    const response = await fetch(`${env.apiUrl}/api/v1/progetti/${progettoId}/gantt-personale/export/xlsx`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) return;
+    const blob = await response.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `gantt_personale_${progettoId}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
 
   const totalePeriodo = useMemo(() => {
     if (!raw || !periodoInizio || !periodoFine) return null;
@@ -164,17 +179,26 @@ export function TabGanttPersonale({ progettoId }: Props) {
   return (
     <div>
       {/* Legenda */}
-      <Row gutter={16} style={{ marginBottom: 12 }}>
+      <Row gutter={16} justify="space-between" align="middle" style={{ marginBottom: 12 }}>
         <Col>
-          <Tag icon={<CheckCircleOutlined />} color="success">Rendicontato (timesheet approvato)</Tag>
+          <Row gutter={16}>
+            <Col>
+              <Tag icon={<CheckCircleOutlined />} color="success">Rendicontato (timesheet approvato)</Tag>
+            </Col>
+            <Col>
+              <Tag color="default">Pianificato</Tag>
+            </Col>
+            <Col>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                Prima riga: budget voce A.1 spalmato uniformemente · Celle persona: ore uniformi nel periodo di allocazione
+              </Text>
+            </Col>
+          </Row>
         </Col>
         <Col>
-          <Tag color="default">Pianificato</Tag>
-        </Col>
-        <Col>
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            Prima riga: budget voce A.1 spalmato uniformemente · Celle persona: ore uniformi nel periodo di allocazione
-          </Text>
+          <Button icon={<FileExcelOutlined />} onClick={downloadExcel}>
+            Esporta Excel
+          </Button>
         </Col>
       </Row>
 

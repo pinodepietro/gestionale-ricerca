@@ -71,7 +71,7 @@ export function AutorizzazioniPage() {
       <Row justify="space-between" align="middle" style={{ marginBottom: 16 }}>
         <Col><Title level={2} style={{ margin: 0 }}>Autorizzazioni Spesa</Title></Col>
         <Col>
-          {user?.ruolo !== 'superadmin' && (
+          {user?.ruolo !== 'superadmin' && user?.ruolo !== 'monitor' && (
             <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/autorizzazioni/nuova')}>
               Nuova richiesta
             </Button>

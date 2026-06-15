@@ -129,7 +129,7 @@ def cruscotto_globale(
     from sqlalchemy import func
 
     # Progetti a cui l'utente partecipa (tramite allocazioni) o tutti se admin/management/monitor
-    if utente.ruolo in ("management", "monitor", "superadmin"):
+    if utente.ruolo in ("management", "monitor", "superadmin", "direttore_generale"):
         progetti_ids = [str(p.id) for p in db.query(Progetto).filter(Progetto.stato == "attivo").all()]
     elif utente.ruolo == "amministrativo":
         progetti_ids = [str(p.id) for p in db.query(Progetto).filter(
