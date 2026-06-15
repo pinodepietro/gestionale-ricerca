@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
-  Typography, Button, Space, Tag, Descriptions, Card, Steps, Modal, Select,
+  Typography, Button, Space, Tag, Descriptions, Card, Steps, Modal,
   Input, Row, Col, Alert, Table, message, Popconfirm, Spin,
 } from 'antd';
 import {
@@ -162,7 +162,8 @@ export function AutorizzazioneDettaglioPage() {
   const stepIdx = STATI_STEPS.findIndex(s => s.key === r.stato);
   const stepsItems = STATI_STEPS.map((s, idx) => ({
     title: s.label,
-    status: r.stato === 'rigettata' ? (idx < stepIdx ? 'finish' : idx === stepIdx ? 'error' : 'wait') as const
+    status: r.stato === 'rigettata'
+          ? (idx < stepIdx ? 'finish' as const : idx === stepIdx ? 'error' as const : 'wait' as const)
           : idx < stepIdx ? 'finish' as const
           : idx === stepIdx ? 'process' as const
           : 'wait' as const,
@@ -326,7 +327,7 @@ export function AutorizzazioneDettaglioPage() {
         title="Rigetta richiesta"
         onCancel={() => { setModalRigetto(false); setMotivazione(''); }}
         onOk={() => rigetta.mutate()}
-        okText="Rigetta" okButtonProps={{ danger: true }}
+        okText="Rigetta"
         cancelText="Annulla"
         confirmLoading={rigetta.isPending}
         okButtonProps={{ disabled: !motivazione.trim(), danger: true }}

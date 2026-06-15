@@ -65,7 +65,7 @@ export const dipartimentiApi = {
 };
 
 export const autorizzazioniApi = {
-  list: (params: { stato?: string; progetto_id?: string; solo_mie?: boolean; page?: number } = {}) =>
+  list: (params: { stato?: string; progetto_id?: string; solo_mie?: boolean; page?: number; page_size?: number } = {}) =>
     apiClient.get<PaginatedResponse<AutorizzazioneSpesa>>('/autorizzazioni-spesa', { params }),
 
   get: (id: string) =>

@@ -116,8 +116,8 @@ services:
     volumes:
       - backup_data:/backups
       - ./scripts/backup.sh:/backup.sh:ro
-      - ./scripts/crontab:/etc/crontabs/root:ro
-    entrypoint: ["sh", "-c", "chmod +x /backup.sh && crond -f"]
+      - ./scripts/run-backup-loop.sh:/run-backup-loop.sh:ro
+    entrypoint: ["sh", "/run-backup-loop.sh"]
     depends_on:
       db:
         condition: service_healthy
