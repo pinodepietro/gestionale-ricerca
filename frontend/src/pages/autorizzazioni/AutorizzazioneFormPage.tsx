@@ -143,8 +143,9 @@ export function AutorizzazioneFormPage() {
     else if (re.includes('associato')) form.setFieldValue('qualita_richiedente', 'professore_associato');
     else if (re.includes('ricercatore') || re.includes('rtd')) form.setFieldValue('qualita_richiedente', 'ricercatore');
 
-    if (re.includes('definito')) form.setFieldValue('tipo_contratto', 'definito');
-    else if (re.includes('pieno')) form.setFieldValue('tipo_contratto', 'pieno');
+    const lc = (personaCorrente.livello_contratto || '').toLowerCase();
+    if (lc.includes('definito')) form.setFieldValue('tipo_contratto', 'definito');
+    else if (lc.includes('pieno')) form.setFieldValue('tipo_contratto', 'pieno');
   }, [personaCorrente, form]);
 
   // Pre-compila "In qualità di (nel progetto)" in base all'allocazione (PI o componente)

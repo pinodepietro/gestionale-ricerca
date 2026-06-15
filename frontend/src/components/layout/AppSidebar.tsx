@@ -21,7 +21,7 @@ export function AppSidebar() {
   const menuItems = [
     { key: '/dashboard', icon: <DashboardOutlined />, label: 'Dashboard' },
     { key: '/proposte', icon: <FormOutlined />, label: 'Proposte' },
-    { key: '/autorizzazioni', icon: <AuditOutlined />, label: 'Autorizzazioni Spesa' },
+    { key: '/autorizzazioni', icon: <AuditOutlined />, label: <>Autorizzazioni<br />Spesa</>, className: 'menu-item-2righe' },
     { key: '/progetti', icon: <ProjectOutlined />, label: 'Progetti' },
     { key: '/portfolio', icon: <FundOutlined />, label: 'Portfolio' },
     ...(user && canDo(user.ruolo, 'timesheet:accedi')

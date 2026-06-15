@@ -5,6 +5,7 @@ import { PlusOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import { autorizzazioniApi, type AutorizzazioneSpesa } from '../../api/autorizzazioni';
 import { formatData } from '../../utils/formatters';
+import { useAuthStore } from '../../store/useAuthStore';
 
 const { Title } = Typography;
 
@@ -26,6 +27,7 @@ const fmtEuro = (v: number) => {
 
 export function AutorizzazioniPage() {
   const navigate = useNavigate();
+  const user = useAuthStore(s => s.user);
   const [stato, setStato] = useState<string | undefined>();
   const [soloMie, setSoloMie] = useState(false);
   const [page, setPage] = useState(1);
@@ -69,9 +71,11 @@ export function AutorizzazioniPage() {
       <Row justify="space-between" align="middle" style={{ marginBottom: 16 }}>
         <Col><Title level={2} style={{ margin: 0 }}>Autorizzazioni Spesa</Title></Col>
         <Col>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/autorizzazioni/nuova')}>
-            Nuova richiesta
-          </Button>
+          {user?.ruolo !== 'superadmin' && (
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/autorizzazioni/nuova')}>
+              Nuova richiesta
+            </Button>
+          )}
         </Col>
       </Row>
 
