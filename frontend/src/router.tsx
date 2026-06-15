@@ -22,6 +22,9 @@ import { PropostaDettaglioPage } from './pages/proposte/PropostaDettaglioPage';
 import { AutorizzazioniPage } from './pages/autorizzazioni/AutorizzazioniPage';
 import { AutorizzazioneFormPage } from './pages/autorizzazioni/AutorizzazioneFormPage';
 import { AutorizzazioneDettaglioPage } from './pages/autorizzazioni/AutorizzazioneDettaglioPage';
+import { RimborsiSpesaPage } from './pages/rimborsi-spesa/RimborsiSpesaPage';
+import { RimborsoSpesaNuovoPage } from './pages/rimborsi-spesa/RimborsoSpesaNuovoPage';
+import { RimborsoSpesaDettaglioPage } from './pages/rimborsi-spesa/RimborsoSpesaDettaglioPage';
 
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
@@ -54,6 +57,9 @@ export const router = createBrowserRouter([
       { path: 'autorizzazioni/nuova', element: <AutorizzazioneFormPage /> },
       { path: 'autorizzazioni/:id', element: <AutorizzazioneDettaglioPage /> },
       { path: 'autorizzazioni/:id/modifica', element: <AutorizzazioneFormPage /> },
+      { path: 'rimborsi-spesa', element: <RimborsiSpesaPage /> },
+      { path: 'rimborsi-spesa/nuovo', element: <RimborsoSpesaNuovoPage /> },
+      { path: 'rimborsi-spesa/:id', element: <RimborsoSpesaDettaglioPage /> },
     ],
   },
 ]);

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Table, Button, Space, Modal, Form, Input, InputNumber, DatePicker,
          Select, Typography, App, Popconfirm, Alert, Tag } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
@@ -13,9 +13,9 @@ import type { Impegno, BudgetVoce } from '../../../types/budget';
 
 const { Text } = Typography;
 
-interface Props { progettoId: string; stato?: string; }
+interface Props { progettoId: string; stato?: string; highlightId?: string | null; onHighlightConsumed?: () => void; }
 
-export function TabImpegni({ progettoId, stato }: Props) {
+export function TabImpegni({ progettoId, stato, highlightId, onHighlightConsumed }: Props) {
   const { notification } = App.useApp();
   const queryClient = useQueryClient();
   const [modalAperta, setModalAperta] = useState(false);
@@ -118,6 +118,14 @@ export function TabImpegni({ progettoId, stato }: Props) {
   const impegniStabilizzati = impegni.filter(i => i.stabilizzato);
   const totale = impegniAttivi.reduce((s, i) => s + i.importo, 0);
 
+  useEffect(() => {
+    if (!highlightId || !impegni.some(i => i.id === highlightId)) return;
+    const riga = document.querySelector(`tr[data-row-key="${highlightId}"]`);
+    riga?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const timer = setTimeout(() => onHighlightConsumed?.(), 2500);
+    return () => clearTimeout(timer);
+  }, [highlightId, impegni, onHighlightConsumed]);
+
   const vociSelectedWatch = Form.useWatch('voce_id', form);
   const vociSelezionataInfo = vociDisponibili.find(v => v.value === vociSelectedWatch);
   const disponibileVoce = vociSelezionataInfo
@@ -201,7 +209,10 @@ export function TabImpegni({ progettoId, stato }: Props) {
         dataSource={impegni}
         rowKey="id"
         loading={isLoading}
-        rowClassName={(r: Impegno) => r.stabilizzato ? 'impegno-stabilizzato' : ''}
+        rowClassName={(r: Impegno) => [
+          r.stabilizzato ? 'impegno-stabilizzato' : '',
+          r.id === highlightId ? 'impegno-evidenziato' : '',
+        ].filter(Boolean).join(' ')}
         onRow={(r: Impegno) => ({
           style: r.stabilizzato ? { background: '#fff2f0', color: '#cf1322' } : {},
         })}

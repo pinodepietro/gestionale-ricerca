@@ -13,3 +13,12 @@
   text-overflow: unset !important;
   line-height: 1.3 !important;
 }
+
+/* Evidenzia temporaneamente la riga di un impegno raggiunto da un link esterno */
+.impegno-evidenziato > td {
+  animation: evidenzia-riga 2.5s ease-out;
+}
+@keyframes evidenzia-riga {
+  0%, 40% { background-color: #fffbe6; }
+  100% { background-color: transparent; }
+}

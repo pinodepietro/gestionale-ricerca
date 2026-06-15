@@ -15,9 +15,9 @@ import type { Spesa, Impegno } from '../../../types/budget';
 
 const { Text } = Typography;
 
-interface Props { progettoId: string; stato?: string; }
+interface Props { progettoId: string; stato?: string; onVaiAImpegno?: (impegnoId: string) => void; }
 
-export function TabSpese({ progettoId, stato }: Props) {
+export function TabSpese({ progettoId, stato, onVaiAImpegno }: Props) {
   const { notification } = App.useApp();
   const queryClient = useQueryClient();
   const [modalAperta, setModalAperta] = useState(false);
@@ -113,7 +113,8 @@ export function TabSpese({ progettoId, stato }: Props) {
     {
       title: 'Impegno', dataIndex: 'impegno_id', width: 80, align: 'center' as const,
       render: (v: string | null) => v
-        ? <LinkOutlined style={{ color: '#1677ff' }} title="Collegata a un impegno" />
+        ? <Button size="small" type="text" icon={<LinkOutlined style={{ color: '#1677ff' }} />}
+            title="Vai all'impegno collegato" onClick={() => onVaiAImpegno?.(v)} />
         : null,
     },
     {

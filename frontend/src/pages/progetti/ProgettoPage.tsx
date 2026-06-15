@@ -40,6 +40,8 @@ export function ProgettoPage() {
   const [modalAperta, setModalAperta] = useState(false);
   const [drawerAperto, setDrawerAperto] = useState(false);
   const [erroriPreAttivazione, setErroriPreAttivazione] = useState<string[]>([]);
+  const [activeTab, setActiveTab] = useState('gantt');
+  const [impegnoEvidenziato, setImpegnoEvidenziato] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: queryKeys.progetti.detail(id!),
@@ -189,7 +191,8 @@ export function ProgettoPage() {
       </div>
 
       <Tabs
-        defaultActiveKey="gantt"
+        activeKey={activeTab}
+        onChange={setActiveTab}
         items={[
           { key: 'gantt', label: 'Struttura / Gantt', children: <TabGantt progettoId={id!} /> },
           { key: 'budget', label: 'Budget', children: <TabBudget progettoId={id!} /> },
@@ -197,8 +200,8 @@ export function ProgettoPage() {
           { key: 'personale', label: 'Personale', children: <TabPersonale progettoId={id!} /> },
           { key: 'documenti', label: 'Documenti', children: <TabDocumenti progettoId={id!} piId={data.pi_id ?? null} /> },
           { key: 'timesheet', label: 'Timesheet', children: <TabTimesheet progettoId={id!} stato={data.stato} /> },
-          { key: 'spese', label: 'Spese', children: <TabSpese progettoId={id!} stato={data.stato} /> },
-          { key: 'impegni', label: 'Impegni', children: <TabImpegni progettoId={id!} stato={data.stato} /> },
+          { key: 'spese', label: 'Spese', children: <TabSpese progettoId={id!} stato={data.stato} onVaiAImpegno={(impegnoId) => { setImpegnoEvidenziato(impegnoId); setActiveTab('impegni'); }} /> },
+          { key: 'impegni', label: 'Impegni', children: <TabImpegni progettoId={id!} stato={data.stato} highlightId={impegnoEvidenziato} onHighlightConsumed={() => setImpegnoEvidenziato(null)} /> },
           { key: 'gantt-personale', label: 'Gantt Personale', children: <TabGanttPersonale progettoId={id!} /> },
           { key: 'erogazioni', label: 'Erogazioni', children: <TabErogazioni progettoId={id!} stato={data.stato} /> },
           { key: 'disponibilita', label: 'Disponibilità Fondi', children: <TabDisponibilita progettoId={id!} /> },
