@@ -95,7 +95,7 @@ def genera_pdf_missione(missione, db: Session, output_dir: str) -> str:
     _nome_file = _safe_name(f"{richiedente_raw.nome}_{richiedente_raw.cognome}") if richiedente_raw else "richiedente"
     _data_app = (missione.approvata_il.strftime('%Y%m%d')
                  if missione.approvata_il else date.today().strftime('%Y%m%d'))
-    output_path = os.path.join(output_dir, f"ric_miss_{_nome_file}_{_data_app}.pdf")
+    output_path = os.path.join(output_dir, f"AUT_MISS_{_nome_file}_{_data_app}.pdf")
 
     normale, bold, titolo_s, sottotitolo_s, piccolo = _stili()
     story = []
@@ -229,9 +229,17 @@ def genera_pdf_missione(missione, db: Session, output_dir: str) -> str:
 
 def genera_pdf_rimborso_missione(rimborso, db: Session, output_dir: str) -> str:
     os.makedirs(output_dir, exist_ok=True)
-    output_path = os.path.join(output_dir, f"rimborso_missione_{rimborso.id}.pdf")
+    _richiedente = rimborso.richiedente
+    _nome_file = _safe_name(f"{_richiedente.nome}_{_richiedente.cognome}") if _richiedente else "richiedente"
+    _data_app = (rimborso.approvata_il.strftime('%Y%m%d')
+                 if rimborso.approvata_il else date.today().strftime('%Y%m%d'))
+    output_path = os.path.join(output_dir, f"RIMB_MISS_{_nome_file}_{_data_app}.pdf")
 
     normale, bold, titolo_s, sottotitolo_s, piccolo = _stili()
+    # stile per le celle di intestazione tabella: testo bianco (il TEXTCOLOR del TableStyle
+    # non ha effetto sui Paragraph → serve uno stile dedicato)
+    piccolo_bianco = ParagraphStyle("piccolo_bianco", parent=piccolo, textColor=colors.white)
+
     story = []
     doc = SimpleDocTemplate(output_path, pagesize=A4,
                              leftMargin=20 * mm, rightMargin=20 * mm,
@@ -244,30 +252,43 @@ def genera_pdf_rimborso_missione(rimborso, db: Session, output_dir: str) -> str:
     progetto = missione.progetto if missione else None
 
     from app.models.personale import Allocazione
+    from app.models.autorizzazione_spesa import Dipartimento as DipModel
+
     alloc_pi = db.query(Allocazione).filter(
         Allocazione.progetto_id == missione.progetto_id, Allocazione.is_pi == True).first() if missione else None
-    pi = alloc_pi.persona if alloc_pi else richiedente
+    pi = alloc_pi.persona if alloc_pi else None
+
+    dir_dip = None
+    if missione and progetto and progetto.dipartimento_id:
+        dip = db.query(DipModel).filter(DipModel.id == progetto.dipartimento_id).first()
+        if dip and dip.direttore_id:
+            from app.models.persona import Persona as PersonaModel
+            dir_dip = db.query(PersonaModel).filter(PersonaModel.id == dip.direttore_id).first()
+
+    from app.models.persona import Persona as PersonaModel
+    dg = db.query(PersonaModel).filter(
+        PersonaModel.ruolo == "direttore_generale", PersonaModel.attivo == True).first()
 
     story.append(Paragraph("RIFERIMENTO MISSIONE", bold))
     story.append(Spacer(1, 2 * mm))
     dati_rif = [
         ("Richiedente", _nome(richiedente)),
         ("Progetto", f"{progetto.codice} — {progetto.titolo}" if progetto else "—"),
-        ("Responsabile Scientifico", _nome(pi)),
+        ("Responsabile Scientifico", _nome(pi) if pi else "—"),
         ("Destinazione", missione.destinazione if missione else "—"),
         ("Periodo", f"{_data(missione.data_inizio)} — {_data(missione.data_fine)}" if missione else "—"),
     ]
     story.append(_tabella_dati(dati_rif))
     story.append(Spacer(1, 5 * mm))
 
-    # Righe rimborso
-    story.append(Paragraph("VOCI DI RIMBORSO", bold))
+    # Righe rimborso — sezione rinominata "VOCI DI SPESA"
+    story.append(Paragraph("VOCI DI SPESA", bold))
     story.append(Spacer(1, 2 * mm))
     header_righe = [
-        Paragraph("<b>Data inizio</b>", piccolo),
-        Paragraph("<b>Data fine</b>", piccolo),
-        Paragraph("<b>Attività/Descrizione</b>", piccolo),
-        Paragraph("<b>Importo</b>", piccolo),
+        Paragraph("<b>Data inizio</b>", piccolo_bianco),
+        Paragraph("<b>Data fine</b>", piccolo_bianco),
+        Paragraph("<b>Attività/Descrizione</b>", piccolo_bianco),
+        Paragraph("<b>Importo</b>", piccolo_bianco),
     ]
     righe_data = [header_righe]
     totale = 0.0
@@ -289,7 +310,6 @@ def genera_pdf_rimborso_missione(rimborso, db: Session, output_dir: str) -> str:
     t_righe = Table(righe_data, colWidths=[28 * mm, 28 * mm, 90 * mm, 30 * mm], hAlign="LEFT")
     t_righe.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#003366")),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#cccccc")),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("ROWBACKGROUNDS", (0, 1), (-1, -2), [colors.white, colors.HexColor("#f9f9f9")]),
@@ -299,62 +319,51 @@ def genera_pdf_rimborso_missione(rimborso, db: Session, output_dir: str) -> str:
         ("LEFTPADDING", (0, 0), (-1, -1), 4),
     ]))
     story.append(t_righe)
-    story.append(Spacer(1, 5 * mm))
+    story.append(Spacer(1, 10 * mm))
 
-    # Iter approvazione rimborso
-    story.append(Paragraph("ITER DI APPROVAZIONE", bold))
-    story.append(Spacer(1, 2 * mm))
-    steps = sorted(rimborso.step_approvazione, key=lambda s: s.decided_at or date.min)
-    if steps:
-        ruolo_label = {
-            "ammin": "Resp. Amministrativo",
-            "pi": "Responsabile Scientifico",
-            "dir_dip": "Direttore Dipartimento",
-            "dg": "Direttore Generale",
-        }
-        header_step = [
-            Paragraph("<b>Ruolo</b>", piccolo),
-            Paragraph("<b>Nominativo</b>", piccolo),
-            Paragraph("<b>Decisione</b>", piccolo),
-            Paragraph("<b>Luogo</b>", piccolo),
-            Paragraph("<b>Data</b>", piccolo),
-        ]
-        step_rows = [header_step] + [
-            [
-                Paragraph(ruolo_label.get(s.ruolo, s.ruolo), piccolo),
-                Paragraph(_nome(s.approvatore), piccolo),
-                Paragraph("APPROVATO" if s.decisione == "approvato" else "RIGETTATO", piccolo),
-                Paragraph(s.luogo_firma or "—", piccolo),
-                Paragraph(_data(s.decided_at), piccolo),
-            ]
-            for s in steps
-        ]
-        t_steps = Table(step_rows, colWidths=[40 * mm, 45 * mm, 28 * mm, 35 * mm, 28 * mm], hAlign="LEFT")
-        t_steps.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#003366")),
-            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-            ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#cccccc")),
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f9f9f9")]),
-            ("TOPPADDING", (0, 0), (-1, -1), 3),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-        ]))
-        story.append(t_steps)
-    else:
-        story.append(Paragraph("Nessuno step registrato.", piccolo))
+    # ── Firme: Resp. Scientifico | Dir. Dipartimento | Dir. Generale ─────────
+    pi_step = next((s for s in rimborso.step_approvazione if s.ruolo == "pi"), None)
+    dir_dip_step = next((s for s in rimborso.step_approvazione if s.ruolo == "dir_dip"), None)
+    dg_step = next((s for s in rimborso.step_approvazione if s.ruolo == "dg"), None)
 
-    story.append(Spacer(1, 8 * mm))
+    def _luogo_data(step) -> str:
+        if not step:
+            return "____________________"
+        luogo = step.luogo_firma or "—"
+        data_str = _data(step.decided_at) if step.decided_at else "—"
+        return f"{luogo}, {data_str}"
 
-    # Firma PI
-    story.append(Paragraph("Il Responsabile Scientifico", bold))
-    story.append(Spacer(1, 2 * mm))
-    firma_pi = pi.firma_olografa if pi and pi.firma_olografa and os.path.exists(pi.firma_olografa) else None
-    if firma_pi:
-        story.append(Image(firma_pi, width=50 * mm, height=20 * mm))
-    else:
-        story.append(Spacer(1, 15 * mm))
-        story.append(HRFlowable(width=60 * mm, thickness=0.5, color=colors.black, hAlign="LEFT"))
-    story.append(Paragraph(_nome(pi), piccolo))
+    def _firma_img(persona):
+        path = getattr(persona, "firma_olografa", None) if persona else None
+        if path and os.path.exists(path):
+            return Image(path, width=45 * mm, height=18 * mm)
+        return Spacer(1, 18 * mm)
+
+    COL = 56 * mm
+    firma_data = [
+        [Paragraph("<b>Il Responsabile Scientifico</b>", piccolo),
+         Paragraph("<b>Il Direttore di Dipartimento</b>", piccolo),
+         Paragraph("<b>Il Direttore Generale</b>", piccolo)],
+        [_firma_img(pi), _firma_img(dir_dip), _firma_img(dg)],
+        [Paragraph(_nome(pi) if pi else "—", piccolo),
+         Paragraph(_nome(dir_dip) if dir_dip else "—", piccolo),
+         Paragraph(_nome(dg) if dg else "—", piccolo)],
+        [Paragraph(f"Luogo e data:<br/>{_luogo_data(pi_step)}", piccolo),
+         Paragraph(f"Luogo e data:<br/>{_luogo_data(dir_dip_step)}", piccolo),
+         Paragraph(f"Luogo e data:<br/>{_luogo_data(dg_step)}", piccolo)],
+    ]
+
+    t_firme = Table(firma_data, colWidths=[COL, COL, COL], hAlign="LEFT")
+    t_firme.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#cccccc")),
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f0f4ff")),
+        ("LEFTPADDING", (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+    ]))
+    story.append(t_firme)
 
     doc.build(story)
     return output_path

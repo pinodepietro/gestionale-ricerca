@@ -28,6 +28,8 @@ import { RimborsoSpesaDettaglioPage } from './pages/rimborsi-spesa/RimborsoSpesa
 import { MissioniListaPage } from './pages/missioni/MissioniListaPage';
 import { MissioneFormPage } from './pages/missioni/MissioneFormPage';
 import { MissioneDettaglioPage } from './pages/missioni/MissioneDettaglioPage';
+import { RimborsiMissioneListaPage } from './pages/missioni/RimborsiMissioneListaPage';
+import { RimborsoMissioneNuovoPage } from './pages/missioni/RimborsoMissioneNuovoPage';
 import { RimborsoMissioneDettaglioPage } from './pages/missioni/RimborsoMissioneDettaglioPage';
 
 export const router = createBrowserRouter([
@@ -68,6 +70,8 @@ export const router = createBrowserRouter([
       { path: 'missioni/nuova', element: <MissioneFormPage /> },
       { path: 'missioni/:id', element: <MissioneDettaglioPage /> },
       { path: 'missioni/:id/modifica', element: <MissioneFormPage /> },
+      { path: 'rimborsi-missione', element: <RimborsiMissioneListaPage /> },
+      { path: 'rimborsi-missione/nuovo', element: <RimborsoMissioneNuovoPage /> },
       { path: 'rimborsi-missione/:id', element: <RimborsoMissioneDettaglioPage /> },
     ],
   },

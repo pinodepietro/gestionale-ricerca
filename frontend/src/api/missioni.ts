@@ -30,11 +30,29 @@ export interface RigaRimborsoMissione {
   documento_nome?: string;
 }
 
+export interface MissioneDisponibile {
+  id: string;
+  titolo: string;
+  destinazione: string;
+  data_inizio?: string;
+  data_fine?: string;
+  approvata_il?: string;
+  progetto_titolo?: string;
+}
+
 export interface RimborsoMissione {
   id: string;
   missione_id: string;
+  missione_titolo?: string;
   richiedente_id: string;
   richiedente_nome: string;
+  pi_id?: string;
+  ammin_id?: string;
+  dir_dip_id?: string;
+  importo_stimato_missione?: number;
+  voce_impegno_missione?: string;
+  voce_descrizione?: string;
+  disponibilita_voce?: number;
   stato: string;
   note?: string;
   ciclo: number;
@@ -148,6 +166,12 @@ export const missioniApi = {
 };
 
 export const rimborsiMissioneApi = {
+  list: (params: { stato?: string; solo_miei?: boolean; page?: number; page_size?: number } = {}) =>
+    apiClient.get<PaginatedResponse<RimborsoMissione>>('/rimborsi-missione', { params }),
+
+  missioniDisponibili: () =>
+    apiClient.get<ApiResponse<MissioneDisponibile[]>>('/rimborsi-missione/missioni-disponibili'),
+
   get: (id: string) =>
     apiClient.get<ApiResponse<RimborsoMissione>>(`/rimborsi-missione/${id}`),
 

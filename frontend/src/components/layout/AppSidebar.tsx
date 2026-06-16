@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import {
   DashboardOutlined, ProjectOutlined, TeamOutlined,
   FileTextOutlined, BarChartOutlined, SettingOutlined, BankOutlined, ToolOutlined,
-  FundOutlined, FormOutlined, AuditOutlined, WalletOutlined, CompassOutlined,
+  FundOutlined, FormOutlined, AuditOutlined, WalletOutlined, CompassOutlined, EuroCircleOutlined,
 } from '@ant-design/icons';
 import { useLayoutStore } from '../../store/useLayoutStore';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -24,6 +24,7 @@ export function AppSidebar() {
     { key: '/autorizzazioni', icon: <AuditOutlined />, label: <>Autorizzazioni<br />Spesa</>, className: 'menu-item-2righe' },
     { key: '/rimborsi-spesa', icon: <WalletOutlined />, label: <>Rimborsi<br />Spesa</>, className: 'menu-item-2righe' },
     { key: '/missioni', icon: <CompassOutlined />, label: 'Richiesta Missione' },
+    { key: '/rimborsi-missione', icon: <EuroCircleOutlined />, label: <>Rimborso<br />Missione</>, className: 'menu-item-2righe' },
     { key: '/progetti', icon: <ProjectOutlined />, label: 'Progetti' },
     { key: '/portfolio', icon: <FundOutlined />, label: 'Portfolio' },
     ...(user && canDo(user.ruolo, 'timesheet:accedi')

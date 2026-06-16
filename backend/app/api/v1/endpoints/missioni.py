@@ -94,13 +94,51 @@ def _riga_dict(r: RigaRimborsoMissione) -> dict:
     }
 
 
-def _rimborso_dict(r: RimborsoMissione) -> dict:
+def _rimborso_dict(r: RimborsoMissione, db: Session = None) -> dict:
     totale = sum(float(riga.importo or 0) for riga in r.righe)
+    missione = r.missione
+    progetto_id = missione.progetto_id if missione else None
+    pi = _pi(progetto_id, db) if db and progetto_id else None
+    ammin = _ammin(progetto_id, db) if db and progetto_id else None
+    dir_dip = _dir_dip(progetto_id, db) if db and progetto_id else None
+
+    # Campi copertura economica
+    importo_stimato = float(missione.importo_stimato or 0) if missione else 0.0
+    voce_categoria = missione.voce_impegno or "missioni" if missione else "missioni"
+    voce_descrizione = None
+    disponibilita_voce = None
+    if db and progetto_id:
+        bv = (
+            db.query(BudgetVoce)
+            .join(VoceDiCosto, BudgetVoce.voce_id == VoceDiCosto.id)
+            .filter(
+                BudgetVoce.progetto_id == progetto_id,
+                VoceDiCosto.categoria == voce_categoria,
+            )
+            .first()
+        )
+        if bv:
+            voce_descrizione = bv.voce.descrizione if bv.voce else voce_categoria
+            disponibilita_voce = round(
+                float(bv.importo_previsto or 0)
+                - float(bv.importo_impegnato or 0)
+                - float(bv.importo_rendicontato or 0),
+                2,
+            )
+
     return {
         "id": str(r.id),
         "missione_id": str(r.missione_id),
+        "missione_titolo": missione.titolo if missione else None,
         "richiedente_id": str(r.richiedente_id),
         "richiedente_nome": _nome(r.richiedente),
+        "pi_id": str(pi.id) if pi else None,
+        "ammin_id": str(ammin.id) if ammin else None,
+        "dir_dip_id": str(dir_dip.id) if dir_dip else None,
+        "importo_stimato_missione": importo_stimato,
+        "voce_impegno_missione": voce_categoria,
+        "voce_descrizione": voce_descrizione,
+        "disponibilita_voce": disponibilita_voce,
         "stato": r.stato,
         "note": r.note,
         "ciclo": r.ciclo,
@@ -158,7 +196,7 @@ def _missione_dict(m: Missione, db: Session) -> dict:
         "dg_id": str(dg.id) if dg else None,
         "step_approvazione": [_step_dict(s) for s in m.step_approvazione],
         "allegati": [_allegato_dict(a) for a in m.allegati],
-        "rimborso": _rimborso_dict(m.rimborso) if m.rimborso else None,
+        "rimborso": _rimborso_dict(m.rimborso, db) if m.rimborso else None,
         "inviata_il": m.inviata_il.isoformat() if m.inviata_il else None,
         "approvata_il": m.approvata_il.isoformat() if m.approvata_il else None,
         "respinta_il": m.respinta_il.isoformat() if m.respinta_il else None,
@@ -502,11 +540,13 @@ async def upload_allegato_missione(
     utente: Persona = Depends(tutti_i_ruoli),
 ):
     m = _get_missione(id, db)
-    upload_dir = os.path.join(settings.UPLOAD_DIR, "missioni", str(m.id), "allegati")
+    from app.services.storage import progetto_dir, upload_filename
+    _codice_m = m.progetto.codice if m.progetto else None
+    upload_dir = progetto_dir(_codice_m, "missioni", str(m.id), "allegati")
     os.makedirs(upload_dir, exist_ok=True)
     import uuid
     ext = os.path.splitext(file.filename)[1] if file.filename else ""
-    path = os.path.join(upload_dir, f"{uuid.uuid4()}{ext}")
+    path = os.path.join(upload_dir, upload_filename(file.filename or f"allegato{ext}", str(uuid.uuid4())))
     content = await file.read()
     with open(path, "wb") as f:
         f.write(content)
@@ -652,7 +692,9 @@ def approva_missione(id: str, body: dict, db: Session = Depends(get_db), utente:
         db.refresh(m)
         try:
             from app.services.pdf_missione import genera_pdf_missione
-            output_dir = os.path.join(settings.UPLOAD_DIR, "missioni", str(m.id))
+            from app.services.storage import progetto_dir
+            _codice_pdf = m.progetto.codice if m.progetto else None
+            output_dir = progetto_dir(_codice_pdf, "missioni", str(m.id))
             m.pdf_path = genera_pdf_missione(m, db, output_dir)
             db.commit()
         except Exception:
@@ -741,6 +783,70 @@ def riapri_missione(id: str, db: Session = Depends(get_db), utente: Persona = De
 # RIMBORSO MISSIONE — CRUD
 # ════════════════════════════════════════════════════════════════════════════════
 
+@router.get("/rimborsi-missione")
+def lista_rimborsi(
+    stato: str = Query(None),
+    solo_miei: bool = Query(False),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    utente: Persona = Depends(tutti_i_ruoli),
+):
+    import math
+    q = db.query(RimborsoMissione)
+    if stato:
+        q = q.filter(RimborsoMissione.stato == stato)
+    if solo_miei:
+        q = q.filter(RimborsoMissione.richiedente_id == utente.id)
+    elif utente.ruolo not in ("superadmin", "amministrativo", "direttore_generale", "management", "monitor"):
+        from sqlalchemy import or_
+        pi_alloc = db.query(Allocazione.progetto_id).filter(
+            Allocazione.persona_id == utente.id, Allocazione.is_pi == True).subquery()
+        ammin_alloc = db.query(Allocazione.progetto_id).filter(
+            Allocazione.persona_id == utente.id, Allocazione.is_ammin == True).subquery()
+        missioni_ids = db.query(Missione.id).filter(
+            (Missione.richiedente_id == utente.id) |
+            Missione.progetto_id.in_(pi_alloc) |
+            Missione.progetto_id.in_(ammin_alloc)
+        ).subquery()
+        q = q.filter(RimborsoMissione.missione_id.in_(missioni_ids))
+    total = q.count()
+    items = q.order_by(RimborsoMissione.created_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
+    return {
+        "data": [_rimborso_dict(r, db) for r in items],
+        "meta": {"total": total, "page": page, "page_size": page_size,
+                 "total_pages": math.ceil(total / page_size) if page_size else 1},
+    }
+
+
+@router.get("/rimborsi-missione/missioni-disponibili")
+def missioni_disponibili_per_rimborso(
+    db: Session = Depends(get_db),
+    utente: Persona = Depends(tutti_i_ruoli),
+):
+    """Missioni approvate dell'utente senza rimborso associato."""
+    q = db.query(Missione).filter(
+        Missione.stato == "approvata",
+        Missione.richiedente_id == utente.id,
+        ~db.query(RimborsoMissione).filter(
+            RimborsoMissione.missione_id == Missione.id
+        ).exists(),
+    )
+    items = q.order_by(Missione.approvata_il.desc()).all()
+    return {"data": [
+        {
+            "id": str(m.id),
+            "titolo": m.titolo,
+            "destinazione": m.destinazione,
+            "data_inizio": m.data_inizio.isoformat() if m.data_inizio else None,
+            "data_fine": m.data_fine.isoformat() if m.data_fine else None,
+            "approvata_il": m.approvata_il.isoformat() if m.approvata_il else None,
+            "progetto_titolo": m.progetto.titolo if m.progetto else None,
+        }
+        for m in items
+    ]}
+
+
 @router.post("/missioni/{id}/rimborso")
 def crea_rimborso(id: str, body: dict, db: Session = Depends(get_db), utente: Persona = Depends(tutti_i_ruoli)):
     m = _get_missione(id, db)
@@ -763,7 +869,7 @@ def crea_rimborso(id: str, body: dict, db: Session = Depends(get_db), utente: Pe
 
 @router.get("/rimborsi-missione/{id}")
 def get_rimborso(id: str, db: Session = Depends(get_db), utente: Persona = Depends(tutti_i_ruoli)):
-    return {"data": _rimborso_dict(_get_rimborso(id, db))}
+    return {"data": _rimborso_dict(_get_rimborso(id, db), db)}
 
 
 @router.patch("/rimborsi-missione/{id}")
@@ -777,7 +883,7 @@ def aggiorna_rimborso(id: str, body: dict, db: Session = Depends(get_db), utente
         r.note = body["note"]
     db.commit()
     db.refresh(r)
-    return {"data": _rimborso_dict(r)}
+    return {"data": _rimborso_dict(r, db)}
 
 
 # ── Righe rimborso ────────────────────────────────────────────────────────────
@@ -800,7 +906,7 @@ def crea_riga(id: str, body: dict, db: Session = Depends(get_db), utente: Person
     db.add(riga)
     db.commit()
     db.refresh(r)
-    return {"data": _rimborso_dict(r)}
+    return {"data": _rimborso_dict(r, db)}
 
 
 @router.put("/rimborsi-missione/righe/{riga_id}")
@@ -820,7 +926,7 @@ def aggiorna_riga(riga_id: str, body: dict, db: Session = Depends(get_db), utent
         riga.importo = body["importo"]
     db.commit()
     db.refresh(r)
-    return {"data": _rimborso_dict(r)}
+    return {"data": _rimborso_dict(r, db)}
 
 
 @router.delete("/rimborsi-missione/righe/{riga_id}")
@@ -832,7 +938,7 @@ def elimina_riga(riga_id: str, db: Session = Depends(get_db), utente: Persona = 
     db.delete(riga)
     db.commit()
     db.refresh(r)
-    return {"data": _rimborso_dict(r)}
+    return {"data": _rimborso_dict(r, db)}
 
 
 @router.post("/rimborsi-missione/righe/{riga_id}/documento")
@@ -846,10 +952,12 @@ async def upload_documento_riga(
     r = riga.rimborso
     if r.stato != "bozza":
         raise HTTPException(status_code=409, detail={"error": {"code": "STATO_NON_MODIFICABILE", "message": "Documenti caricabili solo in stato bozza"}})
-    upload_dir = os.path.join(settings.UPLOAD_DIR, "missioni", str(r.missione_id), "rimborso")
+    from app.services.storage import progetto_dir, upload_filename
+    _codice_rig = r.missione.progetto.codice if (r.missione and r.missione.progetto) else None
+    upload_dir = progetto_dir(_codice_rig, "missioni", str(r.missione_id), "rimborso", "giustificativi")
     os.makedirs(upload_dir, exist_ok=True)
     ext = os.path.splitext(file.filename)[1] if file.filename else ""
-    path = os.path.join(upload_dir, f"{riga_id}{ext}")
+    path = os.path.join(upload_dir, upload_filename(file.filename or f"doc{ext}", riga_id))
     content = await file.read()
     with open(path, "wb") as f:
         f.write(content)
@@ -857,7 +965,7 @@ async def upload_documento_riga(
     riga.documento_nome_originale = file.filename
     db.commit()
     db.refresh(r)
-    return {"data": _rimborso_dict(r)}
+    return {"data": _rimborso_dict(r, db)}
 
 
 @router.get("/rimborsi-missione/righe/{riga_id}/documento")
@@ -879,7 +987,9 @@ async def upload_scheda_finanziaria(
     r = _get_rimborso(id, db)
     if r.stato != "bozza":
         raise HTTPException(status_code=409, detail={"error": {"code": "STATO_NON_MODIFICABILE", "message": "Caricabile solo in stato bozza"}})
-    upload_dir = os.path.join(settings.UPLOAD_DIR, "missioni", str(r.missione_id), "rimborso")
+    from app.services.storage import progetto_dir
+    _codice_sf = r.missione.progetto.codice if (r.missione and r.missione.progetto) else None
+    upload_dir = progetto_dir(_codice_sf, "missioni", str(r.missione_id), "rimborso")
     os.makedirs(upload_dir, exist_ok=True)
     path = os.path.join(upload_dir, f"scheda_finanziaria{os.path.splitext(file.filename or '')[1]}")
     content = await file.read()
@@ -888,7 +998,7 @@ async def upload_scheda_finanziaria(
     r.scheda_finanziaria_path = path
     db.commit()
     db.refresh(r)
-    return {"data": _rimborso_dict(r)}
+    return {"data": _rimborso_dict(r, db)}
 
 
 @router.get("/rimborsi-missione/{id}/scheda-finanziaria")
@@ -918,11 +1028,13 @@ async def upload_allegato_rimborso(
     utente: Persona = Depends(tutti_i_ruoli),
 ):
     r = _get_rimborso(id, db)
-    upload_dir = os.path.join(settings.UPLOAD_DIR, "missioni", str(r.missione_id), "rimborso", "allegati")
+    from app.services.storage import progetto_dir, upload_filename
+    _codice_all = r.missione.progetto.codice if (r.missione and r.missione.progetto) else None
+    upload_dir = progetto_dir(_codice_all, "missioni", str(r.missione_id), "rimborso", "allegati")
     os.makedirs(upload_dir, exist_ok=True)
     import uuid
     ext = os.path.splitext(file.filename)[1] if file.filename else ""
-    path = os.path.join(upload_dir, f"{uuid.uuid4()}{ext}")
+    path = os.path.join(upload_dir, upload_filename(file.filename or f"allegato{ext}", str(uuid.uuid4())))
     content = await file.read()
     with open(path, "wb") as f:
         f.write(content)
@@ -933,7 +1045,7 @@ async def upload_allegato_rimborso(
     db.add(allegato)
     db.commit()
     db.refresh(r)
-    return {"data": _rimborso_dict(r)}
+    return {"data": _rimborso_dict(r, db)}
 
 
 # ════════════════════════════════════════════════════════════════════════════════
@@ -958,7 +1070,7 @@ def invia_rimborso(id: str, db: Session = Depends(get_db), utente: Persona = Dep
               link=f"/rimborsi-missione/{r.id}")
     db.commit()
     db.refresh(r)
-    return {"data": _rimborso_dict(r)}
+    return {"data": _rimborso_dict(r, db)}
 
 
 @router.post("/rimborsi-missione/{id}/approva")
@@ -1019,21 +1131,29 @@ def approva_rimborso(id: str, body: dict, db: Session = Depends(get_db), utente:
         r.stato = "approvata"
         r.approvata_il = datetime.now(timezone.utc)
         _finalizza_rimborso_budget(r, db)
+        _notifica(db, r.richiedente, titolo="Rimborso missione APPROVATO",
+                  messaggio=f"Il tuo rimborso missione per {r.missione.titolo if r.missione else ''} ({totale:,.2f} €) è stato approvato definitivamente. Puoi scaricare il PDF.",
+                  link=f"/rimborsi-missione/{r.id}")
+        # commit PRIMA del PDF: decided_at dei step usa server_default e non è valorizzato finché non passiamo dal DB
+        db.commit()
+        db.refresh(r)
         try:
             from app.services.pdf_missione import genera_pdf_rimborso_missione
-            output_dir = os.path.join(settings.UPLOAD_DIR, "missioni", str(r.missione_id), "rimborso")
+            from app.services.storage import progetto_dir
+            _codice_rp = r.missione.progetto.codice if (r.missione and r.missione.progetto) else None
+            output_dir = progetto_dir(_codice_rp, "missioni", str(r.missione_id), "rimborso")
             r.pdf_path = genera_pdf_rimborso_missione(r, db, output_dir)
+            db.commit()
         except Exception:
             pass
-        _notifica(db, r.richiedente, titolo="Rimborso missione APPROVATO",
-                  messaggio=f"Il tuo rimborso missione per {r.missione.titolo} ({totale:,.2f} €) è stato approvato definitivamente. Puoi scaricare il PDF.",
-                  link=f"/rimborsi-missione/{r.id}")
+        db.refresh(r)
+        return {"data": _rimborso_dict(r, db)}
     else:
         raise HTTPException(status_code=409, detail={"error": {"code": "TRANSIZIONE_NON_VALIDA", "message": f"Il rimborso è in stato '{r.stato}', non approvabile"}})
 
     db.commit()
     db.refresh(r)
-    return {"data": _rimborso_dict(r)}
+    return {"data": _rimborso_dict(r, db)}
 
 
 @router.post("/rimborsi-missione/{id}/rigetta")
@@ -1056,7 +1176,7 @@ def rigetta_rimborso(id: str, body: dict, db: Session = Depends(get_db), utente:
               link=f"/rimborsi-missione/{r.id}")
     db.commit()
     db.refresh(r)
-    return {"data": _rimborso_dict(r)}
+    return {"data": _rimborso_dict(r, db)}
 
 
 @router.post("/rimborsi-missione/{id}/riapri")
@@ -1071,4 +1191,4 @@ def riapri_rimborso(id: str, db: Session = Depends(get_db), utente: Persona = De
     r.respinta_il = None
     db.commit()
     db.refresh(r)
-    return {"data": _rimborso_dict(r)}
+    return {"data": _rimborso_dict(r, db)}

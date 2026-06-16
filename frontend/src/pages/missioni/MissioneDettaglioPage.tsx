@@ -139,14 +139,6 @@ export function MissioneDettaglioPage() {
     onError: (e: unknown) => message.error(apiErrorMessage(e, 'Errore nell\'eliminazione')),
   });
 
-  const creaRimborso = useMutation({
-    mutationFn: () => missioniApi.creaRimborso(id!).then(r => r.data),
-    onSuccess: (data) => {
-      invalidate();
-      navigate(`/rimborsi-missione/${data.data.rimborso!.id}`);
-    },
-    onError: (e: unknown) => message.error(apiErrorMessage(e, 'Errore nella creazione del rimborso')),
-  });
 
   if (isLoading || !missione) return <Spin />;
 
@@ -399,11 +391,10 @@ export function MissioneDettaglioPage() {
             <Space direction="vertical">
               <Text type="secondary">Nessun rimborso ancora creato per questa missione.</Text>
               {isRichiedente && (
-                <Popconfirm title="Creare la richiesta di rimborso?" onConfirm={() => creaRimborso.mutate()}>
-                  <Button type="primary" icon={<PlusOutlined />} loading={creaRimborso.isPending}>
-                    Crea rimborso spese
-                  </Button>
-                </Popconfirm>
+                <Button type="primary" icon={<PlusOutlined />}
+                  onClick={() => navigate(`/rimborsi-missione/nuovo?missione_id=${id}`)}>
+                  Crea rimborso spese
+                </Button>
               )}
             </Space>
           )}
