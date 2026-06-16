@@ -1049,14 +1049,14 @@ async def upload_documento(
             "code": "FORBIDDEN", "message": "Solo amministrativi e PI possono caricare documenti"}})
     from app.models.documento import DocumentoProgetto
     import os, uuid as _uuid
-    _get_or_404(id, db)
-
-    upload_dir = f"/app/uploads/documenti/{id}"
+    _progetto = _get_or_404(id, db)
+    from app.services.storage import progetto_dir, upload_filename
+    upload_dir = progetto_dir(_progetto.codice, "documenti")
     os.makedirs(upload_dir, exist_ok=True)
 
     doc_id = _uuid.uuid4()
     ext = os.path.splitext(file.filename)[1] if file.filename else ""
-    dest = f"{upload_dir}/{doc_id}{ext}"
+    dest = os.path.join(upload_dir, upload_filename(file.filename or f"doc{ext}", str(doc_id)))
 
     content_bytes = await file.read()
     with open(dest, "wb") as f_out:

@@ -94,11 +94,13 @@ async def crea_erogazione(
                                                                 "message": f"Tipo '{tipo}' non valido"}})
     documento_path = None
     if file and file.filename:
-        upload_dir = os.path.join(settings.UPLOAD_DIR, "erogazioni", progetto_id)
+        from app.services.storage import progetto_dir, upload_filename
+        _p_er = _get_progetto_or_404(progetto_id, db)
+        upload_dir = progetto_dir(_p_er.codice, "erogazioni")
         os.makedirs(upload_dir, exist_ok=True)
         eid = _uuid.uuid4()
         ext = os.path.splitext(file.filename)[1]
-        documento_path = os.path.join(upload_dir, f"{eid}{ext}")
+        documento_path = os.path.join(upload_dir, upload_filename(file.filename, str(eid)))
         content = await file.read()
         with open(documento_path, "wb") as f_out:
             f_out.write(content)
@@ -148,11 +150,13 @@ async def aggiorna_erogazione(
         # rimuovi vecchio file se esiste
         if e.documento_path and os.path.exists(e.documento_path):
             os.remove(e.documento_path)
-        upload_dir = os.path.join(settings.UPLOAD_DIR, "erogazioni", progetto_id)
+        from app.services.storage import progetto_dir, upload_filename
+        _p_er2 = _get_progetto_or_404(progetto_id, db)
+        upload_dir = progetto_dir(_p_er2.codice, "erogazioni")
         os.makedirs(upload_dir, exist_ok=True)
         new_id = _uuid.uuid4()
         ext = os.path.splitext(file.filename)[1]
-        e.documento_path = os.path.join(upload_dir, f"{new_id}{ext}")
+        e.documento_path = os.path.join(upload_dir, upload_filename(file.filename, str(new_id)))
         content = await file.read()
         with open(e.documento_path, "wb") as f_out:
             f_out.write(content)

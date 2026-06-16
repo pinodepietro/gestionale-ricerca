@@ -236,10 +236,13 @@ async def upload_allegato_g(
     r = _get_or_404(id, db)
     if r.stato != "bozza":
         raise HTTPException(status_code=409, detail={"error": {"code": "NON_MODIFICABILE", "message": "Allegato modificabile solo in stato bozza"}})
-    upload_dir = os.path.join(settings.UPLOAD_DIR, "autorizzazioni", id)
+    from app.services.storage import progetto_dir, upload_filename
+    _codice = r.progetto.codice if r.progetto else None
+    upload_dir = progetto_dir(_codice, "autorizzazioni-spesa", id, "allegati")
     os.makedirs(upload_dir, exist_ok=True)
+    import uuid as _uuid_mod
     ext = os.path.splitext(file.filename)[1] if file.filename else ""
-    path = os.path.join(upload_dir, f"allegato_g{ext}")
+    path = os.path.join(upload_dir, upload_filename(file.filename or f"allegato_g{ext}", str(_uuid_mod.uuid4())))
     content = await file.read()
     with open(path, "wb") as f:
         f.write(content)
@@ -256,10 +259,13 @@ async def upload_allegato_preventivo(
     utente: Persona = Depends(tutti_i_ruoli),
 ):
     r = _get_or_404(id, db)
-    upload_dir = os.path.join(settings.UPLOAD_DIR, "autorizzazioni", id)
+    from app.services.storage import progetto_dir, upload_filename
+    _codice = r.progetto.codice if r.progetto else None
+    upload_dir = progetto_dir(_codice, "autorizzazioni-spesa", id, "allegati")
     os.makedirs(upload_dir, exist_ok=True)
+    import uuid as _uuid_mod
     ext = os.path.splitext(file.filename)[1] if file.filename else ""
-    path = os.path.join(upload_dir, f"preventivo{ext}")
+    path = os.path.join(upload_dir, upload_filename(file.filename or f"preventivo{ext}", str(_uuid_mod.uuid4())))
     content = await file.read()
     with open(path, "wb") as f:
         f.write(content)
@@ -492,7 +498,9 @@ def approva_dg(
     # Genera PDF
     try:
         from app.services.pdf_autorizzazione import genera_pdf_autorizzazione
-        output_dir = os.path.join(settings.UPLOAD_DIR, "autorizzazioni", str(r.id))
+        from app.services.storage import progetto_dir
+        _codice = r.progetto.codice if r.progetto else None
+        output_dir = progetto_dir(_codice, "autorizzazioni-spesa", str(r.id))
         pdf_path = genera_pdf_autorizzazione(r, db, output_dir)
         r.pdf_path = pdf_path
     except Exception as e:

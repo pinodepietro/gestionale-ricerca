@@ -71,6 +71,8 @@ class Sal(Base):
     data_erogazione = Column(Date, nullable=True)
     data_scadenza_rendiconto = Column(Date, nullable=True)
     motivo_contestazione = Column(Text, nullable=True)
+    pdf_path = Column(String(500), nullable=True)
+    xlsx_path = Column(String(500), nullable=True)
 
     progetto = relationship("Progetto", back_populates="sal")
     spese = relationship("Spesa", back_populates="sal", foreign_keys="[Spesa.sal_id]")

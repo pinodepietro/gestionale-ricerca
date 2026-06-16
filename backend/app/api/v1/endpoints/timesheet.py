@@ -663,7 +663,19 @@ def export_timesheet_xlsx(
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
-    nome = f"timesheet_{persona.cognome if persona else 'export'}_{t.mese:02d}_{t.anno}.xlsx"
+    import os as _os
+    from app.services.storage import progetto_dir, _safe
+    _codice = progetto.codice if progetto else "export"
+    _cog = _safe(persona.cognome if persona else "export")
+    nome = f"TS_{_cog}_{t.anno}{t.mese:02d}.xlsx"
+    _output_dir = progetto_dir(_codice, "timesheet")
+    _os.makedirs(_output_dir, exist_ok=True)
+    _dst = _os.path.join(_output_dir, nome)
+    with open(_dst, "wb") as _fh:
+        _fh.write(buf.read())
+    t.xlsx_path = _dst
+    db.commit()
+    buf.seek(0)
     return StreamingResponse(
         buf,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -750,7 +762,19 @@ def export_timesheet_con_template(
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
-    nome = f"timesheet_{persona.cognome if persona else 'export'}_{t.anno}.xlsx"
+    import os as _os
+    from app.services.storage import progetto_dir, _safe
+    _codice = progetto.codice if progetto else "export"
+    _cog = _safe(persona.cognome if persona else "export")
+    nome = f"TS_{_cog}_{t.anno}.xlsx"
+    _output_dir = progetto_dir(_codice, "timesheet")
+    _os.makedirs(_output_dir, exist_ok=True)
+    _dst = _os.path.join(_output_dir, nome)
+    with open(_dst, "wb") as _fh:
+        _fh.write(buf.read())
+    t.xlsx_path = _dst
+    db.commit()
+    buf.seek(0)
     return StreamingResponse(
         buf,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

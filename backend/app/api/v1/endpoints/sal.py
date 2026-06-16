@@ -661,7 +661,18 @@ def export_sal_xlsx(
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
-    filename = f"SAL_{s.numero}_{progetto.codice if progetto else 'export'}.xlsx"
+    import os as _os
+    from app.services.storage import progetto_dir, _safe
+    _codice = progetto.codice if progetto else "export"
+    _output_dir = progetto_dir(_codice, "sal", str(s.id))
+    _os.makedirs(_output_dir, exist_ok=True)
+    filename = f"SAL_{s.numero}_{_safe(_codice)}_{date.today().strftime('%Y%m%d')}.xlsx"
+    _dst = _os.path.join(_output_dir, filename)
+    with open(_dst, "wb") as _fh:
+        _fh.write(buf.read())
+    s.xlsx_path = _dst
+    db.commit()
+    buf.seek(0)
     return StreamingResponse(
         buf,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -926,7 +937,18 @@ def export_sal_pdf(
 
     doc.build(story)
     buf.seek(0)
-    nome_file = f"SAL_{s.numero}_{progetto.codice if progetto else 'export'}.pdf"
+    import os as _os
+    from app.services.storage import progetto_dir, _safe
+    _codice = progetto.codice if progetto else "export"
+    _output_dir = progetto_dir(_codice, "sal", str(s.id))
+    _os.makedirs(_output_dir, exist_ok=True)
+    nome_file = f"SAL_{s.numero}_{_safe(_codice)}_{date.today().strftime('%Y%m%d')}.pdf"
+    _dst = _os.path.join(_output_dir, nome_file)
+    with open(_dst, "wb") as _fh:
+        _fh.write(buf.read())
+    s.pdf_path = _dst
+    db.commit()
+    buf.seek(0)
     return StreamingResponse(buf, media_type="application/pdf",
                               headers={"Content-Disposition": f"attachment; filename={nome_file}"})
 

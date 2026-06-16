@@ -386,10 +386,13 @@ async def upload_documento_riga(
     if str(r.richiedente_id) != str(utente.id) and utente.ruolo not in ("superadmin", "amministrativo"):
         raise HTTPException(status_code=403, detail={"error": {"code": "FORBIDDEN", "message": "Non puoi modificare questa richiesta"}})
 
-    upload_dir = os.path.join(settings.UPLOAD_DIR, "rimborsi-spesa", str(r.id))
+    from app.services.storage import progetto_dir, upload_filename
+    _ras = r.richiesta_autorizzazione
+    _codice = _ras.progetto.codice if (_ras and _ras.progetto) else None
+    upload_dir = progetto_dir(_codice, "autorizzazioni-spesa", str(_ras.id if _ras else r.id), "rimborso", "giustificativi")
     os.makedirs(upload_dir, exist_ok=True)
     ext = os.path.splitext(file.filename)[1] if file.filename else ""
-    path = os.path.join(upload_dir, f"{riga_id}{ext}")
+    path = os.path.join(upload_dir, upload_filename(file.filename or f"doc{ext}", riga_id))
     content = await file.read()
     with open(path, "wb") as f:
         f.write(content)
@@ -583,7 +586,9 @@ def approva_dg(
     # Genera PDF
     try:
         from app.services.pdf_rimborso_spesa import genera_pdf_rimborso_spesa
-        output_dir = os.path.join(settings.UPLOAD_DIR, "rimborsi-spesa", str(r.id))
+        from app.services.storage import progetto_dir
+        _codice_r = ras.progetto.codice if (ras and ras.progetto) else None
+        output_dir = progetto_dir(_codice_r, "autorizzazioni", str(ras.id), "rimborso")
         pdf_path = genera_pdf_rimborso_spesa(r, db, output_dir)
         r.pdf_path = pdf_path
     except Exception:

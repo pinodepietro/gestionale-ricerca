@@ -40,6 +40,7 @@ class TimesheetTestata(Base):
     stato = Column(String(20), nullable=False, default="bozza")
     inviato_at = Column(DateTime(timezone=True), nullable=True)
     approvato_at = Column(DateTime(timezone=True), nullable=True)
+    xlsx_path = Column(String(500), nullable=True)
 
     righe = relationship("TimesheetRiga", back_populates="testata",
                          cascade="all, delete-orphan", order_by="TimesheetRiga.ordine")
