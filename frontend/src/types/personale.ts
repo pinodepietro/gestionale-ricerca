@@ -13,6 +13,8 @@ export interface Persona {
   ssd?: string;
   dipartimento_id?: string | null;
   dipartimento_nome?: string | null;
+  firma_olografa?: boolean;
+  gruppo_missione?: string | null;
   attivo: boolean;
 }
 

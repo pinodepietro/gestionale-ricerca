@@ -79,7 +79,8 @@ def progetto_dict(p: Progetto) -> dict:
 def lista_progetti(
     stato: str = Query(None), tipo: str = Query(None),
     search: str = Query(None), includi_bozze: bool = Query(False),
-    page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100),
+    solo_allocati: bool = Query(False),
+    page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=500),
     db: Session = Depends(get_db), utente: Persona = Depends(tutti_i_ruoli),
 ):
     q = db.query(Progetto)
@@ -93,8 +94,10 @@ def lista_progetti(
         q = q.filter(or_(Progetto.codice.ilike(f"%{search}%"),
                          Progetto.titolo.ilike(f"%{search}%"),
                          Progetto.acronimo.ilike(f"%{search}%")))
-    # Amministrativo vede solo i progetti assegnati a lui
-    if utente.ruolo == "amministrativo":
+    if solo_allocati:
+        proj_ids = db.query(Allocazione.progetto_id).filter(Allocazione.persona_id == utente.id).subquery()
+        q = q.filter(Progetto.id.in_(proj_ids))
+    elif utente.ruolo == "amministrativo":
         q = q.filter(Progetto.amministrativo_id == utente.id)
     total = q.count()
     items = q.order_by(Progetto.codice).offset((page - 1) * page_size).limit(page_size).all()

@@ -205,6 +205,9 @@ export function PersonaPage() {
               <Descriptions.Item label="SSD">{persona.ssd ?? '—'}</Descriptions.Item>
               <Descriptions.Item label="Dipartimento">{persona.dipartimento_nome ?? '—'}</Descriptions.Item>
               <Descriptions.Item label="In servizio dal">{formatData(persona.data_inizio_servizio)}</Descriptions.Item>
+              <Descriptions.Item label="Gruppo missione">
+                {persona.gruppo_missione ? `Gruppo ${persona.gruppo_missione}` : '—'}
+              </Descriptions.Item>
             </Descriptions>
             </>
           ),
@@ -355,6 +358,15 @@ export function PersonaPage() {
               allowClear
               options={(dipartimenti as { id: string; nome: string }[] | undefined)
                 ?.map(d => ({ value: d.id, label: d.nome })) ?? []}
+            />
+          </Form.Item>
+          <Form.Item name="gruppo_missione" label="Gruppo missione">
+            <Select allowClear placeholder="Seleziona gruppo"
+              options={[
+                { value: 'A', label: 'Gruppo A — Prof. I e II fascia, commissioni' },
+                { value: 'B', label: 'Gruppo B — Ricercatore/Ricercatrice' },
+                { value: 'C', label: 'Gruppo C — Docente a contratto, assegnisti, dottorandi, tutor' },
+              ]}
             />
           </Form.Item>
         </Form>

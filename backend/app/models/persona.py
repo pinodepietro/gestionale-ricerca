@@ -22,6 +22,8 @@ class Persona(Base):
     data_inizio_servizio = Column(Date, nullable=True)
     ssd = Column(String(100), nullable=True)
     dipartimento_id = Column(UUID(as_uuid=True), ForeignKey('dipartimento.id'), nullable=True)
+    firma_olografa = Column(String(500), nullable=True)
+    gruppo_missione = Column(String(1), nullable=True)  # A, B o C
     attivo = Column(Boolean, nullable=False, default=True)
     deve_cambiare_password = Column(Boolean, nullable=False, default=False)
 

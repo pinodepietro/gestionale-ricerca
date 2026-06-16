@@ -25,6 +25,10 @@ import { AutorizzazioneDettaglioPage } from './pages/autorizzazioni/Autorizzazio
 import { RimborsiSpesaPage } from './pages/rimborsi-spesa/RimborsiSpesaPage';
 import { RimborsoSpesaNuovoPage } from './pages/rimborsi-spesa/RimborsoSpesaNuovoPage';
 import { RimborsoSpesaDettaglioPage } from './pages/rimborsi-spesa/RimborsoSpesaDettaglioPage';
+import { MissioniListaPage } from './pages/missioni/MissioniListaPage';
+import { MissioneFormPage } from './pages/missioni/MissioneFormPage';
+import { MissioneDettaglioPage } from './pages/missioni/MissioneDettaglioPage';
+import { RimborsoMissioneDettaglioPage } from './pages/missioni/RimborsoMissioneDettaglioPage';
 
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
@@ -60,6 +64,11 @@ export const router = createBrowserRouter([
       { path: 'rimborsi-spesa', element: <RimborsiSpesaPage /> },
       { path: 'rimborsi-spesa/nuovo', element: <RimborsoSpesaNuovoPage /> },
       { path: 'rimborsi-spesa/:id', element: <RimborsoSpesaDettaglioPage /> },
+      { path: 'missioni', element: <MissioniListaPage /> },
+      { path: 'missioni/nuova', element: <MissioneFormPage /> },
+      { path: 'missioni/:id', element: <MissioneDettaglioPage /> },
+      { path: 'missioni/:id/modifica', element: <MissioneFormPage /> },
+      { path: 'rimborsi-missione/:id', element: <RimborsoMissioneDettaglioPage /> },
     ],
   },
 ]);

@@ -24,3 +24,11 @@ from app.models.notifica import Notifica  # noqa: F401
 from app.models.proposta import Proposta, PropostaPartner  # noqa: F401
 from app.models.autorizzazione_spesa import Dipartimento, RichiestaAutorizzazioneSpesa  # noqa: F401
 from app.models.rimborso_spesa import RichiestaRimborsoSpesa, RimborsoSpesaRiga  # noqa: F401
+from app.models.missione import (  # noqa: F401
+    QualificaMissione,
+    Missione,
+    RimborsoMissione,
+    RigaRimborsoMissione,
+    StepApprovazioneMissione,
+    AllegatoMissione,
+)
