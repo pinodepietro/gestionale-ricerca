@@ -18,6 +18,13 @@ from app.services.notifiche import crea_notifica, invia_email
 
 router = APIRouter()
 
+
+def _aut_spesa_folder(ras) -> str:
+    from app.services.storage import _safe
+    cog = _safe(ras.richiedente.cognome if ras.richiedente else "richiedente")
+    data = ras.created_at.strftime('%d%m%Y') if ras.created_at else "00000000"
+    return f"{cog}_{data}"
+
 STATI_VALIDI = {
     "bozza", "attesa_ammin", "attesa_rs", "attesa_dir_dip", "attesa_dg", "approvata", "rigettata"
 }
@@ -111,7 +118,7 @@ def _calcola_disponibile(bv: BudgetVoce, db: Session) -> float:
         Spesa.voce_id == bv.voce_id,
         Spesa.stato == "registrata",
     ).scalar())
-    return float(bv.importo_previsto) - float(bv.importo_impegnato) - speso
+    return float(bv.importo_erogato or 0) - float(bv.importo_impegnato) - speso
 
 
 # ── Helper risoluzione approvatori ───────────────────────────────────────────
@@ -178,6 +185,15 @@ def lista_rimborsi(
         q = q.filter(RichiestaRimborsoSpesa.stato == stato)
     if solo_miei:
         q = q.filter(RichiestaRimborsoSpesa.richiedente_id == utente.id)
+    elif utente.ruolo not in ("superadmin", "direttore_generale"):
+        alloc_proj_ids = db.query(Allocazione.progetto_id).filter(Allocazione.persona_id == utente.id).subquery()
+        aut_in_projects = db.query(RichiestaAutorizzazioneSpesa.id).filter(
+            RichiestaAutorizzazioneSpesa.progetto_id.in_(alloc_proj_ids)
+        ).subquery()
+        q = q.filter(
+            RichiestaRimborsoSpesa.richiedente_id == utente.id,
+            RichiestaRimborsoSpesa.richiesta_autorizzazione_spesa_id.in_(aut_in_projects),
+        )
     total = q.count()
     items = q.order_by(RichiestaRimborsoSpesa.created_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
     return {
@@ -389,7 +405,7 @@ async def upload_documento_riga(
     from app.services.storage import progetto_dir, upload_filename
     _ras = r.richiesta_autorizzazione
     _codice = _ras.progetto.codice if (_ras and _ras.progetto) else None
-    upload_dir = progetto_dir(_codice, "autorizzazioni-spesa", str(_ras.id if _ras else r.id), "rimborso", "giustificativi")
+    upload_dir = progetto_dir(_codice, "autorizzazioni-spesa", _aut_spesa_folder(_ras) if _ras else "senza_aut", "rimborso", "giustificativi")
     os.makedirs(upload_dir, exist_ok=True)
     ext = os.path.splitext(file.filename)[1] if file.filename else ""
     path = os.path.join(upload_dir, upload_filename(file.filename or f"doc{ext}", riga_id))
@@ -588,7 +604,7 @@ def approva_dg(
         from app.services.pdf_rimborso_spesa import genera_pdf_rimborso_spesa
         from app.services.storage import progetto_dir
         _codice_r = ras.progetto.codice if (ras and ras.progetto) else None
-        output_dir = progetto_dir(_codice_r, "autorizzazioni", str(ras.id), "rimborso")
+        output_dir = progetto_dir(_codice_r, "autorizzazioni-spesa", _aut_spesa_folder(ras) if ras else "senza_aut", "rimborso")
         pdf_path = genera_pdf_rimborso_spesa(r, db, output_dir)
         r.pdf_path = pdf_path
     except Exception:

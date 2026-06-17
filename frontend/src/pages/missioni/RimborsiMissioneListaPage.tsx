@@ -5,6 +5,7 @@ import { PlusOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import { rimborsiMissioneApi } from '../../api/missioni';
 import { formatData, formatEuro } from '../../utils/formatters';
+import { useAuthStore } from '../../store/useAuthStore';
 
 const { Title } = Typography;
 
@@ -20,6 +21,8 @@ const STATI_CONFIG: Record<string, { label: string; color: string }> = {
 
 export function RimborsiMissioneListaPage() {
   const navigate = useNavigate();
+  const user = useAuthStore(s => s.user);
+  const isPrivilegiato = user?.ruolo === 'superadmin' || user?.ruolo === 'direttore_generale';
   const [stato, setStato] = useState<string | undefined>();
   const [soloMiei, setSoloMiei] = useState(false);
   const [page, setPage] = useState(1);
@@ -68,10 +71,12 @@ export function RimborsiMissioneListaPage() {
           value={stato}
           onChange={v => { setStato(v); setPage(1); }}
         />
-        <Space>
-          <span style={{ fontSize: 13 }}>Solo i miei:</span>
-          <Switch checked={soloMiei} onChange={v => { setSoloMiei(v); setPage(1); }} />
-        </Space>
+        {isPrivilegiato && (
+          <Space>
+            <span style={{ fontSize: 13 }}>Solo i miei:</span>
+            <Switch checked={soloMiei} onChange={v => { setSoloMiei(v); setPage(1); }} />
+          </Space>
+        )}
       </Space>
 
       <Table

@@ -19,6 +19,14 @@ from app.models.persona import Persona
 
 router = APIRouter()
 
+
+def _aut_spesa_folder(r) -> str:
+    from app.services.storage import _safe
+    cog = _safe(r.richiedente.cognome if r.richiedente else "richiedente")
+    # data creazione: stabile dall'inizio, usata per allegati pre-approvazione
+    data = r.created_at.strftime('%d%m%Y') if r.created_at else "00000000"
+    return f"{cog}_{data}"
+
 STATI_VALIDI = {
     "bozza", "attesa_ammin", "attesa_rs", "attesa_dir_dip", "attesa_dg", "approvata", "rigettata"
 }
@@ -81,7 +89,7 @@ def _calcola_disponibile(bv: BudgetVoce, db: Session) -> float:
         Spesa.voce_id == bv.voce_id,
         Spesa.stato == "registrata",
     ).scalar())
-    return float(bv.importo_previsto) - float(bv.importo_impegnato) - speso
+    return float(bv.importo_erogato or 0) - float(bv.importo_impegnato) - speso
 
 
 # ── CRUD ──────────────────────────────────────────────────────────────────────
@@ -104,6 +112,12 @@ def lista_autorizzazioni(
         q = q.filter(RichiestaAutorizzazioneSpesa.progetto_id == progetto_id)
     if solo_mie:
         q = q.filter(RichiestaAutorizzazioneSpesa.richiedente_id == utente.id)
+    elif utente.ruolo not in ("superadmin", "direttore_generale"):
+        alloc_ids = db.query(Allocazione.progetto_id).filter(Allocazione.persona_id == utente.id).subquery()
+        q = q.filter(
+            RichiestaAutorizzazioneSpesa.richiedente_id == utente.id,
+            RichiestaAutorizzazioneSpesa.progetto_id.in_(alloc_ids),
+        )
     total = q.count()
     items = q.order_by(RichiestaAutorizzazioneSpesa.created_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
     return {
@@ -238,7 +252,7 @@ async def upload_allegato_g(
         raise HTTPException(status_code=409, detail={"error": {"code": "NON_MODIFICABILE", "message": "Allegato modificabile solo in stato bozza"}})
     from app.services.storage import progetto_dir, upload_filename
     _codice = r.progetto.codice if r.progetto else None
-    upload_dir = progetto_dir(_codice, "autorizzazioni-spesa", id, "allegati")
+    upload_dir = progetto_dir(_codice, "autorizzazioni-spesa", _aut_spesa_folder(r), "allegati")
     os.makedirs(upload_dir, exist_ok=True)
     import uuid as _uuid_mod
     ext = os.path.splitext(file.filename)[1] if file.filename else ""
@@ -261,7 +275,7 @@ async def upload_allegato_preventivo(
     r = _get_or_404(id, db)
     from app.services.storage import progetto_dir, upload_filename
     _codice = r.progetto.codice if r.progetto else None
-    upload_dir = progetto_dir(_codice, "autorizzazioni-spesa", id, "allegati")
+    upload_dir = progetto_dir(_codice, "autorizzazioni-spesa", _aut_spesa_folder(r), "allegati")
     os.makedirs(upload_dir, exist_ok=True)
     import uuid as _uuid_mod
     ext = os.path.splitext(file.filename)[1] if file.filename else ""
@@ -500,7 +514,7 @@ def approva_dg(
         from app.services.pdf_autorizzazione import genera_pdf_autorizzazione
         from app.services.storage import progetto_dir
         _codice = r.progetto.codice if r.progetto else None
-        output_dir = progetto_dir(_codice, "autorizzazioni-spesa", str(r.id))
+        output_dir = progetto_dir(_codice, "autorizzazioni-spesa", _aut_spesa_folder(r))
         pdf_path = genera_pdf_autorizzazione(r, db, output_dir)
         r.pdf_path = pdf_path
     except Exception as e:

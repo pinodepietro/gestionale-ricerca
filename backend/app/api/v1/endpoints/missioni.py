@@ -25,6 +25,16 @@ STATI_MISSIONE = {"bozza", "attesa_ammin", "attesa_pi", "attesa_dir_dip", "attes
 STATI_RIMBORSO = {"bozza", "attesa_ammin", "attesa_pi", "attesa_dir_dip", "attesa_dg", "approvata", "rigettata"}
 
 
+# ── Helpers storage ───────────────────────────────────────────────────────────
+
+def _missione_folder(m) -> str:
+    from app.services.storage import _safe
+    from datetime import date
+    cog = _safe(m.richiedente.cognome if m.richiedente else "richiedente")
+    data = m.approvata_il.strftime('%d%m%Y') if m.approvata_il else date.today().strftime('%d%m%Y')
+    return f"{cog}_{data}"
+
+
 # ── Helpers approvers ─────────────────────────────────────────────────────────
 
 def _pi(progetto_id, db: Session) -> Persona | None:
@@ -119,10 +129,16 @@ def _rimborso_dict(r: RimborsoMissione, db: Session = None) -> dict:
         )
         if bv:
             voce_descrizione = bv.voce.descrizione if bv.voce else voce_categoria
+            from sqlalchemy import func as _func
+            _speso = float(db.query(_func.coalesce(_func.sum(Spesa.importo), 0)).filter(
+                Spesa.progetto_id == bv.progetto_id,
+                Spesa.voce_id == bv.voce_id,
+                Spesa.stato == "registrata",
+            ).scalar())
             disponibilita_voce = round(
-                float(bv.importo_previsto or 0)
+                float(bv.importo_erogato or 0)
                 - float(bv.importo_impegnato or 0)
-                - float(bv.importo_rendicontato or 0),
+                - _speso,
                 2,
             )
 
@@ -415,16 +431,12 @@ def lista_missioni(
         q = q.filter(Missione.progetto_id == progetto_id)
     if solo_mie:
         q = q.filter(Missione.richiedente_id == utente.id)
-    elif utente.ruolo not in ("superadmin", "amministrativo", "direttore_generale", "management", "monitor"):
-        # Ricercatori/PI/etc. vedono: le proprie + quelle dei progetti dove sono coinvolti come PI o ammin
-        from sqlalchemy import or_
-        pi_alloc = db.query(Allocazione.progetto_id).filter(Allocazione.persona_id == utente.id, Allocazione.is_pi == True).subquery()
-        ammin_alloc = db.query(Allocazione.progetto_id).filter(Allocazione.persona_id == utente.id, Allocazione.is_ammin == True).subquery()
-        q = q.filter(or_(
+    elif utente.ruolo not in ("superadmin", "direttore_generale"):
+        alloc_ids = db.query(Allocazione.progetto_id).filter(Allocazione.persona_id == utente.id).subquery()
+        q = q.filter(
             Missione.richiedente_id == utente.id,
-            Missione.progetto_id.in_(pi_alloc),
-            Missione.progetto_id.in_(ammin_alloc),
-        ))
+            Missione.progetto_id.in_(alloc_ids),
+        )
     total = q.count()
     items = q.order_by(Missione.created_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
     return {
@@ -631,6 +643,9 @@ def approva_missione(id: str, body: dict, db: Session = Depends(get_db), utente:
         ammin = _ammin(m.progetto_id, db)
         if (not ammin or str(ammin.id) != str(utente.id)) and utente.ruolo != "superadmin":
             raise HTTPException(status_code=403, detail={"error": {"code": "FORBIDDEN", "message": "Non sei l'amministratore di questo progetto"}})
+        voce_impegno = body.get("voce_impegno")
+        if voce_impegno:
+            m.voce_impegno = voce_impegno
         step = StepApprovazioneMissione(missione_id=m.id, approvatore_id=utente.id, ruolo="ammin",
                                          decisione="approvato", luogo_firma=luogo or None, note=note, ciclo=1)
         db.add(step)
@@ -694,7 +709,7 @@ def approva_missione(id: str, body: dict, db: Session = Depends(get_db), utente:
             from app.services.pdf_missione import genera_pdf_missione
             from app.services.storage import progetto_dir
             _codice_pdf = m.progetto.codice if m.progetto else None
-            output_dir = progetto_dir(_codice_pdf, "missioni", str(m.id))
+            output_dir = progetto_dir(_codice_pdf, "missioni", _missione_folder(m))
             m.pdf_path = genera_pdf_missione(m, db, output_dir)
             db.commit()
         except Exception:
@@ -798,18 +813,15 @@ def lista_rimborsi(
         q = q.filter(RimborsoMissione.stato == stato)
     if solo_miei:
         q = q.filter(RimborsoMissione.richiedente_id == utente.id)
-    elif utente.ruolo not in ("superadmin", "amministrativo", "direttore_generale", "management", "monitor"):
-        from sqlalchemy import or_
-        pi_alloc = db.query(Allocazione.progetto_id).filter(
-            Allocazione.persona_id == utente.id, Allocazione.is_pi == True).subquery()
-        ammin_alloc = db.query(Allocazione.progetto_id).filter(
-            Allocazione.persona_id == utente.id, Allocazione.is_ammin == True).subquery()
-        missioni_ids = db.query(Missione.id).filter(
-            (Missione.richiedente_id == utente.id) |
-            Missione.progetto_id.in_(pi_alloc) |
-            Missione.progetto_id.in_(ammin_alloc)
+    elif utente.ruolo not in ("superadmin", "direttore_generale"):
+        alloc_proj_ids = db.query(Allocazione.progetto_id).filter(Allocazione.persona_id == utente.id).subquery()
+        missioni_in_projects = db.query(Missione.id).filter(
+            Missione.progetto_id.in_(alloc_proj_ids)
         ).subquery()
-        q = q.filter(RimborsoMissione.missione_id.in_(missioni_ids))
+        q = q.filter(
+            RimborsoMissione.richiedente_id == utente.id,
+            RimborsoMissione.missione_id.in_(missioni_in_projects),
+        )
     total = q.count()
     items = q.order_by(RimborsoMissione.created_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
     return {
@@ -954,7 +966,7 @@ async def upload_documento_riga(
         raise HTTPException(status_code=409, detail={"error": {"code": "STATO_NON_MODIFICABILE", "message": "Documenti caricabili solo in stato bozza"}})
     from app.services.storage import progetto_dir, upload_filename
     _codice_rig = r.missione.progetto.codice if (r.missione and r.missione.progetto) else None
-    upload_dir = progetto_dir(_codice_rig, "missioni", str(r.missione_id), "rimborso", "giustificativi")
+    upload_dir = progetto_dir(_codice_rig, "missioni", _missione_folder(r.missione), "rimborso", "giustificativi")
     os.makedirs(upload_dir, exist_ok=True)
     ext = os.path.splitext(file.filename)[1] if file.filename else ""
     path = os.path.join(upload_dir, upload_filename(file.filename or f"doc{ext}", riga_id))
@@ -989,7 +1001,7 @@ async def upload_scheda_finanziaria(
         raise HTTPException(status_code=409, detail={"error": {"code": "STATO_NON_MODIFICABILE", "message": "Caricabile solo in stato bozza"}})
     from app.services.storage import progetto_dir
     _codice_sf = r.missione.progetto.codice if (r.missione and r.missione.progetto) else None
-    upload_dir = progetto_dir(_codice_sf, "missioni", str(r.missione_id), "rimborso")
+    upload_dir = progetto_dir(_codice_sf, "missioni", _missione_folder(r.missione), "rimborso")
     os.makedirs(upload_dir, exist_ok=True)
     path = os.path.join(upload_dir, f"scheda_finanziaria{os.path.splitext(file.filename or '')[1]}")
     content = await file.read()
@@ -1030,7 +1042,7 @@ async def upload_allegato_rimborso(
     r = _get_rimborso(id, db)
     from app.services.storage import progetto_dir, upload_filename
     _codice_all = r.missione.progetto.codice if (r.missione and r.missione.progetto) else None
-    upload_dir = progetto_dir(_codice_all, "missioni", str(r.missione_id), "rimborso", "allegati")
+    upload_dir = progetto_dir(_codice_all, "missioni", _missione_folder(r.missione), "rimborso", "allegati")
     os.makedirs(upload_dir, exist_ok=True)
     import uuid
     ext = os.path.splitext(file.filename)[1] if file.filename else ""
@@ -1141,7 +1153,7 @@ def approva_rimborso(id: str, body: dict, db: Session = Depends(get_db), utente:
             from app.services.pdf_missione import genera_pdf_rimborso_missione
             from app.services.storage import progetto_dir
             _codice_rp = r.missione.progetto.codice if (r.missione and r.missione.progetto) else None
-            output_dir = progetto_dir(_codice_rp, "missioni", str(r.missione_id), "rimborso")
+            output_dir = progetto_dir(_codice_rp, "missioni", _missione_folder(r.missione), "rimborso")
             r.pdf_path = genera_pdf_rimborso_missione(r, db, output_dir)
             db.commit()
         except Exception:

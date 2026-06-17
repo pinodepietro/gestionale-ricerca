@@ -87,10 +87,12 @@ export function AutorizzazioniPage() {
           value={stato}
           onChange={v => { setStato(v); setPage(1); }}
         />
-        <Space>
-          <span style={{ fontSize: 13 }}>Solo le mie:</span>
-          <Switch checked={soloMie} onChange={v => { setSoloMie(v); setPage(1); }} />
-        </Space>
+        {(user?.ruolo === 'superadmin' || user?.ruolo === 'direttore_generale') && (
+          <Space>
+            <span style={{ fontSize: 13 }}>Solo le mie:</span>
+            <Switch checked={soloMie} onChange={v => { setSoloMie(v); setPage(1); }} />
+          </Space>
+        )}
       </Space>
 
       <Table
