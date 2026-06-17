@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   Typography, Button, Space, Tag, Descriptions, Card, Steps, Modal,
-  Input, Row, Col, Alert, Table, message, Popconfirm, Spin, Upload,
+  Input, Row, Col, Alert, Table, message, Popconfirm, Spin, Upload, Select,
 } from 'antd';
 import {
   ArrowLeftOutlined, CheckOutlined, CloseOutlined, SendOutlined,
@@ -11,6 +11,8 @@ import {
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { missioniApi, type Missione, type AllegatoMissione } from '../../api/missioni';
+import { budgetApi } from '../../api/budget';
+import type { BudgetVoce } from '../../types/budget';
 import { useAuthStore } from '../../store/useAuthStore';
 import { formatData, formatEuro } from '../../utils/formatters';
 import { apiErrorMessage } from '../../utils/apiError';
@@ -81,12 +83,24 @@ export function MissioneDettaglioPage() {
   const [noteAppr, setNoteAppr] = useState('');
   const [modalRigetto, setModalRigetto] = useState(false);
   const [motivazione, setMotivazione] = useState('');
+  const [voceImpegno, setVoceImpegno] = useState<string | undefined>(undefined);
 
   const { data: missione, isLoading, isFetching } = useQuery({
     queryKey: ['missione', id],
     queryFn: () => missioniApi.get(id!).then(r => r.data.data),
     enabled: !!id,
   });
+
+  const { data: budgetVoci } = useQuery({
+    queryKey: ['budget-voci', missione?.progetto_id],
+    queryFn: () => budgetApi.voci.list(missione!.progetto_id).then(r => r.data.data),
+    enabled: !!missione?.progetto_id,
+  });
+
+  const opzioniVoce = (budgetVoci ?? [])
+    .filter((v: BudgetVoce) => v.voce?.categoria)
+    .map((v: BudgetVoce) => ({ value: v.voce!.categoria!, label: `${v.voce!.codice} — ${v.voce!.descrizione}` }))
+    .filter((v: { value: string }, i: number, arr: { value: string }[]) => arr.findIndex(x => x.value === v.value) === i);
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['missione', id] });
@@ -104,7 +118,7 @@ export function MissioneDettaglioPage() {
   });
 
   const approva = useMutation({
-    mutationFn: (data: { luogo?: string; note?: string }) => missioniApi.approva(id!, data).then(r => r.data),
+    mutationFn: (data: { luogo?: string; note?: string; voce_impegno?: string }) => missioniApi.approva(id!, data).then(r => r.data),
     onSuccess: (data) => {
       queryClient.setQueryData(['missione', id], data.data);
       invalidate();
@@ -143,15 +157,20 @@ export function MissioneDettaglioPage() {
   if (isLoading || !missione) return <Spin />;
 
   const m: Missione = missione;
+  if (voceImpegno === undefined && m.voce_impegno) setVoceImpegno(m.voce_impegno);
   const stato = m.stato;
   const statoConf = STATI_CONFIG[stato] ?? { label: stato, color: 'default' };
   const isSuperAdmin = user?.ruolo === 'superadmin';
 
   const isRichiedente = user?.id === m.richiedente_id;
-  const isAmmin = user?.id === m.ammin_id || isSuperAdmin;
-  const isPi = user?.id === m.pi_id || isSuperAdmin;
-  const isDirDip = user?.id === m.dir_dip_id || isSuperAdmin;
-  const isDg = user?.ruolo === 'direttore_generale' || isSuperAdmin;
+  const isAmmin = user?.id === m.ammin_id;
+  const isPi = user?.id === m.pi_id;
+  const isDirDip = user?.id === m.dir_dip_id;
+  const isDg = user?.ruolo === 'direttore_generale';
+  // Superadmin può approvare a qualunque step solo se non è già assegnato esplicitamente a un ruolo
+  const isAssegnatoInMissione = isAmmin || isPi || isDirDip || isDg;
+  const superadminOverride = isSuperAdmin && !isAssegnatoInMissione;
+  const statiAttivi = ['attesa_ammin', 'attesa_pi', 'attesa_dir_dip', 'attesa_dg'];
 
   const puoModificare = isRichiedente && stato === 'bozza';
   const puoInviare = isRichiedente && stato === 'bozza';
@@ -159,7 +178,8 @@ export function MissioneDettaglioPage() {
     (isAmmin && stato === 'attesa_ammin') ||
     (isPi && stato === 'attesa_pi') ||
     (isDirDip && stato === 'attesa_dir_dip') ||
-    (isDg && stato === 'attesa_dg')
+    (isDg && stato === 'attesa_dg') ||
+    (superadminOverride && statiAttivi.includes(stato))
   );
   const puoRiaprire = isRichiedente && stato === 'rigettata';
   const luogoObbligatorio = stato === 'attesa_pi';
@@ -256,6 +276,23 @@ export function MissioneDettaglioPage() {
           styles={{ header: { background: '#e6f4ff', fontWeight: 600 } }}
         >
           <Row gutter={16} align="bottom">
+            {stato === 'attesa_ammin' && opzioniVoce.length > 0 && (
+              <Col span={24} style={{ marginBottom: 12 }}>
+                <Text strong>Voce di impegno</Text>
+                <Select
+                  style={{ width: '100%', marginTop: 4 }}
+                  value={voceImpegno}
+                  onChange={setVoceImpegno}
+                  options={opzioniVoce}
+                />
+              </Col>
+            )}
+            {stato !== 'attesa_ammin' && m.voce_impegno && (
+              <Col span={24} style={{ marginBottom: 12 }}>
+                <Text strong>Voce di costo: </Text>
+                <Text>{opzioniVoce.find(o => o.value === m.voce_impegno)?.label ?? m.voce_impegno}</Text>
+              </Col>
+            )}
             <Col span={8}>
               <Text strong>Luogo{luogoObbligatorio ? ' *' : ''}</Text>
               <Input
@@ -281,7 +318,7 @@ export function MissioneDettaglioPage() {
                   icon={<CheckOutlined />}
                   loading={approva.isPending}
                   disabled={luogoObbligatorio && !luogo.trim()}
-                  onClick={() => approva.mutate({ luogo, note: noteAppr || undefined })}
+                  onClick={() => approva.mutate({ luogo, note: noteAppr || undefined, voce_impegno: voceImpegno })}
                 >
                   Conferma
                 </Button>
@@ -332,7 +369,7 @@ export function MissioneDettaglioPage() {
           )}
           <Descriptions.Item label="Importo stimato" span={1}>{formatEuro(m.importo_stimato)}</Descriptions.Item>
           <Descriptions.Item label="Voce impegno" span={1}>
-            {m.voce_impegno === 'overhead' ? 'E.1 — Overhead' : 'D.1/D.2 — Missioni'}
+            {opzioniVoce.find(o => o.value === m.voce_impegno)?.label ?? m.voce_impegno ?? '—'}
           </Descriptions.Item>
           {m.luogo_approvazione && (
             <Descriptions.Item label="Luogo approvazione PI" span={2}>{m.luogo_approvazione}</Descriptions.Item>

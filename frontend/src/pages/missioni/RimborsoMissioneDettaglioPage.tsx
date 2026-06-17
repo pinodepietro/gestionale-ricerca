@@ -206,7 +206,9 @@ export function RimborsoMissioneDettaglioPage() {
     (isDirDip && stato === 'attesa_dir_dip') ||
     (isDg && stato === 'attesa_dg')
   );
-  const puoApprovare = puoApprovareBase && !nonHaCopertura;
+  // Blocco copertura: solo per l'admin al passo attesa_ammin
+  const amminBloccato = isAmmin && stato === 'attesa_ammin' && nonHaCopertura;
+  const puoApprovare = puoApprovareBase && !amminBloccato;
 
   const stepIdx = STATI_FLOW.indexOf(stato);
   const labelApprova = LABEL_APPROVA[stato] ?? 'Approvazione';
@@ -419,32 +421,33 @@ export function RimborsoMissioneDettaglioPage() {
           style={{ marginBottom: 16, borderColor: nonHaCopertura ? '#ff4d4f' : '#1677ff', borderWidth: 2 }}
           styles={{ header: { background: nonHaCopertura ? '#fff2f0' : '#e6f4ff' } }}
         >
-          {nonHaCopertura ? (
-            <Text type="danger">Approvazione bloccata: copertura economica insufficiente.</Text>
-          ) : (
-            <Row gutter={16} align="bottom">
-              <Col span={7}>
-                <Text strong style={{ display: 'block', marginBottom: 4 }}>Luogo</Text>
-                <Input value={luogo} onChange={e => setLuogo(e.target.value)} placeholder="es. Napoli" />
-              </Col>
-              <Col span={11}>
-                <Text strong style={{ display: 'block', marginBottom: 4 }}>Note (opzionale)</Text>
-                <Input value={noteAppr} onChange={e => setNoteAppr(e.target.value)} />
-              </Col>
-              <Col span={6}>
-                <Space>
-                  <Button type="primary" icon={<CheckOutlined />} loading={approva.isPending}
-                    disabled={!puoApprovare}
-                    onClick={() => approva.mutate({ luogo, note: noteAppr || undefined })}>
-                    Conferma
-                  </Button>
-                  <Button danger icon={<CloseOutlined />} onClick={() => setModalRigetto(true)}>
-                    Rigetta
-                  </Button>
-                </Space>
-              </Col>
-            </Row>
+          {amminBloccato && (
+            <Text type="danger" style={{ display: 'block', marginBottom: 12 }}>
+              Approvazione bloccata: copertura economica insufficiente.
+            </Text>
           )}
+          <Row gutter={16} align="bottom">
+            <Col span={7}>
+              <Text strong style={{ display: 'block', marginBottom: 4 }}>Luogo</Text>
+              <Input value={luogo} onChange={e => setLuogo(e.target.value)} placeholder="es. Napoli" />
+            </Col>
+            <Col span={11}>
+              <Text strong style={{ display: 'block', marginBottom: 4 }}>Note (opzionale)</Text>
+              <Input value={noteAppr} onChange={e => setNoteAppr(e.target.value)} />
+            </Col>
+            <Col span={6}>
+              <Space>
+                <Button type="primary" icon={<CheckOutlined />} loading={approva.isPending}
+                  disabled={!puoApprovare}
+                  onClick={() => approva.mutate({ luogo, note: noteAppr || undefined })}>
+                  Conferma
+                </Button>
+                <Button danger icon={<CloseOutlined />} onClick={() => setModalRigetto(true)}>
+                  Rigetta
+                </Button>
+              </Space>
+            </Col>
+          </Row>
         </Card>
       )}
 

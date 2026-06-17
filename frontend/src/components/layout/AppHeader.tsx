@@ -1,4 +1,5 @@
 // frontend/src/components/layout/AppHeader.tsx
+import { useState } from 'react';
 import { Layout, Breadcrumb, Avatar, Dropdown, Badge, Space, Typography,
          Popover, List, Tag, Empty, Spin, Button } from 'antd';
 import { UserOutlined, LogoutOutlined, BellOutlined,
@@ -41,6 +42,7 @@ export function AppHeader() {
   const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [pannelloAperto, setPannelloAperto] = useState(false);
 
   type CacheNotifiche = { data: Notifica[]; meta: { totale: number } };
 
@@ -121,6 +123,7 @@ export function AppHeader() {
                 paddingLeft: n.urgente ? 8 : 0 }}
               onClick={() => {
                 segnaLetta(n.id);
+                setPannelloAperto(false);
                 navigate(n.link);
               }}
             >
@@ -172,6 +175,8 @@ export function AppHeader() {
           trigger="click"
           placement="bottomRight"
           arrow={false}
+          open={pannelloAperto}
+          onOpenChange={setPannelloAperto}
         >
           <Badge count={totaleNotifiche} size="small" style={{ cursor: 'pointer' }}>
             <BellOutlined style={{ fontSize: 18, cursor: 'pointer' }} />

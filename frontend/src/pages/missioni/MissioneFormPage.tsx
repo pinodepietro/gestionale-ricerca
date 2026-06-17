@@ -11,6 +11,7 @@ import dayjs from 'dayjs';
 import { missioniApi, type Missione } from '../../api/missioni';
 import { progettiApi } from '../../api/progetti';
 import { personaleApi } from '../../api/personale';
+import { budgetApi } from '../../api/budget';
 import { useAuthStore } from '../../store/useAuthStore';
 import { apiErrorMessage } from '../../utils/apiError';
 
@@ -62,6 +63,7 @@ export function MissioneFormPage() {
   const user = useAuthStore(s => s.user);
   const [form] = Form.useForm<FormValues>();
   const mezzoTipo = Form.useWatch('mezzo_tipo', form);
+  const progettoIdWatch = Form.useWatch('progetto_id', form);
 
   const { data: missione, isLoading: loadingMissione } = useQuery({
     queryKey: ['missione', id],
@@ -80,6 +82,17 @@ export function MissioneFormPage() {
     queryFn: () => progettiApi.list({ solo_allocati: true, page_size: 100 }).then(r => r.data),
   });
   const progetti = progettiResp?.data ?? [];
+
+  const { data: vociResp } = useQuery({
+    queryKey: ['budget', 'voci', progettoIdWatch],
+    queryFn: () => budgetApi.voci.list(progettoIdWatch!).then(r => r.data),
+    enabled: !!progettoIdWatch,
+  });
+  const opzioniVoce = progettoIdWatch && vociResp?.data
+    ? vociResp.data
+        .filter(v => v.voce?.categoria)
+        .map(v => ({ value: v.voce!.categoria!, label: `${v.voce!.codice} — ${v.voce!.descrizione}` }))
+    : [];
 
   useEffect(() => {
     if (missione) {
@@ -217,13 +230,13 @@ export function MissioneFormPage() {
 
         <Row gutter={16}>
           <Col span={12}>
-            <Form.Item name="ora_inizio" label="Ora di partenza">
+            <Form.Item name="ora_inizio" label="Ora di partenza" rules={[{ required: true, message: 'Obbligatorio' }]}>
               <TimePicker style={{ width: '100%' }} format="HH:mm" minuteStep={15}
                 placeholder="es. 07:00" />
             </Form.Item>
           </Col>
           <Col span={12}>
-            <Form.Item name="ora_fine" label="Ora di rientro">
+            <Form.Item name="ora_fine" label="Ora di rientro" rules={[{ required: true, message: 'Obbligatorio' }]}>
               <TimePicker style={{ width: '100%' }} format="HH:mm" minuteStep={15}
                 placeholder="es. 20:00" />
             </Form.Item>
@@ -306,7 +319,12 @@ export function MissioneFormPage() {
           </Col>
           <Col span={12}>
             <Form.Item name="voce_impegno" label="Voce di costo">
-              <Select options={VOCE_OPTIONS} placeholder="Missioni (default)" allowClear />
+              <Select
+                options={opzioniVoce.length > 0 ? opzioniVoce : VOCE_OPTIONS}
+                placeholder={progettoIdWatch ? 'Seleziona voce' : 'Seleziona prima un progetto'}
+                allowClear
+                disabled={!!progettoIdWatch && opzioniVoce.length === 0}
+              />
             </Form.Item>
           </Col>
         </Row>
