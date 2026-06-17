@@ -4,7 +4,7 @@
 from app.models.persona import Persona          # noqa: F401
 from app.models.progetto import Progetto        # noqa: F401
 from app.models.struttura import WorkPackage, Task, Deliverable, Milestone  # noqa: F401
-from app.models.budget import VoceDiCosto, BudgetVoce, Spesa, Sal, Impegno, Erogazione  # noqa: F401
+from app.models.budget import VoceDiCosto, BudgetVoce, Spesa, Sal, Impegno, Erogazione, ErogazioneVoce  # noqa: F401
 from app.models.timesheet import (             # noqa: F401
     TemplateTimesheet,
     TimesheetTestata,

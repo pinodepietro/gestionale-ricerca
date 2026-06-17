@@ -667,7 +667,7 @@ def export_timesheet_xlsx(
     from app.services.storage import progetto_dir, _safe
     _codice = progetto.codice if progetto else "export"
     _cog = _safe(persona.cognome if persona else "export")
-    nome = f"TS_{_cog}_{t.anno}{t.mese:02d}.xlsx"
+    nome = f"TS_{_cog}_{t.mese:02d}{t.anno}.xlsx"
     _output_dir = progetto_dir(_codice, "timesheet")
     _os.makedirs(_output_dir, exist_ok=True)
     _dst = _os.path.join(_output_dir, nome)

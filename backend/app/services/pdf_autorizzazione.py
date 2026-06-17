@@ -105,8 +105,8 @@ def genera_pdf_autorizzazione(richiesta, db: Session, output_dir: str) -> str:
     from datetime import date as _date
     _rich = richiesta.richiedente
     _cog = _safe(_rich.cognome if _rich else "richiedente")
-    _dt = (richiesta.data_approvazione_dg.strftime('%Y%m%d')
-           if richiesta.data_approvazione_dg else _date.today().strftime('%Y%m%d'))
+    _dt = (richiesta.data_approvazione_dg.strftime('%d%m%Y')
+           if richiesta.data_approvazione_dg else _date.today().strftime('%d%m%Y'))
     filename = f"AUT_SPESA_{_cog}_{_dt}.pdf"
     filepath = os.path.join(output_dir, filename)
 

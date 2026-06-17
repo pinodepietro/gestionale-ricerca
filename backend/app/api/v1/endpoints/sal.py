@@ -664,9 +664,10 @@ def export_sal_xlsx(
     import os as _os
     from app.services.storage import progetto_dir, _safe
     _codice = progetto.codice if progetto else "export"
-    _output_dir = progetto_dir(_codice, "sal", str(s.id))
+    _sal_stem = f"{s.numero}_{_safe(_codice)}_{date.today().strftime('%d%m%Y')}"
+    _output_dir = progetto_dir(_codice, "sal", _sal_stem)
     _os.makedirs(_output_dir, exist_ok=True)
-    filename = f"SAL_{s.numero}_{_safe(_codice)}_{date.today().strftime('%Y%m%d')}.xlsx"
+    filename = f"SAL_{_sal_stem}.xlsx"
     _dst = _os.path.join(_output_dir, filename)
     with open(_dst, "wb") as _fh:
         _fh.write(buf.read())
@@ -940,9 +941,10 @@ def export_sal_pdf(
     import os as _os
     from app.services.storage import progetto_dir, _safe
     _codice = progetto.codice if progetto else "export"
-    _output_dir = progetto_dir(_codice, "sal", str(s.id))
+    _sal_stem = f"{s.numero}_{_safe(_codice)}_{date.today().strftime('%d%m%Y')}"
+    _output_dir = progetto_dir(_codice, "sal", _sal_stem)
     _os.makedirs(_output_dir, exist_ok=True)
-    nome_file = f"SAL_{s.numero}_{_safe(_codice)}_{date.today().strftime('%Y%m%d')}.pdf"
+    nome_file = f"SAL_{_sal_stem}.pdf"
     _dst = _os.path.join(_output_dir, nome_file)
     with open(_dst, "wb") as _fh:
         _fh.write(buf.read())

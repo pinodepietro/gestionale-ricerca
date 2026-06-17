@@ -18,6 +18,7 @@ export interface BudgetVoce {
   partner_id?: string;
   voce?: { codice: string; descrizione: string; categoria?: string };
   importo_previsto: number;
+  importo_erogato: number;
   importo_rendicontato: number;
   importo_impegnato: number;
   importo_speso: number;

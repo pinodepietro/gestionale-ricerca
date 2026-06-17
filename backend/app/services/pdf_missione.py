@@ -93,8 +93,8 @@ def genera_pdf_missione(missione, db: Session, output_dir: str) -> str:
     os.makedirs(output_dir, exist_ok=True)
     richiedente_raw = missione.richiedente
     _nome_file = _safe_name(f"{richiedente_raw.nome}_{richiedente_raw.cognome}") if richiedente_raw else "richiedente"
-    _data_app = (missione.approvata_il.strftime('%Y%m%d')
-                 if missione.approvata_il else date.today().strftime('%Y%m%d'))
+    _data_app = (missione.approvata_il.strftime('%d%m%Y')
+                 if missione.approvata_il else date.today().strftime('%d%m%Y'))
     output_path = os.path.join(output_dir, f"AUT_MISS_{_nome_file}_{_data_app}.pdf")
 
     normale, bold, titolo_s, sottotitolo_s, piccolo = _stili()
@@ -231,8 +231,8 @@ def genera_pdf_rimborso_missione(rimborso, db: Session, output_dir: str) -> str:
     os.makedirs(output_dir, exist_ok=True)
     _richiedente = rimborso.richiedente
     _nome_file = _safe_name(f"{_richiedente.nome}_{_richiedente.cognome}") if _richiedente else "richiedente"
-    _data_app = (rimborso.approvata_il.strftime('%Y%m%d')
-                 if rimborso.approvata_il else date.today().strftime('%Y%m%d'))
+    _data_app = (rimborso.approvata_il.strftime('%d%m%Y')
+                 if rimborso.approvata_il else date.today().strftime('%d%m%Y'))
     output_path = os.path.join(output_dir, f"RIMB_MISS_{_nome_file}_{_data_app}.pdf")
 
     normale, bold, titolo_s, sottotitolo_s, piccolo = _stili()

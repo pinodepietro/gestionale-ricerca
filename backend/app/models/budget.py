@@ -29,6 +29,7 @@ class BudgetVoce(Base):
     importo_previsto = Column(Numeric(14, 2), nullable=False, default=0)
     importo_rendicontato = Column(Numeric(14, 2), nullable=False, default=0)
     importo_impegnato = Column(Numeric(14, 2), nullable=False, default=0)
+    importo_erogato = Column(Numeric(14, 2), nullable=False, default=0)
 
     progetto = relationship("Progetto", back_populates="budget_voci")
     voce = relationship("VoceDiCosto")
@@ -107,3 +108,15 @@ class Erogazione(Base):
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
 
     progetto = relationship("Progetto", back_populates="erogazioni")
+    voci = relationship("ErogazioneVoce", cascade="all, delete-orphan")
+
+
+class ErogazioneVoce(Base):
+    __tablename__ = "erogazione_voce"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    erogazione_id = Column(UUID(as_uuid=True), ForeignKey("erogazione.id", ondelete="CASCADE"), nullable=False)
+    budget_voce_id = Column(UUID(as_uuid=True), ForeignKey("budget_voce.id", ondelete="CASCADE"), nullable=False)
+    importo = Column(Numeric(14, 2), nullable=False)
+
+    budget_voce = relationship("BudgetVoce")

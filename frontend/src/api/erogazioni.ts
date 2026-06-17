@@ -1,6 +1,11 @@
 import { apiClient } from './client';
 import type { ApiResponse } from '../types/api';
 
+export interface VoceAllocazione {
+  budget_voce_id: string;
+  importo: number;
+}
+
 export interface Erogazione {
   id: string;
   progetto_id: string;
@@ -12,6 +17,7 @@ export interface Erogazione {
   documento_path?: string;
   created_by?: string;
   created_at: string;
+  voci: VoceAllocazione[];
 }
 
 export interface ErogazioniResponse {

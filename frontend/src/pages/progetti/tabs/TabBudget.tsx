@@ -78,7 +78,10 @@ export function TabBudget({ progettoId }: { progettoId: string }) {
 
   const columns = [
     { title: 'Voce di costo', dataIndex: ['voce', 'descrizione'], ellipsis: true },
-    { title: 'Previsto', dataIndex: 'importo_previsto', align: 'right' as const, width: 140, render: formatEuro },
+    { title: 'Previsto', dataIndex: 'importo_previsto', align: 'right' as const, width: 130, render: formatEuro },
+    { title: 'Erogato', dataIndex: 'importo_erogato', align: 'right' as const, width: 120,
+      render: (v: number) => <Text type={v > 0 ? 'success' : undefined}>{formatEuro(v)}</Text>,
+    },
     {
       title: 'Impegnato', dataIndex: 'importo_impegnato', align: 'right' as const, width: 120,
       render: (v: number) => <Text type={v > 0 ? 'warning' : undefined}>{formatEuro(v)}</Text>,
@@ -87,7 +90,7 @@ export function TabBudget({ progettoId }: { progettoId: string }) {
       title: 'Speso', dataIndex: 'importo_speso', align: 'right' as const, width: 120,
       render: (v: number) => formatEuro(v),
     },
-    { title: 'Rendicontato', dataIndex: 'importo_rendicontato', align: 'right' as const, width: 140, render: formatEuro },
+    { title: 'Rendicontato', dataIndex: 'importo_rendicontato', align: 'right' as const, width: 130, render: formatEuro },
     {
       title: 'Disponibile', dataIndex: 'importo_disponibile', align: 'right' as const, width: 120,
       render: (v: number) => <Text type={v < 0 ? 'danger' : undefined}>{formatEuro(v)}</Text>,
@@ -151,22 +154,25 @@ export function TabBudget({ progettoId }: { progettoId: string }) {
         pagination={false}
         summary={(rows) => {
           const totPrevisto = rows.reduce((s, r) => s + (r as BudgetVoce).importo_previsto, 0);
+          const totErogato = rows.reduce((s, r) => s + ((r as BudgetVoce).importo_erogato ?? 0), 0);
           const totImpegnato = rows.reduce((s, r) => s + ((r as BudgetVoce).importo_impegnato ?? 0), 0);
           const totSpeso = rows.reduce((s, r) => s + ((r as BudgetVoce).importo_speso ?? 0), 0);
           const totRendicontato = rows.reduce((s, r) => s + (r as BudgetVoce).importo_rendicontato, 0);
+          const totDisponibile = totErogato - totImpegnato - totSpeso;
           return (
             <Table.Summary.Row>
               <Table.Summary.Cell index={0}><Text strong>Totale</Text></Table.Summary.Cell>
               <Table.Summary.Cell index={1} align="right"><Text strong>{formatEuro(totPrevisto)}</Text></Table.Summary.Cell>
-              <Table.Summary.Cell index={2} align="right"><Text strong>{formatEuro(totImpegnato)}</Text></Table.Summary.Cell>
-              <Table.Summary.Cell index={3} align="right"><Text strong>{formatEuro(totSpeso)}</Text></Table.Summary.Cell>
-              <Table.Summary.Cell index={4} align="right"><Text strong>{formatEuro(totRendicontato)}</Text></Table.Summary.Cell>
-              <Table.Summary.Cell index={5} align="right">
-                <Text strong type={totPrevisto - totImpegnato - totSpeso < 0 ? 'danger' : undefined}>
-                  {formatEuro(totPrevisto - totImpegnato - totSpeso)}
+              <Table.Summary.Cell index={2} align="right"><Text strong>{formatEuro(totErogato)}</Text></Table.Summary.Cell>
+              <Table.Summary.Cell index={3} align="right"><Text strong>{formatEuro(totImpegnato)}</Text></Table.Summary.Cell>
+              <Table.Summary.Cell index={4} align="right"><Text strong>{formatEuro(totSpeso)}</Text></Table.Summary.Cell>
+              <Table.Summary.Cell index={5} align="right"><Text strong>{formatEuro(totRendicontato)}</Text></Table.Summary.Cell>
+              <Table.Summary.Cell index={6} align="right">
+                <Text strong type={totDisponibile < 0 ? 'danger' : undefined}>
+                  {formatEuro(totDisponibile)}
                 </Text>
               </Table.Summary.Cell>
-              <Table.Summary.Cell index={6} />
+              <Table.Summary.Cell index={7} />
             </Table.Summary.Row>
           );
         }}

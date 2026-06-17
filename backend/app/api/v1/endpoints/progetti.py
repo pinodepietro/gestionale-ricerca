@@ -94,11 +94,9 @@ def lista_progetti(
         q = q.filter(or_(Progetto.codice.ilike(f"%{search}%"),
                          Progetto.titolo.ilike(f"%{search}%"),
                          Progetto.acronimo.ilike(f"%{search}%")))
-    if solo_allocati:
+    if solo_allocati or utente.ruolo not in ("superadmin", "direttore_generale"):
         proj_ids = db.query(Allocazione.progetto_id).filter(Allocazione.persona_id == utente.id).subquery()
         q = q.filter(Progetto.id.in_(proj_ids))
-    elif utente.ruolo == "amministrativo":
-        q = q.filter(Progetto.amministrativo_id == utente.id)
     total = q.count()
     items = q.order_by(Progetto.codice).offset((page - 1) * page_size).limit(page_size).all()
     return pagina([progetto_dict(p) for p in items], total, page, page_size)
@@ -415,10 +413,11 @@ def lista_budget(id: str, db: Session = Depends(get_db), utente: Persona = Depen
                       "voce_id": str(v.voce_id),
                       "voce": {"codice": v.voce.codice, "descrizione": v.voce.descrizione, "categoria": v.voce.categoria} if v.voce else None,
                       "importo_previsto": float(v.importo_previsto),
+                      "importo_erogato": float(v.importo_erogato or 0),
                       "importo_rendicontato": float(v.importo_rendicontato),
                       "importo_impegnato": float(v.importo_impegnato),
                       "importo_speso": float(spese_per_voce.get(v.voce_id, 0)),
-                      "importo_disponibile": float(v.importo_previsto) - float(v.importo_impegnato) - float(spese_per_voce.get(v.voce_id, 0)),
+                      "importo_disponibile": float(v.importo_erogato or 0) - float(v.importo_impegnato) - float(spese_per_voce.get(v.voce_id, 0)),
                       "importo_residuo": float(v.importo_previsto) - float(v.importo_rendicontato),
                       "percentuale_utilizzata": round(float(v.importo_rendicontato) / float(v.importo_previsto) * 100, 2)
                                                 if float(v.importo_previsto) > 0 else 0}
