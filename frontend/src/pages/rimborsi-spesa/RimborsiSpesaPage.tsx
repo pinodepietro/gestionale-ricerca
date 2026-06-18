@@ -66,11 +66,13 @@ export function RimborsiSpesaPage() {
     <div>
       <Row justify="space-between" align="middle" style={{ marginBottom: 16 }}>
         <Col><Title level={2} style={{ margin: 0 }}>Rimborsi Spesa</Title></Col>
-        <Col>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/rimborsi-spesa/nuovo')}>
-            Nuova richiesta di rimborso
-          </Button>
-        </Col>
+        {user?.ruolo !== 'monitor' && (
+          <Col>
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/rimborsi-spesa/nuovo')}>
+              Nuova richiesta di rimborso
+            </Button>
+          </Col>
+        )}
       </Row>
 
       <Space style={{ marginBottom: 16 }}>

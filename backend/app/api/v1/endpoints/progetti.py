@@ -94,7 +94,7 @@ def lista_progetti(
         q = q.filter(or_(Progetto.codice.ilike(f"%{search}%"),
                          Progetto.titolo.ilike(f"%{search}%"),
                          Progetto.acronimo.ilike(f"%{search}%")))
-    if solo_allocati or utente.ruolo not in ("superadmin", "direttore_generale"):
+    if solo_allocati or utente.ruolo not in ("superadmin", "direttore_generale", "monitor", "management"):
         proj_ids = db.query(Allocazione.progetto_id).filter(Allocazione.persona_id == utente.id).subquery()
         q = q.filter(Progetto.id.in_(proj_ids))
     total = q.count()

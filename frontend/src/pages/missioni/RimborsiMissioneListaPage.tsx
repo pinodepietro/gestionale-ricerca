@@ -56,11 +56,13 @@ export function RimborsiMissioneListaPage() {
     <div>
       <Row justify="space-between" align="middle" style={{ marginBottom: 16 }}>
         <Col><Title level={2} style={{ margin: 0 }}>Rimborsi Missione</Title></Col>
-        <Col>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/rimborsi-missione/nuovo')}>
-            Nuova richiesta di rimborso
-          </Button>
-        </Col>
+        {user?.ruolo !== 'monitor' && (
+          <Col>
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/rimborsi-missione/nuovo')}>
+              Nuova richiesta di rimborso
+            </Button>
+          </Col>
+        )}
       </Row>
 
       <Space style={{ marginBottom: 16 }}>

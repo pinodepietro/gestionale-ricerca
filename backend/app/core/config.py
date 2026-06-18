@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     JWT_EXPIRE_MINUTES: int = 480
     # Stringa semplice — evita problemi di parsing JSON con pydantic-settings.
     # Per più origini separate da virgola: http://localhost:5173,https://gestionale.ateneo.it
-    ALLOWED_ORIGINS: str = "http://localhost:5173"
+    ALLOWED_ORIGINS: str = "http://localhost:5173,http://localhost:5174,http://localhost:5175,http://localhost:5180"
     UPLOAD_DIR: str = "/app/uploads"
     SYNC_API_KEY: str = "gestionale-missioni-sync-key-dev"
     MISSIONI_URL: str = "http://missioni:8001"

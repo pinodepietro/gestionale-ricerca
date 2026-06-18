@@ -66,11 +66,13 @@ export function MissioniListaPage() {
     <div>
       <Row justify="space-between" align="middle" style={{ marginBottom: 16 }}>
         <Col><Title level={2} style={{ margin: 0 }}>Missioni</Title></Col>
-        <Col>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/missioni/nuova')}>
-            Nuova missione
-          </Button>
-        </Col>
+        {user?.ruolo !== 'monitor' && (
+          <Col>
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/missioni/nuova')}>
+              Nuova missione
+            </Button>
+          </Col>
+        )}
       </Row>
 
       <Space style={{ marginBottom: 16 }}>

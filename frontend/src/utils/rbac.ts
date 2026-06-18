@@ -64,7 +64,7 @@ const PERMESSI: Record<Azione, Ruolo[]> = {
   'partner:gestisci':            ['amministrativo'],
   'config:gestisci':             ['amministrativo'],
   'documento:carica':            ['amministrativo', 'ricercatore', 'superadmin'],
-  'proposta:crea':               ['amministrativo', 'ricercatore', 'management', 'superadmin', 'monitor'],
+  'proposta:crea':               ['amministrativo', 'ricercatore', 'management', 'superadmin'],
   'proposta:converti':           ['amministrativo', 'superadmin'],
   'dipartimento:gestisci':       ['superadmin'],
 };
