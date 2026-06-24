@@ -22,3 +22,30 @@
   0%, 40% { background-color: #fffbe6; }
   100% { background-color: transparent; }
 }
+
+.andamento-row-voce > td {
+  background-color: #f5f5f5 !important;
+  font-weight: 600;
+  border-bottom: 2px solid #888 !important;
+  white-space: nowrap !important;
+}
+.andamento-row-piano > td {
+  background-color: #eff6ff !important;
+  white-space: nowrap !important;
+}
+.andamento-row-item > td {
+  background-color: #fafafa !important;
+  white-space: nowrap !important;
+}
+.andamento-row-totale > td {
+  background-color: #1d3557 !important;
+  white-space: nowrap !important;
+  border-top: 2px solid #1d3557 !important;
+}
+/* Bordi colonne visibili su tutta la tabella andamento */
+.ant-table-bordered .andamento-row-voce > td,
+.ant-table-bordered .andamento-row-piano > td,
+.ant-table-bordered .andamento-row-item > td,
+.ant-table-bordered .andamento-row-totale > td {
+  border-right: 1px solid #999 !important;
+}

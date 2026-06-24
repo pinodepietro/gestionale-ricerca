@@ -74,12 +74,22 @@ def _calcola_gantt_personale(progetto: Progetto, db: Session) -> dict:
 
     # ── Timesheet approvati rendicontati per progetto ────────────────────────
     # {(persona_id, anno, mese): {"ore": float, "costo": float}}
-    sal_rendicontati = {
-        str(s.id) for s in db.query(Sal).filter(
-            Sal.progetto_id == progetto.id,
-            Sal.stato == "rendicontato",
-        ).all()
-    }
+    sal_records_rend = db.query(Sal).filter(
+        Sal.progetto_id == progetto.id,
+        Sal.stato == "rendicontato",
+    ).all()
+    sal_rendicontati = {str(s.id) for s in sal_records_rend}
+
+    # Mesi (anno, mese) coperti da almeno un SAL rendicontato
+    sal_mesi_coperti: set[tuple[int, int]] = set()
+    for s in sal_records_rend:
+        y, mo = s.data_inizio.year, s.data_inizio.month
+        while (y, mo) <= (s.data_fine.year, s.data_fine.month):
+            sal_mesi_coperti.add((y, mo))
+            mo += 1
+            if mo > 12:
+                mo = 1
+                y += 1
 
     ts_approvati = db.query(TimesheetTestata).filter(
         TimesheetTestata.progetto_id == progetto.id,
@@ -98,9 +108,8 @@ def _calcola_gantt_personale(progetto: Progetto, db: Session) -> dict:
             for cella in riga.celle:
                 ore_ts += float(cella.ore or 0)
                 costo_ts += float(cella.costo_calcolato or 0)
-        if ore_ts > 0:
-            key = (str(ts.persona_id), ts.anno, ts.mese)
-            dati_reali[key] = {"ore": ore_ts, "costo": costo_ts}
+        key = (str(ts.persona_id), ts.anno, ts.mese)
+        dati_reali[key] = {"ore": ore_ts, "costo": costo_ts}
 
     # ── Persone allocate ─────────────────────────────────────────────────────
     allocazioni = db.query(Allocazione).filter(
@@ -146,6 +155,7 @@ def _calcola_gantt_personale(progetto: Progetto, db: Session) -> dict:
             m for m in mesi
             if alloc_inizio <= m["data_inizio"] <= alloc_fine
             and (pid, m["anno"], m["mese"]) not in dati_reali
+            and (m["anno"], m["mese"]) not in sal_mesi_coperti
         ]
         ore_residue = max(0.0, alloc_info["ore_assegnate"] - ore_rendicontate)
         ore_per_mese = round(ore_residue / len(mesi_rimanenti), 2) if mesi_rimanenti else 0.0
@@ -171,6 +181,11 @@ def _calcola_gantt_personale(progetto: Progetto, db: Session) -> dict:
             if key in dati_reali:
                 ore = round(dati_reali[key]["ore"], 2)
                 costo = round(dati_reali[key]["costo"], 2)
+                rendicontato = True
+            elif (m["anno"], m["mese"]) in sal_mesi_coperti:
+                # Mese coperto da SAL rendicontato ma senza timesheet: 0h/0€ chiuso
+                ore = 0.0
+                costo = 0.0
                 rendicontato = True
             else:
                 tariffa = _tariffa_effettiva(pid, m_inizio, db)
@@ -206,31 +221,54 @@ def _calcola_gantt_personale(progetto: Progetto, db: Session) -> dict:
         })
 
     # ── Pianificazione Corrente ───────────────────────────────────────────────
-    # Mesi "rendicontati" = mesi dove almeno una persona ha dati reali da timesheet
     idx_rendicontati = {
         idx for idx, m in enumerate(mesi)
         if any((pid, m["anno"], m["mese"]) in dati_reali for pid in persone_map)
+        or (m["anno"], m["mese"]) in sal_mesi_coperti
     }
 
-    costo_rendicontato = sum(totali_mese[i] for i in idx_rendicontati)
-    budget_residuo = importo_previsto_personale - costo_rendicontato
-    idx_non_rendicontati = [i for i in range(num_mesi) if i not in idx_rendicontati]
-    quota_residua = round(budget_residuo / len(idx_non_rendicontati), 2) if idx_non_rendicontati else 0.0
-
     pianificazione_corrente_mesi = []
-    for idx in range(num_mesi):
-        if idx in idx_rendicontati:
+
+    if not idx_rendicontati:
+        # Nessuna spesa reale: pianificazione corrente = pianificazione iniziale
+        for idx in range(num_mesi):
             pianificazione_corrente_mesi.append({
                 "label": mesi[idx]["label"],
-                "costo": round(totali_mese[idx], 2),
-                "rendicontato": True,
-            })
-        else:
-            pianificazione_corrente_mesi.append({
-                "label": mesi[idx]["label"],
-                "costo": quota_residua,
+                "costo": costo_pianificato_mensile,
                 "rendicontato": False,
             })
+    else:
+        first_real_idx = min(idx_rendicontati)
+        # Budget "consumato" dai mesi precedenti alla prima spesa reale (a quota pianificata)
+        budget_mesi_precedenti = costo_pianificato_mensile * first_real_idx
+        costo_rendicontato = sum(totali_mese[i] for i in idx_rendicontati)
+        budget_residuo = importo_previsto_personale - budget_mesi_precedenti - costo_rendicontato
+        # Mesi dopo il primo reale non ancora rendicontati → ricevono la quota residua
+        idx_futuri_non_rend = [
+            i for i in range(first_real_idx + 1, num_mesi)
+            if i not in idx_rendicontati
+        ]
+        quota_residua = round(budget_residuo / len(idx_futuri_non_rend), 2) if idx_futuri_non_rend else 0.0
+
+        for idx in range(num_mesi):
+            if idx < first_real_idx:
+                pianificazione_corrente_mesi.append({
+                    "label": mesi[idx]["label"],
+                    "costo": costo_pianificato_mensile,
+                    "rendicontato": False,
+                })
+            elif idx in idx_rendicontati:
+                pianificazione_corrente_mesi.append({
+                    "label": mesi[idx]["label"],
+                    "costo": round(totali_mese[idx], 2),
+                    "rendicontato": True,
+                })
+            else:
+                pianificazione_corrente_mesi.append({
+                    "label": mesi[idx]["label"],
+                    "costo": quota_residua,
+                    "rendicontato": False,
+                })
 
     return {
         "mesi": [{"label": m["label"], "anno": m["anno"], "mese": m["mese"]} for m in mesi],
@@ -241,8 +279,8 @@ def _calcola_gantt_personale(progetto: Progetto, db: Session) -> dict:
             "totale": round(importo_previsto_personale, 2),
         },
         "persone": righe_persone,
-        "totali_mese": [round(t, 2) for t in totali_mese],
-        "totale_complessivo": round(sum(totali_mese), 2),
+        "totali_mese": [round(m["costo"], 2) for m in pianificazione_corrente_mesi],
+        "totale_complessivo": round(importo_previsto_personale, 2),
     }
 
 

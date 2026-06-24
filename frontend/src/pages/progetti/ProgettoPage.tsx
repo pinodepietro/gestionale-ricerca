@@ -24,6 +24,7 @@ import { TabPartner } from './tabs/TabPartner';
 import { TabErogazioni } from './tabs/TabErogazioni';
 import { TabDisponibilita } from './tabs/TabDisponibilita';
 import { TabGanttPersonale } from './tabs/TabGanttPersonale';
+import { TabAndamentoMensile } from './tabs/TabAndamentoMensile';
 import { ModificaProgettoDrawer } from './ModificaProgettoDrawer';
 
 const { Title, Text } = Typography;
@@ -205,6 +206,7 @@ export function ProgettoPage() {
           { key: 'gantt-personale', label: 'Gantt Personale', children: <TabGanttPersonale progettoId={id!} /> },
           { key: 'erogazioni', label: 'Erogazioni', children: <TabErogazioni progettoId={id!} stato={data.stato} /> },
           { key: 'disponibilita', label: 'Disponibilità Fondi', children: <TabDisponibilita progettoId={id!} /> },
+          { key: 'andamento-mensile', label: 'Andamento Mensile', children: <TabAndamentoMensile progettoId={id!} /> },
           { key: 'partner', label: 'Partner', children: <TabPartner progettoId={id!} /> },
         ]}
       />
