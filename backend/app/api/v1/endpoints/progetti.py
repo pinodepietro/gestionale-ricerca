@@ -1431,7 +1431,9 @@ def _raccogli_dati_report(id: str, db: Session):
     pi = db.query(Persona).filter(Persona.id == pi_alloc.persona_id).first() if pi_alloc else None
     amm = db.query(Persona).filter(Persona.id == p.amministrativo_id).first() if p.amministrativo_id else None
 
-    budget_voci = db.query(BudgetVoce).filter(BudgetVoce.progetto_id == id).all()
+    budget_voci = db.query(BudgetVoce).filter(
+        BudgetVoce.progetto_id == id, BudgetVoce.wp_id.is_(None)
+    ).all()
     voci_map = {str(v.id): v for v in db.query(VoceDiCosto).all()}
 
     spese = db.query(Spesa).filter(Spesa.progetto_id == id, Spesa.stato == "registrata").order_by(Spesa.data).all()
@@ -1467,8 +1469,10 @@ def riepilogo_dashboard_xlsx(id: str, db: Session = Depends(get_db), utente: Per
         pi_p = db.query(Persona).filter(Persona.id == pi_alloc.persona_id).first()
         pi_nome = f"{pi_p.nome} {pi_p.cognome}" if pi_p else None
 
-    # budget voci con speso
-    budget_voci = db.query(BudgetVoce).filter(BudgetVoce.progetto_id == id).all()
+    # budget voci con speso (solo voci di progetto, non sotto-voci WP)
+    budget_voci = db.query(BudgetVoce).filter(
+        BudgetVoce.progetto_id == id, BudgetVoce.wp_id.is_(None)
+    ).all()
     spese_per_voce = dict(
         db.query(Spesa.voce_id, func.sum(Spesa.importo))
         .filter(Spesa.progetto_id == id, Spesa.stato == "registrata")
@@ -1728,21 +1732,25 @@ def report_progetto_xlsx(id: str, db: Session = Depends(get_db), utente: Persona
         ws.cell(r, 2, val)
     auto_width(ws)
 
+    def trunc(s, n=70):
+        s = str(s or "")
+        return s[:n] + "…" if len(s) > n else s
+
     # Sheet 2 — Budget
     ws2 = wb.create_sheet("Budget")
-    ws2.append(["Voce di costo", "Previsto (€)", "Rendicontato (€)", "Delta (€)", "% Utilizzo"])
+    ws2.append(["Voce di costo", "Previsto (€)", "Rendicontato (€)", "Da Rendicontare (€)", "% Utilizzo"])
     stile_header(ws2, 1, 5)
     for bv in budget_voci:
         v = voci_map.get(str(bv.voce_id))
-        label = f"{v.codice} — {v.descrizione}" if v else str(bv.voce_id)
+        label = trunc(f"{v.codice} — {v.descrizione}" if v else str(bv.voce_id))
         prev = fmt_eur(bv.importo_previsto)
         rend = fmt_eur(bv.importo_rendicontato)
         pct = round(rend / prev * 100, 1) if prev > 0 else 0
-        ws2.append([label, prev, rend, round(rend - prev, 2), pct])
+        ws2.append([label, prev, rend, round(prev - rend, 2), pct])
     totale_prev = sum(fmt_eur(bv.importo_previsto) for bv in budget_voci)
     totale_rend = sum(fmt_eur(bv.importo_rendicontato) for bv in budget_voci)
     ws2.append(["TOTALE", totale_prev, totale_rend,
-                round(totale_rend - totale_prev, 2),
+                round(totale_prev - totale_rend, 2),
                 round(totale_rend / totale_prev * 100, 1) if totale_prev > 0 else 0])
     r_tot = ws2.max_row
     for col in range(1, 6):
@@ -1923,19 +1931,19 @@ def report_progetto_pdf(id: str, db: Session = Depends(get_db), utente: Persona 
     # Budget per voce
     if budget_voci:
         story.append(Paragraph("Budget per voce di costo", sezione))
-        bv_data = [["Voce di costo", "Previsto", "Rendicontato", "Delta", "%"]]
+        bv_data = [["Voce di costo", "Previsto", "Rendicontato", "Da Rendicontare", "%"]]
         tot_prev = tot_rend = 0.0
         for bv in budget_voci:
             v = voci_map.get(str(bv.voce_id))
-            label = f"{v.codice} — {v.descrizione}" if v else "—"
+            label = Paragraph(f"{v.codice} — {v.descrizione}" if v else "—", normale)
             prev = float(bv.importo_previsto or 0)
             rend = float(bv.importo_rendicontato or 0)
             tot_prev += prev; tot_rend += rend
             pct = f"{round(rend / prev * 100, 1)}%" if prev > 0 else "—"
             bv_data.append([label, fmt_eur(prev), fmt_eur(rend),
-                            fmt_eur(rend - prev), pct])
+                            fmt_eur(prev - rend), pct])
         bv_data.append(["TOTALE", fmt_eur(tot_prev), fmt_eur(tot_rend),
-                         fmt_eur(tot_rend - tot_prev),
+                         fmt_eur(tot_prev - tot_rend),
                          f"{round(tot_rend / tot_prev * 100, 1)}%" if tot_prev > 0 else "—"])
         t_bv = tabella(bv_data, [6.5*cm, 2.8*cm, 2.8*cm, 2.8*cm, 2.1*cm], extra_cmds=[
             ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
@@ -1961,10 +1969,10 @@ def report_progetto_pdf(id: str, db: Session = Depends(get_db), utente: Persona 
         tot_sp = 0.0
         for s in spese:
             v = voci_map.get(str(s.voce_id))
-            voce_label = f"{v.codice} — {v.descrizione}" if v else "—"
+            voce_label = Paragraph(f"{v.codice} — {v.descrizione}" if v else "—", normale)
             imp = float(s.importo or 0); tot_sp += imp
             sp_data.append([fmt_d(s.data), s.numero_documento or "—",
-                            voce_label, s.descrizione or "—", fmt_eur(imp)])
+                            voce_label, Paragraph(s.descrizione or "—", normale), fmt_eur(imp)])
         sp_data.append(["", "", "", "TOTALE", fmt_eur(tot_sp)])
         t_sp = tabella(sp_data, [2.3*cm, 2.8*cm, 5*cm, 4*cm, 2.9*cm], extra_cmds=[
             ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
