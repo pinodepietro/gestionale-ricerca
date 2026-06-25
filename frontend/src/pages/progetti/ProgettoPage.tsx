@@ -133,11 +133,9 @@ export function ProgettoPage() {
           </RbacGuard>
 
           <RbacGuard azione="progetto:modifica">
-            {!eBozza && (
-              <Button icon={<EditOutlined />} onClick={() => setDrawerAperto(true)}>
-                Modifica progetto
-              </Button>
-            )}
+            <Button icon={<EditOutlined />} onClick={() => setDrawerAperto(true)}>
+              Modifica progetto
+            </Button>
           </RbacGuard>
 
           <RbacGuard azione="progetto:attiva">
@@ -194,8 +192,10 @@ export function ProgettoPage() {
       <Tabs
         activeKey={activeTab}
         onChange={setActiveTab}
+        size="small"
+        tabBarGutter={8}
         items={[
-          { key: 'gantt', label: 'Struttura / Gantt', children: <TabGantt progettoId={id!} /> },
+          { key: 'gantt', label: 'Gantt', children: <TabGantt progettoId={id!} /> },
           { key: 'budget', label: 'Budget', children: <TabBudget progettoId={id!} /> },
           { key: 'sal', label: 'SAL', children: <TabSal progettoId={id!} stato={data.stato} /> },
           { key: 'personale', label: 'Personale', children: <TabPersonale progettoId={id!} /> },
@@ -203,10 +203,10 @@ export function ProgettoPage() {
           { key: 'timesheet', label: 'Timesheet', children: <TabTimesheet progettoId={id!} stato={data.stato} /> },
           { key: 'spese', label: 'Spese', children: <TabSpese progettoId={id!} stato={data.stato} onVaiAImpegno={(impegnoId) => { setImpegnoEvidenziato(impegnoId); setActiveTab('impegni'); }} /> },
           { key: 'impegni', label: 'Impegni', children: <TabImpegni progettoId={id!} stato={data.stato} highlightId={impegnoEvidenziato} onHighlightConsumed={() => setImpegnoEvidenziato(null)} /> },
-          { key: 'gantt-personale', label: 'Gantt Personale', children: <TabGanttPersonale progettoId={id!} /> },
+          { key: 'gantt-personale', label: 'Gantt Pers.', children: <TabGanttPersonale progettoId={id!} /> },
           { key: 'erogazioni', label: 'Erogazioni', children: <TabErogazioni progettoId={id!} stato={data.stato} /> },
-          { key: 'disponibilita', label: 'Disponibilità Fondi', children: <TabDisponibilita progettoId={id!} /> },
-          { key: 'andamento-mensile', label: 'Andamento Mensile', children: <TabAndamentoMensile progettoId={id!} /> },
+          { key: 'disponibilita', label: 'Disponibilità', children: <TabDisponibilita progettoId={id!} /> },
+          { key: 'andamento-mensile', label: 'Andamento', children: <TabAndamentoMensile progettoId={id!} /> },
           { key: 'partner', label: 'Partner', children: <TabPartner progettoId={id!} /> },
         ]}
       />

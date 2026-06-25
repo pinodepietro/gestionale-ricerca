@@ -23,6 +23,7 @@ class Progetto(Base):
     importo_finanziato = Column(Numeric(14, 2), nullable=False)
     cup = Column(String(20), nullable=True)
     budget_per_partner = Column(Boolean, nullable=False, default=False)
+    gestione_per_wp = Column(Boolean, nullable=False, default=False)
     template_timesheet_id = Column(UUID(as_uuid=True), ForeignKey("template_timesheet.id"), nullable=True)
     riferimento_bando = Column(Text, nullable=True)
     note = Column(Text, nullable=True)

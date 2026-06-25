@@ -12,11 +12,12 @@ const { Title, Text } = Typography;
 
 interface Props {
   progettoId: string;
+  gestionePerWp?: boolean;
   onCompletato: () => void;
   onIndietro: () => void;
 }
 
-export function Step5Personale({ progettoId, onCompletato, onIndietro }: Props) {
+export function Step5Personale({ progettoId, gestionePerWp = false, onCompletato, onIndietro }: Props) {
   const { notification } = App.useApp();
   const [form] = Form.useForm();
   const [modalAperta, setModalAperta] = useState(false);
@@ -173,7 +174,9 @@ export function Step5Personale({ progettoId, onCompletato, onIndietro }: Props) 
         <Col>
           <Space>
             <Button onClick={onCompletato}>Salta</Button>
-            <Button type="primary" onClick={onCompletato}>Completa configurazione ✓</Button>
+            <Button type="primary" onClick={onCompletato}>
+              {gestionePerWp ? 'Avanti →' : 'Completa configurazione ✓'}
+            </Button>
           </Space>
         </Col>
       </Row>

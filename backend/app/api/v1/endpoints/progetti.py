@@ -63,6 +63,7 @@ def progetto_dict(p: Progetto) -> dict:
         "quota_cofinanziamento": float(p.costo_totale or 0) - float(p.importo_finanziato or 0),
         "percentuale_finanziamento": round(float(p.importo_finanziato or 0) / float(p.costo_totale or 1) * 100, 2),
         "cup": p.cup, "budget_per_partner": p.budget_per_partner,
+        "gestione_per_wp": bool(p.gestione_per_wp),
         "template_timesheet_id": str(p.template_timesheet_id) if p.template_timesheet_id else None,
         "riferimento_bando": p.riferimento_bando,
         "note": p.note,
@@ -96,7 +97,10 @@ def lista_progetti(
                          Progetto.acronimo.ilike(f"%{search}%")))
     if solo_allocati or utente.ruolo not in ("superadmin", "direttore_generale", "monitor", "management"):
         proj_ids = db.query(Allocazione.progetto_id).filter(Allocazione.persona_id == utente.id).subquery()
-        q = q.filter(Progetto.id.in_(proj_ids))
+        if utente.ruolo == "amministrativo":
+            q = q.filter(or_(Progetto.id.in_(proj_ids), Progetto.amministrativo_id == utente.id))
+        else:
+            q = q.filter(Progetto.id.in_(proj_ids))
     total = q.count()
     items = q.order_by(Progetto.codice).offset((page - 1) * page_size).limit(page_size).all()
     return pagina([progetto_dict(p) for p in items], total, page, page_size)
@@ -411,6 +415,7 @@ def lista_budget(id: str, db: Session = Depends(get_db), utente: Persona = Depen
     )
     return {"data": [{"id": str(v.id), "progetto_id": str(v.progetto_id),
                       "voce_id": str(v.voce_id),
+                      "wp_id": str(v.wp_id) if v.wp_id else None,
                       "voce": {"codice": v.voce.codice, "descrizione": v.voce.descrizione, "categoria": v.voce.categoria} if v.voce else None,
                       "importo_previsto": float(v.importo_previsto),
                       "importo_erogato": float(v.importo_erogato or 0),
@@ -462,22 +467,44 @@ def salva_budget(id: str, body: dict, db: Session = Depends(get_db), utente: Per
                 "message": f"Il totale delle voci ({totale_voci:,.2f}€) deve essere uguale al costo totale del progetto ({float(p.costo_totale):,.2f}€)",
             }},
         )
-    voci_ids = [v["voce_id"] for v in body.get("voci", [])]
-    # Cancella le voci rimosse
-    db.query(BudgetVoce).filter(
-        BudgetVoce.progetto_id == id,
-        BudgetVoce.voce_id.notin_(voci_ids)
-    ).delete(synchronize_session=False)
-    # Aggiorna o crea le voci presenti
-    for voce_data in body.get("voci", []):
-        existing = db.query(BudgetVoce).filter(
+    voci_input = body.get("voci", [])
+    # Mantieni solo i record che corrispondono all'elenco inviato (match per id se presente)
+    ids_inviati = [v["id"] for v in voci_input if v.get("id")]
+    if ids_inviati:
+        db.query(BudgetVoce).filter(
             BudgetVoce.progetto_id == id,
-            BudgetVoce.voce_id == voce_data["voce_id"]
-        ).first()
+            BudgetVoce.id.notin_(ids_inviati)
+        ).delete(synchronize_session=False)
+    else:
+        # Fallback compatibilità: rimuovi per voce_id (progetti senza WP)
+        voci_ids = [v["voce_id"] for v in voci_input]
+        db.query(BudgetVoce).filter(
+            BudgetVoce.progetto_id == id,
+            BudgetVoce.voce_id.notin_(voci_ids)
+        ).delete(synchronize_session=False)
+    # Aggiorna o crea le voci presenti
+    for voce_data in voci_input:
+        if voce_data.get("id"):
+            existing = db.query(BudgetVoce).filter(BudgetVoce.id == voce_data["id"]).first()
+            if existing:
+                existing.importo_previsto = voce_data["importo_previsto"]
+                existing.wp_id = voce_data.get("wp_id")
+                continue
+        # Cerca per (progetto, voce, wp)
+        q = db.query(BudgetVoce).filter(
+            BudgetVoce.progetto_id == id,
+            BudgetVoce.voce_id == voce_data["voce_id"],
+        )
+        if voce_data.get("wp_id"):
+            q = q.filter(BudgetVoce.wp_id == voce_data["wp_id"])
+        else:
+            q = q.filter(BudgetVoce.wp_id.is_(None))
+        existing = q.first()
         if existing:
             existing.importo_previsto = voce_data["importo_previsto"]
         else:
             bv = BudgetVoce(progetto_id=id, voce_id=voce_data["voce_id"],
+                            wp_id=voce_data.get("wp_id"),
                             importo_previsto=voce_data["importo_previsto"],
                             importo_rendicontato=0)
             db.add(bv)
@@ -551,16 +578,35 @@ def elimina_wp(wp_id: str, db: Session = Depends(get_db), utente: Persona = Depe
 
 @router.get("/{id}/allocazioni")
 def lista_allocazioni(id: str, db: Session = Depends(get_db), utente: Persona = Depends(tutti_i_ruoli)):
-    _get_or_404(id, db)
     from app.models.persona import Persona as PersonaModel
+    from app.models.personale import CostoOrarioPersona
+    from sqlalchemy import or_
+    _get_or_404(id, db)
     alloc = db.query(Allocazione).join(PersonaModel, Allocazione.persona_id == PersonaModel.id).filter(Allocazione.progetto_id == id).order_by(PersonaModel.cognome, PersonaModel.nome).all()
+
+    def _costo_orario(persona_id, data_rif):
+        rate = db.query(CostoOrarioPersona).filter(
+            CostoOrarioPersona.persona_id == persona_id,
+            CostoOrarioPersona.data_inizio <= data_rif,
+            or_(CostoOrarioPersona.data_fine.is_(None), CostoOrarioPersona.data_fine >= data_rif),
+        ).order_by(CostoOrarioPersona.data_inizio.desc()).first()
+        if rate:
+            return float(rate.costo_orario)
+        # fallback: tariffa più vicina disponibile (allocazione antecedente all'inserimento del costo)
+        fallback = db.query(CostoOrarioPersona).filter(
+            CostoOrarioPersona.persona_id == persona_id,
+        ).order_by(CostoOrarioPersona.data_inizio.asc()).first()
+        return float(fallback.costo_orario) if fallback else 0.0
+
     return {"data": [{"id": str(a.id), "persona_id": str(a.persona_id),
                       "progetto_id": str(a.progetto_id),
+                      "wp_id": str(a.wp_id) if a.wp_id else None,
                       "ore_assegnate": float(a.ore_assegnate),
                       "data_inizio": str(a.data_inizio), "data_fine": str(a.data_fine),
                       "note": a.note,
                       "is_pi": bool(a.is_pi),
                       "is_ammin": bool(a.is_ammin),
+                      "costo_orario": _costo_orario(a.persona_id, a.data_inizio),
                       "persona": {"nome": a.persona.nome, "cognome": a.persona.cognome} if a.persona else None}
                      for a in alloc]}
 
@@ -573,33 +619,44 @@ def crea_allocazione(id: str, body: dict, background_tasks: BackgroundTasks, db:
     _valida_date_nel_progetto(p, data_inizio, data_fine, "Allocazione personale")
     anno = data_inizio.year
 
-    # Controlla disponibilità monte ore
-    monte = db.query(MonteOreAnnuale).filter(
-        MonteOreAnnuale.persona_id == body["persona_id"],
-        MonteOreAnnuale.anno == anno,
-    ).first()
+    # Per le sotto-allocazioni WP le ore sono già conteggiate nell'allocazione di progetto: skip monte ore
+    if not body.get("wp_id"):
+        monte = db.query(MonteOreAnnuale).filter(
+            MonteOreAnnuale.persona_id == body["persona_id"],
+            MonteOreAnnuale.anno == anno,
+        ).first()
+        if monte:
+            ore_residue = float(monte.ore_disponibili) - float(monte.ore_allocate)
+            if float(body["ore_assegnate"]) > ore_residue:
+                raise HTTPException(
+                    status_code=422,
+                    detail={"error": {"code": "MONTE_ORE_INSUFFICIENTE",
+                                      "message": f"Ore residue disponibili: {ore_residue}h",
+                                      "detail": {"ore_residue": ore_residue}}},
+                )
+            monte.ore_allocate = float(monte.ore_allocate) + float(body["ore_assegnate"])
 
-    if monte:
-        ore_residue = float(monte.ore_disponibili) - float(monte.ore_allocate)
-        if float(body["ore_assegnate"]) > ore_residue:
-            raise HTTPException(
-                status_code=422,
-                detail={"error": {"code": "MONTE_ORE_INSUFFICIENTE",
-                                  "message": f"Ore residue disponibili: {ore_residue}h",
-                                  "detail": {"ore_residue": ore_residue}}},
-            )
-        monte.ore_allocate = float(monte.ore_allocate) + float(body["ore_assegnate"])
-
-    # Controlla se la persona è già allocata sul progetto
-    esistente = db.query(Allocazione).filter(
+    # Controlla duplicati: unicità per (progetto, persona, wp) o (progetto, persona) se wp=null
+    q_dup = db.query(Allocazione).filter(
         Allocazione.progetto_id == id,
         Allocazione.persona_id == body["persona_id"],
-    ).first()
+    )
+    if body.get("wp_id"):
+        q_dup = q_dup.filter(Allocazione.wp_id == body["wp_id"])
+    else:
+        q_dup = q_dup.filter(Allocazione.wp_id.is_(None))
+    esistente = q_dup.first()
     if esistente:
-        raise HTTPException(status_code=409, detail={"error": {
-            "code": "PERSONA_GIA_ALLOCATA",
-            "message": "Questa persona è già allocata su questo progetto. Modifica l'allocazione esistente."
-        }})
+        if body.get("wp_id"):
+            raise HTTPException(status_code=409, detail={"error": {
+                "code": "PERSONA_GIA_ALLOCATA_SU_WP",
+                "message": "Questa persona è già allocata su questo Work Package."
+            }})
+        else:
+            raise HTTPException(status_code=409, detail={"error": {
+                "code": "PERSONA_GIA_ALLOCATA",
+                "message": "Questa persona è già allocata su questo progetto. Modifica l'allocazione esistente."
+            }})
 
     # Se is_pi=True, rimuovi il ruolo PI da eventuali allocazioni precedenti
     if body.get("is_pi"):
@@ -616,6 +673,7 @@ def crea_allocazione(id: str, body: dict, background_tasks: BackgroundTasks, db:
         ).update({"is_ammin": False})
 
     a = Allocazione(progetto_id=id, persona_id=body["persona_id"],
+                    wp_id=body.get("wp_id"),
                     ore_assegnate=body["ore_assegnate"],
                     data_inizio=date.fromisoformat(body["data_inizio"]),
                     data_fine=date.fromisoformat(body["data_fine"]),
@@ -707,6 +765,80 @@ def elimina_allocazione(id: str, alloc_id: str, background_tasks: BackgroundTask
     if era_pi or era_ammin:
         background_tasks.add_task(_trigger_sync_progetti)
     return {"data": {"deleted": True}}
+
+
+# ─── Budget per WP ────────────────────────────────────────────────────────────
+
+@router.post("/{id}/budget/wp")
+def salva_budget_wp(id: str, body: dict, db: Session = Depends(get_db), utente: Persona = Depends(solo_amministrativo)):
+    from collections import defaultdict
+    p = _get_or_404(id, db)
+    if not p.gestione_per_wp:
+        raise HTTPException(status_code=422, detail={"error": {"code": "GESTIONE_WP_DISABILITATA",
+                                                                "message": "Il progetto non usa gestione per WP"}})
+    voci_input = body.get("voci", [])  # [{voce_id, wp_id, importo_previsto}]
+
+    # Ripartizione per voce deve uguagliare il totale di progetto
+    bv_proj = {str(bv.voce_id): float(bv.importo_previsto)
+               for bv in db.query(BudgetVoce).filter(BudgetVoce.progetto_id == id, BudgetVoce.wp_id.is_(None)).all()}
+    totale_per_voce: dict = defaultdict(float)
+    for v in voci_input:
+        totale_per_voce[str(v["voce_id"])] += float(v.get("importo_previsto", 0))
+    for voce_id, totale in totale_per_voce.items():
+        totale_proj = bv_proj.get(voce_id, 0.0)
+        if abs(totale - totale_proj) > 0.01:
+            raise HTTPException(status_code=422, detail={"error": {
+                "code": "BUDGET_WP_NON_BILANCIA",
+                "message": f"La somma WP ({totale:,.2f}€) non corrisponde al totale di progetto ({totale_proj:,.2f}€)"
+            }})
+
+    db.query(BudgetVoce).filter(BudgetVoce.progetto_id == id, BudgetVoce.wp_id.isnot(None)).delete(synchronize_session=False)
+    for v in voci_input:
+        if float(v.get("importo_previsto", 0)) > 0:
+            db.add(BudgetVoce(progetto_id=id, voce_id=v["voce_id"], wp_id=v["wp_id"],
+                              importo_previsto=v["importo_previsto"], importo_rendicontato=0))
+    db.commit()
+    return {"data": {"saved": True}}
+
+
+# ─── Allocazioni per WP (batch) ───────────────────────────────────────────────
+
+@router.post("/{id}/allocazioni/wp")
+def salva_allocazioni_wp(id: str, body: dict, db: Session = Depends(get_db), utente: Persona = Depends(solo_amministrativo)):
+    from collections import defaultdict
+    p = _get_or_404(id, db)
+    if not p.gestione_per_wp:
+        raise HTTPException(status_code=422, detail={"error": {"code": "GESTIONE_WP_DISABILITATA",
+                                                                "message": "Il progetto non usa gestione per WP"}})
+    alloc_input = body.get("allocazioni", [])  # [{persona_id, wp_id, ore_assegnate}]
+
+    # Ripartizione per persona deve uguagliare il totale di progetto
+    alloc_proj = {str(a.persona_id): a
+                  for a in db.query(Allocazione).filter(Allocazione.progetto_id == id, Allocazione.wp_id.is_(None)).all()}
+    ore_per_persona: dict = defaultdict(float)
+    for a in alloc_input:
+        ore_per_persona[str(a["persona_id"])] += float(a.get("ore_assegnate", 0))
+    for persona_id, ore in ore_per_persona.items():
+        ore_proj = float(alloc_proj[persona_id].ore_assegnate) if persona_id in alloc_proj else 0.0
+        if abs(ore - ore_proj) > 0.01:
+            raise HTTPException(status_code=422, detail={"error": {
+                "code": "ORE_WP_NON_BILANCIATE",
+                "message": f"La somma ore WP ({ore}) non corrisponde alle ore totali ({ore_proj}) per la persona"
+            }})
+
+    db.query(Allocazione).filter(Allocazione.progetto_id == id, Allocazione.wp_id.isnot(None)).delete(synchronize_session=False)
+    for a in alloc_input:
+        if float(a.get("ore_assegnate", 0)) > 0:
+            proj_a = alloc_proj.get(str(a["persona_id"]))
+            db.add(Allocazione(
+                progetto_id=id, persona_id=a["persona_id"], wp_id=a["wp_id"],
+                ore_assegnate=a["ore_assegnate"],
+                data_inizio=proj_a.data_inizio if proj_a else p.data_inizio,
+                data_fine=proj_a.data_fine if proj_a else p.data_fine,
+                is_pi=False, is_ammin=False,
+            ))
+    db.commit()
+    return {"data": {"saved": True}}
 
 
 # ─── Helper ───────────────────────────────────────────────────────────────────
@@ -811,6 +943,7 @@ def registra_spesa(
         id=_uuid.uuid4(),
         progetto_id=id,
         voce_id=body.get("voce_id"),
+        wp_id=body.get("wp_id"),
         persona_id=body.get("persona_id"),
         sal_id=body.get("sal_id"),
         impegno_id=impegno_id,
@@ -893,6 +1026,7 @@ def _spesa_dict(s) -> dict:
         "id": str(s.id),
         "progetto_id": str(s.progetto_id),
         "voce_id": str(s.voce_id) if s.voce_id else None,
+        "wp_id": str(s.wp_id) if s.wp_id else None,
         "persona_id": str(s.persona_id) if s.persona_id else None,
         "sal_id": str(s.sal_id) if s.sal_id else None,
         "impegno_id": str(s.impegno_id) if s.impegno_id else None,
@@ -913,6 +1047,7 @@ def _impegno_dict(i: "Impegno", stabilizzato: bool = False) -> dict:
         "id": str(i.id),
         "progetto_id": str(i.progetto_id),
         "voce_id": str(i.voce_id),
+        "wp_id": str(i.wp_id) if i.wp_id else None,
         "voce": {"codice": i.voce.codice, "descrizione": i.voce.descrizione} if i.voce else None,
         "data": str(i.data) if i.data else None,
         "descrizione": i.descrizione,
@@ -978,6 +1113,7 @@ def crea_impegno(id: str, body: dict, db: Session = Depends(get_db), utente: Per
     impegno = Impegno(
         progetto_id=id,
         voce_id=voce_id,
+        wp_id=body.get("wp_id"),
         data=body.get("data"),
         descrizione=body.get("descrizione", ""),
         importo=importo,

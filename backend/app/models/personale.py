@@ -41,6 +41,7 @@ class Allocazione(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     persona_id = Column(UUID(as_uuid=True), ForeignKey("persona.id"), nullable=False)
     progetto_id = Column(UUID(as_uuid=True), ForeignKey("progetto.id"), nullable=False)
+    wp_id = Column(UUID(as_uuid=True), ForeignKey("work_package.id"), nullable=True)
     ore_assegnate = Column(Numeric(8, 2), nullable=False)
     data_inizio = Column(Date, nullable=False)
     data_fine = Column(Date, nullable=False)

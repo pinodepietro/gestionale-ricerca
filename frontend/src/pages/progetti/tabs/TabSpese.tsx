@@ -7,11 +7,13 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { budgetApi } from '../../../api/budget';
 import { configApi } from '../../../api/config';
+import { progettiApi } from '../../../api/progetti';
 import { queryKeys } from '../../../utils/queryKeys';
 import { apiErrorMessage } from '../../../utils/apiError';
 import { RbacGuard } from '../../../components/common/RbacGuard';
 import { formatEuro, formatData } from '../../../utils/formatters';
 import type { Spesa, Impegno } from '../../../types/budget';
+import type { WorkPackage } from '../../../types/struttura';
 
 const { Text } = Typography;
 
@@ -43,6 +45,21 @@ export function TabSpese({ progettoId, stato, onVaiAImpegno }: Props) {
     queryFn: () => budgetApi.voci.list(progettoId).then(r => r.data.data),
     enabled: !!progettoId,
   });
+
+  const { data: progetto } = useQuery({
+    queryKey: queryKeys.progetti.detail(progettoId),
+    queryFn: () => progettiApi.get(progettoId).then(r => r.data.data),
+    enabled: !!progettoId,
+  });
+  const gestionePerWp: boolean = progetto?.gestione_per_wp ?? false;
+
+  const { data: wps } = useQuery({
+    queryKey: ['wp', progettoId],
+    queryFn: () => progettiApi.wp.list(progettoId).then(r => r.data.data as WorkPackage[]),
+    enabled: gestionePerWp,
+  });
+  const wpOptions = (wps ?? []).map((w: WorkPackage) => ({ value: w.id, label: `${w.codice} — ${w.titolo}` }));
+  const wpNome = (wpId: string | null | undefined) => wps?.find((w: WorkPackage) => w.id === wpId)?.codice ?? '—';
 
   const { data: impegniVoce } = useQuery({
     queryKey: queryKeys.progetti.impegni(progettoId + (vociSelectedWatch ?? '') + '_disp'),
@@ -101,6 +118,10 @@ export function TabSpese({ progettoId, stato, onVaiAImpegno }: Props) {
     { title: 'Data', dataIndex: 'data', width: 110, render: formatData },
     { title: 'N° documento', dataIndex: 'numero_documento', width: 140,
       render: (v: string) => v || '—' },
+    ...(gestionePerWp ? [{
+      title: 'WP', dataIndex: 'wp_id', width: 80,
+      render: (id: string | null) => id ? <Tag color="blue" style={{ fontSize: 11 }}>{wpNome(id)}</Tag> : null,
+    }] : []),
     { title: 'Voce di costo', dataIndex: 'voce_id', ellipsis: true,
       render: (id: string) => {
         const v = voci?.find((x: { id: string }) => x.id === id);
@@ -214,6 +235,11 @@ export function TabSpese({ progettoId, stato, onVaiAImpegno }: Props) {
       >
         <Form form={form} layout="vertical" onFinish={(v) => registraSpesa.mutate(v)}
           style={{ marginTop: 16 }}>
+          {gestionePerWp && (
+            <Form.Item name="wp_id" label="Work Package" rules={[{ required: true, message: 'Seleziona il WP' }]}>
+              <Select placeholder="Seleziona Work Package" options={wpOptions} />
+            </Form.Item>
+          )}
           <Form.Item name="voce_id" label="Voce di costo" rules={[{ required: true }]}>
             <Select
               placeholder="Seleziona voce di costo"

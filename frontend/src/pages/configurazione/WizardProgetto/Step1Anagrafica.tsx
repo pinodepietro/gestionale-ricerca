@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Form, Input, Select, DatePicker, InputNumber, Row, Col, Button, Typography } from 'antd';
+import { Form, Input, Select, DatePicker, InputNumber, Row, Col, Button, Typography, Switch } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { progettiApi } from '../../../api/progetti';
 import { personaleApi } from '../../../api/personale';
@@ -182,6 +182,15 @@ export function Step1Anagrafica({ progettoId, onCompletato }: Props) {
             ]} />
           </Form.Item>
         </Col>
+        {progettoId && (
+          <Col span={12}>
+            <Form.Item name="gestione_per_wp" label="Gestione costi per Work Package"
+              valuePropName="checked" initialValue={false}
+              tooltip="Scegli se rendicontare i costi per singolo WP o sull'intero progetto. Non modificabile dopo l'attivazione.">
+              <Switch checkedChildren="Per WP" unCheckedChildren="Progetto intero" />
+            </Form.Item>
+          </Col>
+        )}
       </Row>
       <Form.Item name="riferimento_bando" label="Riferimento bando">
         <Input.TextArea rows={2} placeholder="Estremi del bando di finanziamento, decreto, convenzione..." />

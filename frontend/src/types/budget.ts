@@ -16,6 +16,7 @@ export interface BudgetVoce {
   progetto_id: string;
   voce_id: string;
   partner_id?: string;
+  wp_id?: string | null;
   voce?: { codice: string; descrizione: string; categoria?: string };
   importo_previsto: number;
   importo_erogato: number;
@@ -31,6 +32,7 @@ export interface Impegno {
   id: string;
   progetto_id: string;
   voce_id: string;
+  wp_id?: string | null;
   voce?: { codice: string; descrizione: string };
   data: string;
   descrizione: string;
@@ -43,6 +45,7 @@ export interface Spesa {
   id: string;
   progetto_id: string;
   voce_id: string;
+  wp_id?: string | null;
   persona_id?: string;
   partner_id?: string;
   importo: number;

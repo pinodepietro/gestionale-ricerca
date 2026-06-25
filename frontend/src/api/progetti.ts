@@ -51,8 +51,10 @@ export const progettiApi = {
   budget: {
     list: (progettoId: string) =>
       apiClient.get<ApiResponse<unknown[]>>(`/progetti/${progettoId}/budget`),
-    salva: (progettoId: string, voci: { voce_id: string; importo_previsto: number }[]) =>
+    salva: (progettoId: string, voci: { voce_id: string; wp_id?: string | null; importo_previsto: number; id?: string }[]) =>
       apiClient.post<ApiResponse<unknown>>(`/progetti/${progettoId}/budget`, { voci }),
+    salvaWP: (progettoId: string, voci: { voce_id: string; wp_id: string; importo_previsto: number }[]) =>
+      apiClient.post<ApiResponse<unknown>>(`/progetti/${progettoId}/budget/wp`, { voci }),
   },
 
   wp: {
@@ -75,5 +77,7 @@ export const progettiApi = {
       apiClient.patch<ApiResponse<unknown>>(`/progetti/${progettoId}/allocazioni/${allocId}`, data),
     delete: (progettoId: string, allocId: string) =>
       apiClient.delete<ApiResponse<unknown>>(`/progetti/${progettoId}/allocazioni/${allocId}`),
+    salvaWP: (progettoId: string, allocazioni: { persona_id: string; wp_id: string; ore_assegnate: number }[]) =>
+      apiClient.post<ApiResponse<unknown>>(`/progetti/${progettoId}/allocazioni/wp`, { allocazioni }),
   },
 };

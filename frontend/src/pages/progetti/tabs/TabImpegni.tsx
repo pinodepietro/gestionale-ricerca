@@ -5,11 +5,13 @@ import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { budgetApi } from '../../../api/budget';
+import { progettiApi } from '../../../api/progetti';
 import { queryKeys } from '../../../utils/queryKeys';
 import { apiErrorMessage } from '../../../utils/apiError';
 import { RbacGuard } from '../../../components/common/RbacGuard';
 import { formatEuro, formatData } from '../../../utils/formatters';
 import type { Impegno, BudgetVoce } from '../../../types/budget';
+import type { WorkPackage } from '../../../types/struttura';
 
 const { Text } = Typography;
 
@@ -33,6 +35,21 @@ export function TabImpegni({ progettoId, stato, highlightId, onHighlightConsumed
     queryFn: () => budgetApi.voci.list(progettoId).then(r => r.data.data),
     enabled: !!progettoId,
   });
+
+  const { data: progetto } = useQuery({
+    queryKey: queryKeys.progetti.detail(progettoId),
+    queryFn: () => progettiApi.get(progettoId).then(r => r.data.data),
+    enabled: !!progettoId,
+  });
+  const gestionePerWp: boolean = progetto?.gestione_per_wp ?? false;
+
+  const { data: wps } = useQuery({
+    queryKey: ['wp', progettoId],
+    queryFn: () => progettiApi.wp.list(progettoId).then(r => r.data.data as WorkPackage[]),
+    enabled: gestionePerWp,
+  });
+  const wpOptions = (wps ?? []).map((w: WorkPackage) => ({ value: w.id, label: `${w.codice} — ${w.titolo}` }));
+  const wpNome = (wpId: string | null | undefined) => wps?.find((w: WorkPackage) => w.id === wpId)?.codice ?? '—';
 
   const vociDisponibili = (budgetVoci as BudgetVoce[] | undefined)
     ?.filter(bv => bv.voce?.categoria !== 'personale')
@@ -92,6 +109,7 @@ export function TabImpegni({ progettoId, stato, highlightId, onHighlightConsumed
     setImpegnoInModifica(imp);
     form.setFieldsValue({
       voce_id: imp.voce_id,
+      wp_id: imp.wp_id ?? undefined,
       data: imp.data ? dayjs(imp.data) : undefined,
       descrizione: imp.descrizione,
       importo: imp.importo,
@@ -134,6 +152,10 @@ export function TabImpegni({ progettoId, stato, highlightId, onHighlightConsumed
 
   const colonne = [
     { title: 'Data', dataIndex: 'data', width: 110, render: formatData },
+    ...(gestionePerWp ? [{
+      title: 'WP', dataIndex: 'wp_id', width: 80,
+      render: (id: string | null) => id ? <Tag color="blue" style={{ fontSize: 11 }}>{wpNome(id)}</Tag> : null,
+    }] : []),
     {
       title: 'Voce di costo', dataIndex: 'voce', ellipsis: true,
       render: (_: unknown, r: Impegno) =>
@@ -244,6 +266,11 @@ export function TabImpegni({ progettoId, stato, highlightId, onHighlightConsumed
         destroyOnClose
       >
         <Form form={form} layout="vertical" onFinish={onSubmit} style={{ marginTop: 16 }}>
+          {gestionePerWp && (
+            <Form.Item name="wp_id" label="Work Package" rules={[{ required: true, message: 'Seleziona il WP' }]}>
+              <Select placeholder="Seleziona Work Package" options={wpOptions} disabled={!!impegnoInModifica} />
+            </Form.Item>
+          )}
           <Form.Item name="voce_id" label="Voce di costo" rules={[{ required: true, message: 'Seleziona una voce di costo' }]}>
             <Select
               placeholder="Seleziona voce di costo"

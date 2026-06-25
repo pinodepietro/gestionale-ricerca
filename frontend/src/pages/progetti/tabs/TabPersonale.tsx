@@ -3,22 +3,27 @@ import { Table, Tag, Typography, Space, Progress } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { progettiApi } from '../../../api/progetti';
-import { personaleApi } from '../../../api/personale';
 import { timesheetApi } from '../../../api/timesheet';
+import { budgetApi } from '../../../api/budget';
 import { queryKeys } from '../../../utils/queryKeys';
-import { formatData, formatOre } from '../../../utils/formatters';
+import { formatData, formatOre, formatEuro } from '../../../utils/formatters';
+import type { BudgetVoce } from '../../../types/budget';
+import type { WorkPackage } from '../../../types/struttura';
 
 const { Text } = Typography;
 
 interface Allocazione {
   id: string;
   persona_id: string;
+  wp_id?: string | null;
   ore_assegnate: number;
+  costo_orario: number;
   data_inizio: string;
   data_fine: string;
   note?: string;
   is_pi?: boolean;
   is_ammin?: boolean;
+  persona?: { nome: string; cognome: string } | null;
 }
 
 interface Props { progettoId: string; }
@@ -32,11 +37,6 @@ export function TabPersonale({ progettoId }: Props) {
     enabled: !!progettoId,
   });
 
-  const { data: persone } = useQuery({
-    queryKey: queryKeys.personale.list({ attivo: true }),
-    queryFn: () => personaleApi.list({}).then(r => r.data.data),
-  });
-
   const { data: timesheetData } = useQuery({
     queryKey: queryKeys.timesheet.list({ progetto_id: progettoId }),
     queryFn: () => timesheetApi.list({ progetto_id: progettoId }).then(r => r.data),
@@ -44,31 +44,59 @@ export function TabPersonale({ progettoId }: Props) {
   });
   const timesheet = timesheetData?.data ?? [];
 
-  const nomPersona = (id: string) => {
-    const p = persone?.find((x: { id: string }) => x.id === id);
-    return p ? `${p.nome} ${p.cognome}` : '—';
+  const { data: budgetVoci } = useQuery({
+    queryKey: queryKeys.progetti.budget(progettoId),
+    queryFn: () => budgetApi.voci.list(progettoId).then(r => r.data.data),
+    enabled: !!progettoId,
+  });
+
+  const { data: progetto } = useQuery({
+    queryKey: queryKeys.progetti.detail(progettoId),
+    queryFn: () => progettiApi.get(progettoId).then(r => r.data.data),
+    enabled: !!progettoId,
+  });
+  const gestionePerWp: boolean = progetto?.gestione_per_wp ?? false;
+
+  const { data: wps } = useQuery({
+    queryKey: ['wp', progettoId],
+    queryFn: () => progettiApi.wp.list(progettoId).then(r => r.data.data as WorkPackage[]),
+    enabled: gestionePerWp,
+  });
+  const wpNome = (wpId: string | null | undefined) => {
+    if (!wpId) return null;
+    const wp = wps?.find(w => w.id === wpId);
+    return wp ? `${wp.codice} — ${wp.titolo}` : wpId;
   };
 
-  const ruoloPersona = (id: string) => {
-    const p = persone?.find((x: { id: string }) => x.id === id);
-    return p?.ruolo_ente || '—';
-  };
+  const nomPersona = (r: Allocazione) =>
+    r.persona ? `${r.persona.nome} ${r.persona.cognome}` : '—';
 
-  // Calcola ore effettive dai timesheet approvati per persona
-  const oreEffettivePerPersona = (personaId: string): number => {
-    return timesheet
+  const ruoloPersona = (_r: Allocazione) => '';
+
+  const oreRendicontatePerPersona = (personaId: string): number =>
+    timesheet
       .filter((ts: { persona_id: string; stato: string }) =>
         ts.persona_id === personaId && ts.stato === 'approvato')
       .reduce((sum: number, ts: { ore_totali_progetto?: number }) =>
         sum + (ts.ore_totali_progetto ?? 0), 0);
-  };
 
   const isAttivo = (dataInizio: string, dataFine: string) => {
     const oggi = new Date();
     return new Date(dataInizio) <= oggi && new Date(dataFine) >= oggi;
   };
 
+  // Budget voce personale (A.1 o categoria personale)
+  const budgetPersonale = (budgetVoci as BudgetVoce[] | undefined)
+    ?.find(v => v.voce?.codice === 'A.1' || v.voce?.categoria === 'personale')
+    ?.importo_previsto ?? 0;
+
   const colonne = [
+    ...(gestionePerWp ? [{
+      title: 'WP', dataIndex: 'wp_id', width: 150,
+      render: (id: string | null) => id
+        ? <Tag color="blue" style={{ fontSize: 11 }}>{wpNome(id)}</Tag>
+        : <Text type="secondary">—</Text>,
+    }] : []),
     {
       title: 'Persona', key: 'persona',
       render: (_: unknown, r: Allocazione) => (
@@ -76,12 +104,12 @@ export function TabPersonale({ progettoId }: Props) {
           <Space size={6}>
             <Text strong style={{ cursor: 'pointer', color: '#185FA5' }}
               onClick={() => navigate(`/personale/${r.persona_id}`)}>
-              {nomPersona(r.persona_id)}
+              {nomPersona(r)}
             </Text>
             {r.is_pi && <Tag color="blue" style={{ fontSize: 11, padding: '0 4px' }}>PI</Tag>}
             {r.is_ammin && <Tag color="orange" style={{ fontSize: 11, padding: '0 4px' }}>Ammin</Tag>}
           </Space>
-          <Text type="secondary" style={{ fontSize: 12 }}>{ruoloPersona(r.persona_id)}</Text>
+          {ruoloPersona(r) && <Text type="secondary" style={{ fontSize: 12 }}>{ruoloPersona(r)}</Text>}
         </Space>
       ),
     },
@@ -97,20 +125,33 @@ export function TabPersonale({ progettoId }: Props) {
       ),
     },
     {
-      title: 'Ore assegnate', dataIndex: 'ore_assegnate', width: 130,
+      title: 'Ore ass.', dataIndex: 'ore_assegnate', width: 90, align: 'right' as const,
       render: (v: number) => <Text strong>{formatOre(v)}</Text>,
     },
     {
-      title: 'Ore rendicontate', key: 'ore_effettive', width: 150,
+      title: 'Costo', key: 'costo', width: 110, align: 'right' as const,
       render: (_: unknown, r: Allocazione) => {
-        const effettive = oreEffettivePerPersona(r.persona_id);
-        return <Text style={{ color: '#185FA5' }}>{formatOre(effettive)}</Text>;
+        const costo = r.ore_assegnate * (r.costo_orario ?? 0);
+        return <Text strong style={{ color: '#b45309' }}>{formatEuro(costo)}</Text>;
       },
     },
     {
-      title: 'Avanzamento', key: 'avanzamento', width: 180,
+      title: 'Ore rend.', key: 'ore_rend', width: 90, align: 'right' as const,
+      render: (_: unknown, r: Allocazione) => (
+        <Text style={{ color: '#185FA5' }}>{formatOre(oreRendicontatePerPersona(r.persona_id))}</Text>
+      ),
+    },
+    {
+      title: 'Costo rend.', key: 'costo_rend', width: 110, align: 'right' as const,
       render: (_: unknown, r: Allocazione) => {
-        const effettive = oreEffettivePerPersona(r.persona_id);
+        const costo = oreRendicontatePerPersona(r.persona_id) * (r.costo_orario ?? 0);
+        return <Text style={{ color: '#065f46' }}>{formatEuro(costo)}</Text>;
+      },
+    },
+    {
+      title: 'Avanzamento', key: 'avanzamento', width: 160,
+      render: (_: unknown, r: Allocazione) => {
+        const effettive = oreRendicontatePerPersona(r.persona_id);
         const pct = r.ore_assegnate > 0
           ? Math.round(effettive / r.ore_assegnate * 100) : 0;
         return (
@@ -134,7 +175,7 @@ export function TabPersonale({ progettoId }: Props) {
       <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Text strong>Personale allocato sul progetto</Text>
         <Text type="secondary" style={{ fontSize: 12 }}>
-          Ore rendicontate = somma timesheet approvati
+          Costo = ore × tariffa oraria individuale &nbsp;·&nbsp; Ore rend. = timesheet approvati
         </Text>
       </div>
       <Table
@@ -148,21 +189,55 @@ export function TabPersonale({ progettoId }: Props) {
         summary={(rows) => {
           if (!rows.length) return null;
           const totOre = rows.reduce((s, r) => s + Number((r as Allocazione).ore_assegnate), 0);
-          const totEffettive = rows.reduce((s, r) =>
-            s + oreEffettivePerPersona((r as Allocazione).persona_id), 0);
+          const totCosto = rows.reduce((s, r) => {
+            const a = r as Allocazione;
+            return s + a.ore_assegnate * (a.costo_orario ?? 0);
+          }, 0);
+          const totRend = rows.reduce((s, r) =>
+            s + oreRendicontatePerPersona((r as Allocazione).persona_id), 0);
+          const totCostoRend = rows.reduce((s, r) => {
+            const a = r as Allocazione;
+            return s + oreRendicontatePerPersona(a.persona_id) * (a.costo_orario ?? 0);
+          }, 0);
+          const costoRimanente = budgetPersonale - totCosto;
+
           return (
-            <Table.Summary.Row>
-              <Table.Summary.Cell index={0} colSpan={2}>
-                <Text strong>Totale</Text>
-              </Table.Summary.Cell>
-              <Table.Summary.Cell index={1}>
-                <Text strong>{formatOre(totOre)}</Text>
-              </Table.Summary.Cell>
-              <Table.Summary.Cell index={2}>
-                <Text strong style={{ color: '#185FA5' }}>{formatOre(totEffettive)}</Text>
-              </Table.Summary.Cell>
-              <Table.Summary.Cell index={3} colSpan={2} />
-            </Table.Summary.Row>
+            <>
+              <Table.Summary.Row>
+                <Table.Summary.Cell index={0} colSpan={2}>
+                  <Text strong>Totale</Text>
+                </Table.Summary.Cell>
+                <Table.Summary.Cell index={1} align="right">
+                  <Text strong>{formatOre(totOre)}</Text>
+                </Table.Summary.Cell>
+                <Table.Summary.Cell index={2} align="right">
+                  <Text strong style={{ color: '#b45309' }}>{formatEuro(totCosto)}</Text>
+                </Table.Summary.Cell>
+                <Table.Summary.Cell index={3} align="right">
+                  <Text strong style={{ color: '#185FA5' }}>{formatOre(totRend)}</Text>
+                </Table.Summary.Cell>
+                <Table.Summary.Cell index={4} align="right">
+                  <Text strong style={{ color: '#065f46' }}>{formatEuro(totCostoRend)}</Text>
+                </Table.Summary.Cell>
+                <Table.Summary.Cell index={5} colSpan={2} />
+              </Table.Summary.Row>
+              {budgetPersonale > 0 && (
+                <Table.Summary.Row>
+                  <Table.Summary.Cell index={0} colSpan={2}>
+                    <Text strong type={costoRimanente < 0 ? 'danger' : undefined}>
+                      Costo rimanente da allocare
+                    </Text>
+                  </Table.Summary.Cell>
+                  <Table.Summary.Cell index={1} />
+                  <Table.Summary.Cell index={2} align="right">
+                    <Text strong type={costoRimanente < 0 ? 'danger' : 'success'}>
+                      {formatEuro(costoRimanente)}
+                    </Text>
+                  </Table.Summary.Cell>
+                  <Table.Summary.Cell index={3} colSpan={4} />
+                </Table.Summary.Row>
+              )}
+            </>
           );
         }}
       />

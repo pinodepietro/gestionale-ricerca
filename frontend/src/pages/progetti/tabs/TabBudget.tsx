@@ -1,10 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
 import { progettiApi } from '../../../api/progetti';
 import { queryKeys } from '../../../utils/queryKeys';
-import { Table, Progress, Typography, Alert } from 'antd';
+import { Table, Progress, Typography, Alert, Tag } from 'antd';
 import { budgetApi } from '../../../api/budget';
 import { formatEuro, formatPercentuale, coloreBudget } from '../../../utils/formatters';
 import type { BudgetVoce } from '../../../types/budget';
+import type { WorkPackage } from '../../../types/struttura';
 
 const { Text } = Typography;
 
@@ -20,11 +21,38 @@ export function TabBudget({ progettoId }: { progettoId: string }) {
     queryFn: () => budgetApi.voci.list(progettoId).then((r) => r.data.data),
   });
 
-  const totAllocato = (data ?? []).reduce((s: number, r: BudgetVoce) => s + r.importo_previsto, 0);
+  const { data: wps } = useQuery({
+    queryKey: ['wp', progettoId],
+    queryFn: () => progettiApi.wp.list(progettoId).then(r => r.data.data as WorkPackage[]),
+    enabled: !!progetto?.gestione_per_wp,
+  });
+
+  const gestionePerWp: boolean = progetto?.gestione_per_wp ?? false;
+
+  // In WP mode mostra solo le righe WP (wp_id != null) per evitare doppia somma
+  const vociDaMostrare = gestionePerWp
+    ? (data ?? []).filter((bv: BudgetVoce) => bv.wp_id !== null)
+    : (data ?? []);
+
   const costoTotale = progetto?.costo_totale ?? 0;
-  const nonAllocato = costoTotale - totAllocato;
+  // Avviso "non allocato" basato sulle righe di progetto (wp_id=null)
+  const vociProgetto = (data ?? []).filter((bv: BudgetVoce) => bv.wp_id === null);
+  const totAllocato = vociProgetto.reduce((s: number, r: BudgetVoce) => s + r.importo_previsto, 0);
+  const nonAllocato = !gestionePerWp ? costoTotale - totAllocato : 0;
+
+  const wpNome = (wpId: string | null | undefined) => {
+    if (!wpId) return null;
+    const wp = wps?.find(w => w.id === wpId);
+    return wp ? `${wp.codice} — ${wp.titolo}` : wpId;
+  };
 
   const columns = [
+    ...(gestionePerWp ? [{
+      title: 'WP', dataIndex: 'wp_id', width: 160,
+      render: (id: string | null) => id
+        ? <Tag color="blue" style={{ fontSize: 11 }}>{wpNome(id)}</Tag>
+        : <Text type="secondary">—</Text>,
+    }] : []),
     { title: 'Voce di costo', dataIndex: ['voce', 'descrizione'], ellipsis: true },
     { title: 'Previsto', dataIndex: 'importo_previsto', align: 'right' as const, width: 130, render: formatEuro },
     { title: 'Erogato', dataIndex: 'importo_erogato', align: 'right' as const, width: 120,
@@ -55,6 +83,8 @@ export function TabBudget({ progettoId }: { progettoId: string }) {
     },
   ];
 
+  const colOffset = gestionePerWp ? 1 : 0;
+
   return (
     <div>
       {nonAllocato > 0 && (
@@ -68,7 +98,7 @@ export function TabBudget({ progettoId }: { progettoId: string }) {
         />
       )}
 
-      <Table columns={columns} dataSource={data ?? []} rowKey="id" loading={isLoading}
+      <Table columns={columns} dataSource={vociDaMostrare} rowKey="id" loading={isLoading}
         pagination={false}
         summary={(rows) => {
           const totPrevisto = rows.reduce((s, r) => s + (r as BudgetVoce).importo_previsto, 0);
@@ -79,23 +109,22 @@ export function TabBudget({ progettoId }: { progettoId: string }) {
           const totDisponibile = totErogato - totImpegnato - totSpeso;
           return (
             <Table.Summary.Row>
-              <Table.Summary.Cell index={0}><Text strong>Totale</Text></Table.Summary.Cell>
-              <Table.Summary.Cell index={1} align="right"><Text strong>{formatEuro(totPrevisto)}</Text></Table.Summary.Cell>
-              <Table.Summary.Cell index={2} align="right"><Text strong>{formatEuro(totErogato)}</Text></Table.Summary.Cell>
-              <Table.Summary.Cell index={3} align="right"><Text strong>{formatEuro(totImpegnato)}</Text></Table.Summary.Cell>
-              <Table.Summary.Cell index={4} align="right"><Text strong>{formatEuro(totSpeso)}</Text></Table.Summary.Cell>
-              <Table.Summary.Cell index={5} align="right"><Text strong>{formatEuro(totRendicontato)}</Text></Table.Summary.Cell>
-              <Table.Summary.Cell index={6} align="right">
+              <Table.Summary.Cell index={0} colSpan={1 + colOffset}><Text strong>Totale</Text></Table.Summary.Cell>
+              <Table.Summary.Cell index={1 + colOffset} align="right"><Text strong>{formatEuro(totPrevisto)}</Text></Table.Summary.Cell>
+              <Table.Summary.Cell index={2 + colOffset} align="right"><Text strong>{formatEuro(totErogato)}</Text></Table.Summary.Cell>
+              <Table.Summary.Cell index={3 + colOffset} align="right"><Text strong>{formatEuro(totImpegnato)}</Text></Table.Summary.Cell>
+              <Table.Summary.Cell index={4 + colOffset} align="right"><Text strong>{formatEuro(totSpeso)}</Text></Table.Summary.Cell>
+              <Table.Summary.Cell index={5 + colOffset} align="right"><Text strong>{formatEuro(totRendicontato)}</Text></Table.Summary.Cell>
+              <Table.Summary.Cell index={6 + colOffset} align="right">
                 <Text strong type={totDisponibile < 0 ? 'danger' : undefined}>
                   {formatEuro(totDisponibile)}
                 </Text>
               </Table.Summary.Cell>
-              <Table.Summary.Cell index={7} />
+              <Table.Summary.Cell index={7 + colOffset} />
             </Table.Summary.Row>
           );
         }}
       />
-
     </div>
   );
 }

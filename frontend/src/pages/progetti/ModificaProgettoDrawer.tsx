@@ -3,6 +3,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Drawer, Tabs, Form, Input, InputNumber, DatePicker, Button, Select,
          Table, Space, Modal, App, Divider, Row, Col, Switch, Tag, Typography, Alert } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import { Step6BudgetWP } from '../configurazione/WizardProgetto/Step6BudgetWP';
+import { Step7PersonaleWP } from '../configurazione/WizardProgetto/Step7PersonaleWP';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { progettiApi } from '../../api/progetti';
@@ -37,22 +39,41 @@ export function ModificaProgettoDrawer({ progettoId, aperto, onChiudi }: Props) 
   const { notification } = App.useApp();
   const queryClient = useQueryClient();
 
+  const { data: progetto } = useQuery({
+    queryKey: queryKeys.progetti.detail(progettoId),
+    queryFn: () => progettiApi.get(progettoId).then(r => r.data.data),
+    enabled: aperto && !!progettoId,
+  });
+  const gestionePerWp: boolean = progetto?.gestione_per_wp ?? false;
+
+  const tabItems = [
+    { key: 'anagrafica', label: 'Anagrafica', children: <TabAnagrafica progettoId={progettoId} onSalvato={() => { queryClient.invalidateQueries({ queryKey: queryKeys.progetti.detail(progettoId) }); notification.success({ message: 'Progetto aggiornato' }); }} /> },
+    { key: 'budget', label: 'Budget e voci', children: <TabBudgetModifica progettoId={progettoId} /> },
+    { key: 'wp', label: 'Work Package', children: <TabWpModifica progettoId={progettoId} /> },
+    { key: 'personale', label: 'Allocazioni', children: <TabAllocazioniModifica progettoId={progettoId} /> },
+    ...(gestionePerWp ? [
+      {
+        key: 'budget-wp', label: 'Budget WP',
+        children: <Step6BudgetWP progettoId={progettoId}
+          onCompletato={() => notification.success({ message: 'Budget WP aggiornato' })} />,
+      },
+      {
+        key: 'personale-wp', label: 'Personale WP',
+        children: <Step7PersonaleWP progettoId={progettoId}
+          onCompletato={() => notification.success({ message: 'Ripartizione ore WP aggiornata' })} />,
+      },
+    ] : []),
+  ];
+
   return (
     <Drawer
       title="Modifica progetto"
-      width={780}
+      width={900}
       open={aperto}
       onClose={onChiudi}
       destroyOnClose
     >
-      <Tabs
-        items={[
-          { key: 'anagrafica', label: 'Anagrafica', children: <TabAnagrafica progettoId={progettoId} onSalvato={() => { queryClient.invalidateQueries({ queryKey: queryKeys.progetti.detail(progettoId) }); notification.success({ message: 'Progetto aggiornato' }); }} /> },
-          { key: 'budget', label: 'Budget e voci', children: <TabBudgetModifica progettoId={progettoId} /> },
-          { key: 'wp', label: 'Work Package', children: <TabWpModifica progettoId={progettoId} /> },
-          { key: 'personale', label: 'Allocazioni', children: <TabAllocazioniModifica progettoId={progettoId} /> },
-        ]}
-      />
+      <Tabs items={tabItems} />
     </Drawer>
   );
 }
@@ -186,6 +207,12 @@ function TabAnagrafica({ progettoId, onSalvato }: { progettoId: string; onSalvat
       <Form.Item name="riferimento_bando" label="Riferimento bando">
         <Input.TextArea rows={2} placeholder="Estremi del bando di finanziamento, decreto, convenzione..." />
       </Form.Item>
+      <Form.Item name="gestione_per_wp" label="Gestione costi per Work Package" valuePropName="checked"
+        tooltip={progetto?.stato === 'bozza'
+          ? 'Scegli se gestire i costi a livello di WP o di progetto complessivo. Non modificabile dopo l\'attivazione.'
+          : 'Non modificabile: il progetto è già stato attivato'}>
+        <Switch disabled={progetto?.stato !== 'bozza'} />
+      </Form.Item>
       <Form.Item name="note" label="Note">
         <Input.TextArea rows={2} />
       </Form.Item>
@@ -233,12 +260,14 @@ function NuovaVoceForm({ form, onFinish }: { form: any; onFinish: (v: Record<str
 }
 
 // ── Tab Budget Voci ───────────────────────────────────────────────────────────
+type VoceBudget = { id?: string; voce_id: string; wp_id?: string | null; importo_previsto: number };
+
 function TabBudgetModifica({ progettoId }: { progettoId: string }) {
   const { notification } = App.useApp();
   const queryClient = useQueryClient();
   const [form] = Form.useForm();
   const [nuovaVoceForm] = Form.useForm();
-  const [voci, setVoci] = useState<{ voce_id: string; importo_previsto: number }[]>([]);
+  const [voci, setVoci] = useState<VoceBudget[]>([]);
   const [limiti, setLimiti] = useState<Record<string, number>>({});
   const [selectOpen, setSelectOpen] = useState(false);
   const [nuovaVoceAperta, setNuovaVoceAperta] = useState(false);
@@ -263,11 +292,15 @@ function TabBudgetModifica({ progettoId }: { progettoId: string }) {
   useEffect(() => {
     if (budgetEsistente && !inizializzato.current) {
       inizializzato.current = true;
-      setVoci(budgetEsistente.map((v: { voce_id: string; importo_previsto: number }) => ({
-        voce_id: v.voce_id, importo_previsto: v.importo_previsto,
+      // Solo le voci di progetto (wp_id=null): quelle WP si gestiscono nella tab "Budget WP"
+      const vociProgetto = budgetEsistente.filter(
+        (v: { wp_id?: string | null }) => v.wp_id === null || v.wp_id === undefined
+      );
+      setVoci(vociProgetto.map((v: { id: string; voce_id: string; importo_previsto: number }) => ({
+        id: v.id, voce_id: v.voce_id, importo_previsto: v.importo_previsto,
       })));
       const lim: Record<string, number> = {};
-      budgetEsistente.forEach((v: { voce_id: string; importo_speso?: number; importo_impegnato?: number }) => {
+      vociProgetto.forEach((v: { voce_id: string; importo_speso?: number; importo_impegnato?: number }) => {
         lim[v.voce_id] = (v.importo_speso ?? 0) + (v.importo_impegnato ?? 0);
       });
       setLimiti(lim);
@@ -281,7 +314,7 @@ function TabBudgetModifica({ progettoId }: { progettoId: string }) {
   const hasVincolati = voci.some(v => (limiti[v.voce_id] ?? 0) > Number(v.importo_previsto));
 
   const { mutate: salva, isPending } = useMutation({
-    mutationFn: () => progettiApi.budget.salva(progettoId, voci).then(r => r.data),
+    mutationFn: () => progettiApi.budget.salva(progettoId, voci.map(v => ({ voce_id: v.voce_id, importo_previsto: v.importo_previsto, id: v.id }))).then(r => r.data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.progetti.budget(progettoId) });
       inizializzato.current = false;
@@ -302,7 +335,7 @@ function TabBudgetModifica({ progettoId }: { progettoId: string }) {
       notification.success({ message: 'Voce di costo creata' });
       setNuovaVoceAperta(false);
       nuovaVoceForm.resetFields();
-      setVoci(prev => prev.find(x => x.voce_id === nuova.id) ? prev : [...prev, { voce_id: nuova.id, importo_previsto: 0 }]);
+      setVoci(prev => prev.find(x => x.voce_id === nuova.id) ? prev : [...prev, { voce_id: nuova.id, wp_id: null, importo_previsto: 0 }]);
     },
     onError: (error: unknown) => {
       const msg = (error as { response?: { data?: { detail?: { error?: { message?: string } } } } })
@@ -391,7 +424,7 @@ function TabBudgetModifica({ progettoId }: { progettoId: string }) {
       <Form form={form} layout="inline" style={{ marginBottom: 16 }}
         onFinish={v => {
           if (voci.find(x => x.voce_id === v.voce_id)) return;
-          setVoci(prev => [...prev, { voce_id: v.voce_id, importo_previsto: v.importo_previsto ?? 0 }]);
+          setVoci(prev => [...prev, { voce_id: v.voce_id, wp_id: null, importo_previsto: v.importo_previsto ?? 0 }]);
           form.resetFields();
         }}>
         <Form.Item name="voce_id" rules={[{ required: true }]} style={{ minWidth: 280 }}>
@@ -449,6 +482,11 @@ function TabWpModifica({ progettoId }: { progettoId: string }) {
   const [form] = Form.useForm();
   const [modalAperta, setModalAperta] = useState(false);
   const [wpInModifica, setWpInModifica] = useState<Record<string, unknown> | null>(null);
+
+  const { data: progetto } = useQuery({
+    queryKey: queryKeys.progetti.detail(progettoId),
+    queryFn: () => progettiApi.get(progettoId).then(r => r.data.data),
+  });
 
   const { data: wps } = useQuery({
     queryKey: ['wp', progettoId],
@@ -521,6 +559,10 @@ function TabWpModifica({ progettoId }: { progettoId: string }) {
         open={modalAperta} onCancel={() => { setModalAperta(false); form.resetFields(); }}
         onOk={() => form.submit()} confirmLoading={isPending} okText="Salva">
         <Form form={form} layout="vertical" onFinish={salvaWp} style={{ marginTop: 12 }}>
+          {progetto && (
+            <Alert type="info" showIcon style={{ marginBottom: 16 }}
+              message={`Periodo progetto: ${formatData(progetto.data_inizio)} → ${formatData(progetto.data_fine)}`} />
+          )}
           <Row gutter={12}>
             <Col span={6}><Form.Item name="codice" label="Codice" rules={[{ required: true }]}><Input placeholder="WP1" /></Form.Item></Col>
             <Col span={18}><Form.Item name="titolo" label="Titolo" rules={[{ required: true }]}><Input /></Form.Item></Col>
@@ -544,10 +586,13 @@ function TabAllocazioniModifica({ progettoId }: { progettoId: string }) {
   const [modalAperta, setModalAperta] = useState(false);
   const [allocInModifica, setAllocInModifica] = useState<Record<string, unknown> | null>(null);
 
-  const { data: allocazioni } = useQuery({
+  const { data: tutteLeAllocazioni } = useQuery({
     queryKey: queryKeys.progetti.allocazioni(progettoId),
     queryFn: () => progettiApi.allocazioni.list(progettoId).then(r => r.data.data),
   });
+  // Solo le allocazioni di progetto (wp_id=null): le sotto-allocazioni WP si gestiscono nella tab "Personale WP"
+  const allocazioni = (tutteLeAllocazioni as { wp_id: string | null }[] | undefined)
+    ?.filter(a => a.wp_id === null || a.wp_id === undefined) ?? [];
 
   const RUOLI_NON_ALLOCABILI = new Set(['management', 'monitor', 'superadmin']);
   const { data: persone } = useQuery({
@@ -637,28 +682,28 @@ function TabAllocazioniModifica({ progettoId }: { progettoId: string }) {
     },
   ];
 
+  const personeOptions = (persone as { id: string; nome: string; cognome: string }[] | undefined)
+    ?.filter(p =>
+      !(allocazioni as unknown as { persona_id: string; id: string }[] | undefined)?.find(a =>
+        a.persona_id === p.id && a.id !== allocInModifica?.id
+      )
+    )
+    .map(p => ({ value: p.id, label: `${p.nome} ${p.cognome}` })) ?? [];
+
   return (
     <div>
       <Button type="primary" icon={<PlusOutlined />} style={{ marginBottom: 16 }}
         onClick={() => { setAllocInModifica(null); form.resetFields(); setModalAperta(true); }}>
         Nuova allocazione
       </Button>
-      <Table columns={colonne} dataSource={(allocazioni ?? []) as Record<string, unknown>[]} rowKey="id" pagination={false} size="small" />
+      <Table columns={colonne} dataSource={allocazioni as Record<string, unknown>[]} rowKey="id" pagination={false} size="small" />
       <Modal title={allocInModifica?.id ? 'Modifica allocazione' : 'Nuova allocazione'}
         open={modalAperta} onCancel={() => { setModalAperta(false); form.resetFields(); }}
         onOk={() => form.submit()} confirmLoading={isPending} okText="Salva">
         <Form form={form} layout="vertical" onFinish={salvaAlloc} style={{ marginTop: 12 }}>
           <Form.Item name="persona_id" label="Persona" rules={[{ required: true }]}>
             <Select placeholder="Seleziona persona"
-              options={(persone as { id: string; nome: string; cognome: string }[] | undefined)
-                ?.filter(p =>
-                  !(allocazioni as { persona_id: string; id: string }[] | undefined)?.find(a =>
-                    a.persona_id === p.id && a.id !== allocInModifica?.id
-                  )
-                )
-                .map(p => ({
-                  value: p.id, label: `${p.nome} ${p.cognome}`,
-                }))}
+              options={personeOptions}
               showSearch filterOption={(inp, opt) =>
                 (opt?.label as string)?.toLowerCase().includes(inp.toLowerCase())} />
           </Form.Item>

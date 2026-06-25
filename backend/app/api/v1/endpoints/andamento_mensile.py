@@ -49,6 +49,7 @@ def _calcola_andamento(progetto: Progetto, db: Session) -> dict:
         db.query(BudgetVoce, VoceDiCosto)
         .join(VoceDiCosto, BudgetVoce.voce_id == VoceDiCosto.id)
         .filter(BudgetVoce.progetto_id == progetto.id)
+        .filter(BudgetVoce.wp_id.is_(None))  # esclude le sotto-voci WP per evitare doppia somma
         .order_by(VoceDiCosto.codice)
         .all()
     )

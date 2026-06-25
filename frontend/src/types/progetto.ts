@@ -18,6 +18,7 @@ export interface Progetto {
   percentuale_finanziamento: number;
   cup?: string;
   budget_per_partner: boolean;
+  gestione_per_wp: boolean;
   template_timesheet_id?: string;
   note?: string;
   pi_id?: string | null;

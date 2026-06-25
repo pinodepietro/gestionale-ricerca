@@ -1,21 +1,32 @@
 import { useState } from 'react';
 import { Steps, Button, Typography, Card, Result } from 'antd';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { useWizardStore } from '../../../store/useWizardStore';
+import { progettiApi } from '../../../api/progetti';
+import { queryKeys } from '../../../utils/queryKeys';
 import { Step1Anagrafica } from './Step1Anagrafica';
 import { Step2Finanziamento } from './Step2Finanziamento';
 import { Step3Partner } from './Step3Partner';
 import { Step4WorkPackage } from './Step4WorkPackage';
 import { Step5Personale } from './Step5Personale';
+import { Step6BudgetWP } from './Step6BudgetWP';
+import { Step7PersonaleWP } from './Step7PersonaleWP';
 
 const { Title } = Typography;
 
-const STEPS = [
+const STEPS_BASE = [
   { title: 'Anagrafica', description: 'Dati base' },
   { title: 'Finanziamento', description: 'Budget e voci' },
   { title: 'Partner', description: 'Enti coinvolti' },
   { title: 'Struttura WP', description: 'Work Package' },
   { title: 'Personale', description: 'Allocazioni' },
+];
+
+const STEPS_WP = [
+  ...STEPS_BASE,
+  { title: 'Budget per WP', description: 'Ripartizione budget' },
+  { title: 'Personale per WP', description: 'Ripartizione ore' },
 ];
 
 export function WizardProgetto() {
@@ -24,6 +35,15 @@ export function WizardProgetto() {
   const { stepCorrente, avanzaStep, tornaStep, reset } = useWizardStore();
   const [completato, setCompletato] = useState(false);
   const [idProgetto, setIdProgetto] = useState<string>(urlId ?? '');
+
+  const { data: progetto } = useQuery({
+    queryKey: queryKeys.progetti.detail(idProgetto),
+    queryFn: () => progettiApi.get(idProgetto).then(r => r.data.data),
+    enabled: !!idProgetto,
+  });
+  const gestionePerWp: boolean = progetto?.gestione_per_wp ?? false;
+
+  const STEPS = gestionePerWp ? STEPS_WP : STEPS_BASE;
 
   function handleStepCompletato(nuovoId?: string) {
     if (nuovoId && typeof nuovoId === 'string') {
@@ -82,7 +102,15 @@ export function WizardProgetto() {
             onCompletato={() => handleStepCompletato()} onIndietro={tornaStep} />
         )}
         {stepCorrente === 4 && idProgetto && (
-          <Step5Personale progettoId={idProgetto}
+          <Step5Personale progettoId={idProgetto} gestionePerWp={gestionePerWp}
+            onCompletato={() => handleStepCompletato()} onIndietro={tornaStep} />
+        )}
+        {stepCorrente === 5 && idProgetto && gestionePerWp && (
+          <Step6BudgetWP progettoId={idProgetto}
+            onCompletato={() => handleStepCompletato()} onIndietro={tornaStep} />
+        )}
+        {stepCorrente === 6 && idProgetto && gestionePerWp && (
+          <Step7PersonaleWP progettoId={idProgetto}
             onCompletato={() => handleStepCompletato()} onIndietro={tornaStep} />
         )}
       </Card>
