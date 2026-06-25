@@ -1,7 +1,7 @@
 // frontend/src/pages/progetti/ModificaProgettoDrawer.tsx
 import { useEffect, useRef, useState } from 'react';
 import { Drawer, Tabs, Form, Input, InputNumber, DatePicker, Button, Select,
-         Table, Space, Modal, App, Divider, Row, Col, Switch, Tag } from 'antd';
+         Table, Space, Modal, App, Divider, Row, Col, Switch, Tag, Typography, Alert } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
@@ -13,6 +13,19 @@ import { dipartimentiApi } from '../../api/autorizzazioni';
 import { queryKeys } from '../../utils/queryKeys';
 import { formatData, formatOre } from '../../utils/formatters';
 import { CreaTipoProgettoButton } from '../../components/common/CreaTipoProgettoButton';
+import { apiClient } from '../../api/client';
+
+const { Text } = Typography;
+const EURO = new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' });
+
+const CATEGORIE_VOCE = [
+  { value: 'personale', label: 'Personale' },
+  { value: 'materiali', label: 'Materiali' },
+  { value: 'servizi', label: 'Servizi' },
+  { value: 'missioni', label: 'Missioni' },
+  { value: 'overhead', label: 'Overhead' },
+  { value: 'altro', label: 'Altro' },
+];
 
 interface Props {
   progettoId: string;
@@ -181,13 +194,60 @@ function TabAnagrafica({ progettoId, onSalvato }: { progettoId: string; onSalvat
   );
 }
 
+// ── Form creazione voce di costo ──────────────────────────────────────────────
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function NuovaVoceForm({ form, onFinish }: { form: any; onFinish: (v: Record<string, unknown>) => void }) {
+  const categoriaVal = Form.useWatch('categoria', form);
+  return (
+    <Form form={form} layout="vertical" style={{ marginTop: 12 }}
+      onFinish={(v: Record<string, unknown>) => {
+        const payload = { ...v };
+        if (v.categoria === 'altro') {
+          payload.categoria = v.categoria_custom ?? 'altro';
+        }
+        delete payload.categoria_custom;
+        onFinish(payload);
+      }}>
+      <Row gutter={12}>
+        <Col span={8}>
+          <Form.Item name="codice" label="Codice" rules={[{ required: true }]}>
+            <Input placeholder="es. B.3" />
+          </Form.Item>
+        </Col>
+        <Col span={16}>
+          <Form.Item name="categoria" label="Categoria" rules={[{ required: true }]}>
+            <Select options={CATEGORIE_VOCE} />
+          </Form.Item>
+        </Col>
+      </Row>
+      {categoriaVal === 'altro' && (
+        <Form.Item name="categoria_custom" label="Nome categoria personalizzata" rules={[{ required: true, message: 'Inserisci il nome della categoria' }]}>
+          <Input placeholder="es. Consulenze esterne" autoFocus />
+        </Form.Item>
+      )}
+      <Form.Item name="descrizione" label="Descrizione" rules={[{ required: true }]}>
+        <Input placeholder="es. Attrezzature specialistiche" />
+      </Form.Item>
+    </Form>
+  );
+}
+
 // ── Tab Budget Voci ───────────────────────────────────────────────────────────
 function TabBudgetModifica({ progettoId }: { progettoId: string }) {
   const { notification } = App.useApp();
   const queryClient = useQueryClient();
   const [form] = Form.useForm();
+  const [nuovaVoceForm] = Form.useForm();
   const [voci, setVoci] = useState<{ voce_id: string; importo_previsto: number }[]>([]);
+  const [limiti, setLimiti] = useState<Record<string, number>>({});
+  const [selectOpen, setSelectOpen] = useState(false);
+  const [nuovaVoceAperta, setNuovaVoceAperta] = useState(false);
   const inizializzato = useRef(false);
+
+  const { data: progetto } = useQuery({
+    queryKey: queryKeys.progetti.detail(progettoId),
+    queryFn: () => progettiApi.get(progettoId).then(r => r.data.data),
+  });
 
   const { data: budgetEsistente } = useQuery({
     queryKey: queryKeys.progetti.budget(progettoId),
@@ -206,8 +266,19 @@ function TabBudgetModifica({ progettoId }: { progettoId: string }) {
       setVoci(budgetEsistente.map((v: { voce_id: string; importo_previsto: number }) => ({
         voce_id: v.voce_id, importo_previsto: v.importo_previsto,
       })));
+      const lim: Record<string, number> = {};
+      budgetEsistente.forEach((v: { voce_id: string; importo_speso?: number; importo_impegnato?: number }) => {
+        lim[v.voce_id] = (v.importo_speso ?? 0) + (v.importo_impegnato ?? 0);
+      });
+      setLimiti(lim);
     }
   }, [budgetEsistente]);
+
+  const costoTotale: number = progetto?.costo_totale ?? 0;
+  const totaleVoci = voci.reduce((s, v) => s + Number(v.importo_previsto), 0);
+  const diff = Math.round((costoTotale - totaleVoci) * 100) / 100;
+  const totaleOK = Math.abs(diff) < 0.01;
+  const hasVincolati = voci.some(v => (limiti[v.voce_id] ?? 0) > Number(v.importo_previsto));
 
   const { mutate: salva, isPending } = useMutation({
     mutationFn: () => progettiApi.budget.salva(progettoId, voci).then(r => r.data),
@@ -216,50 +287,121 @@ function TabBudgetModifica({ progettoId }: { progettoId: string }) {
       inizializzato.current = false;
       notification.success({ message: 'Budget aggiornato' });
     },
+    onError: (error: unknown) => {
+      const msg = (error as { response?: { data?: { detail?: { error?: { message?: string } } } } })
+        ?.response?.data?.detail?.error?.message ?? 'Errore durante il salvataggio';
+      notification.error({ message: msg });
+    },
   });
+
+  const { mutate: creaVoce, isPending: creaVocePending } = useMutation({
+    mutationFn: (values: Record<string, unknown>) =>
+      apiClient.post<{ data: { id: string } }>('/voci-di-costo', values).then(r => r.data.data),
+    onSuccess: (nuova) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.config.vociDiCosto });
+      notification.success({ message: 'Voce di costo creata' });
+      setNuovaVoceAperta(false);
+      nuovaVoceForm.resetFields();
+      setVoci(prev => prev.find(x => x.voce_id === nuova.id) ? prev : [...prev, { voce_id: nuova.id, importo_previsto: 0 }]);
+    },
+    onError: (error: unknown) => {
+      const msg = (error as { response?: { data?: { detail?: { error?: { message?: string } } } } })
+        ?.response?.data?.detail?.error?.message ?? 'Errore durante la creazione';
+      notification.error({ message: msg });
+    },
+  });
+
+  const dropdownRender = (menu: React.ReactElement) => (
+    <>
+      {menu}
+      <Divider style={{ margin: '4px 0' }} />
+      <div style={{ padding: '4px 8px 8px' }}>
+        <Button
+          type="link" icon={<PlusOutlined />} size="small"
+          onMouseDown={e => e.preventDefault()}
+          onClick={() => { setSelectOpen(false); setNuovaVoceAperta(true); }}
+        >
+          Crea nuova voce...
+        </Button>
+      </div>
+    </>
+  );
 
   const colonne = [
     {
       title: 'Voce di costo', dataIndex: 'voce_id',
       render: (id: string) => {
-        const v = tutteVoci?.find((x: { id: string }) => x.id === id);
+        const v = (tutteVoci as { id: string; codice: string; descrizione: string }[] | undefined)?.find(x => x.id === id);
         return v ? `${v.codice} — ${v.descrizione}` : id;
       },
     },
     {
+      title: 'Min (sp.+imp.)', dataIndex: 'voce_id', align: 'right' as const, width: 110,
+      render: (id: string) => {
+        const m = limiti[id] ?? 0;
+        return m > 0 ? <Text type="secondary" style={{ fontSize: 11 }}>{EURO.format(m)}</Text> : null;
+      },
+    },
+    {
       title: 'Importo previsto', dataIndex: 'importo_previsto', align: 'right' as const,
-      render: (v: number, r: { voce_id: string }) => (
-        <InputNumber
-          value={v} min={0} precision={2} style={{ width: 140 }}
-          onChange={val => setVoci(prev => prev.map(x =>
-            x.voce_id === r.voce_id ? { ...x, importo_previsto: val ?? 0 } : x
-          ))}
-        />
-      ),
+      render: (v: number, r: { voce_id: string }) => {
+        const minVal = limiti[r.voce_id] ?? 0;
+        return (
+          <InputNumber
+            value={v} min={minVal} precision={2} style={{ width: 140 }}
+            status={v < minVal ? 'error' : undefined}
+            onChange={val => setVoci(prev => prev.map(x =>
+              x.voce_id === r.voce_id ? { ...x, importo_previsto: val ?? 0 } : x
+            ))}
+          />
+        );
+      },
     },
     {
       title: '', width: 50,
-      render: (_: unknown, r: { voce_id: string }) => (
-        <Button danger icon={<DeleteOutlined />} size="small" type="text"
-          onClick={() => setVoci(prev => prev.filter(x => x.voce_id !== r.voce_id))} />
-      ),
+      render: (_: unknown, r: { voce_id: string }) => {
+        const locked = (limiti[r.voce_id] ?? 0) > 0;
+        return (
+          <Button danger icon={<DeleteOutlined />} size="small" type="text"
+            disabled={locked}
+            title={locked ? 'Voce con spesa/impegno: non eliminabile' : undefined}
+            onClick={() => setVoci(prev => prev.filter(x => x.voce_id !== r.voce_id))} />
+        );
+      },
     },
   ];
 
   return (
     <div>
+      <div style={{
+        marginBottom: 12, padding: '8px 12px', borderRadius: 6,
+        background: totaleOK ? '#f6ffed' : '#fff7e6',
+        border: `1px solid ${totaleOK ? '#b7eb8f' : '#ffa940'}`,
+        display: 'flex', gap: 24, alignItems: 'center',
+      }}>
+        <span>Totale voci: <Text strong>{EURO.format(totaleVoci)}</Text></span>
+        {costoTotale > 0 && <span>Costo progetto: <Text strong>{EURO.format(costoTotale)}</Text></span>}
+        {!totaleOK && costoTotale > 0 && (
+          <Text type={diff > 0 ? 'secondary' : 'danger'}>
+            {diff > 0 ? `Non allocato: ${EURO.format(diff)}` : `Eccedenza: ${EURO.format(-diff)}`}
+          </Text>
+        )}
+      </div>
+
       <Form form={form} layout="inline" style={{ marginBottom: 16 }}
         onFinish={v => {
           if (voci.find(x => x.voce_id === v.voce_id)) return;
-          setVoci(prev => [...prev, { voce_id: v.voce_id, importo_previsto: v.importo_previsto }]);
+          setVoci(prev => [...prev, { voce_id: v.voce_id, importo_previsto: v.importo_previsto ?? 0 }]);
           form.resetFields();
         }}>
         <Form.Item name="voce_id" rules={[{ required: true }]} style={{ minWidth: 280 }}>
           <Select placeholder="Seleziona voce"
-            options={tutteVoci?.filter((v: { id: string }) => !voci.find(x => x.voce_id === v.id))
-              .map((v: { id: string; codice: string; descrizione: string }) => ({
-                value: v.id, label: `${v.codice} — ${v.descrizione}`,
-              }))}
+            open={selectOpen}
+            onDropdownVisibleChange={setSelectOpen}
+            dropdownRender={dropdownRender}
+            options={(tutteVoci as { id: string; codice: string; descrizione: string }[] | undefined)
+              ?.filter(v => !voci.find(x => x.voce_id === v.id))
+              .map(v => ({ value: v.id, label: `${v.codice} — ${v.descrizione}` }))}
             showSearch filterOption={(inp, opt) =>
               (opt?.label as string)?.toLowerCase().includes(inp.toLowerCase())} />
         </Form.Item>
@@ -270,7 +412,32 @@ function TabBudgetModifica({ progettoId }: { progettoId: string }) {
       </Form>
       <Table columns={colonne} dataSource={voci} rowKey="voce_id" pagination={false} size="small" />
       <Divider />
-      <Button type="primary" onClick={() => salva()} loading={isPending}>Salva budget</Button>
+      <Space align="center">
+        <Button
+          type="primary"
+          onClick={() => salva()}
+          loading={isPending}
+          disabled={!totaleOK || hasVincolati}
+        >
+          Salva budget
+        </Button>
+        {!totaleOK && costoTotale > 0 && (
+          <Alert type="warning" showIcon style={{ padding: '2px 10px' }}
+            message="Il totale deve essere uguale al costo del progetto" />
+        )}
+      </Space>
+
+      <Modal
+        title="Crea nuova voce di costo"
+        open={nuovaVoceAperta}
+        onCancel={() => { setNuovaVoceAperta(false); nuovaVoceForm.resetFields(); }}
+        onOk={() => nuovaVoceForm.submit()}
+        confirmLoading={creaVocePending}
+        okText="Crea" cancelText="Annulla"
+        width={440}
+      >
+        <NuovaVoceForm form={nuovaVoceForm} onFinish={v => creaVoce(v)} />
+      </Modal>
     </div>
   );
 }

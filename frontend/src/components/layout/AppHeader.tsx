@@ -1,8 +1,8 @@
 // frontend/src/components/layout/AppHeader.tsx
 import { useState } from 'react';
 import { Layout, Breadcrumb, Avatar, Dropdown, Badge, Space, Typography,
-         Popover, List, Tag, Empty, Spin, Button } from 'antd';
-import { UserOutlined, LogoutOutlined, BellOutlined,
+         Popover, List, Tag, Empty, Spin, Button, Modal, Form, Input, App, Alert } from 'antd';
+import { UserOutlined, LogoutOutlined, BellOutlined, LockOutlined,
          ClockCircleOutlined, FileTextOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
 import { useLocation, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -11,6 +11,7 @@ import { useLayoutStore } from '../../store/useLayoutStore';
 import { MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons';
 import { apiClient } from '../../api/client';
 import { env } from '../../config/env';
+import { passwordRules, SPECIAL_CHARS_LABEL } from '../../utils/passwordRules';
 
 const { Header } = Layout;
 const { Text } = Typography;
@@ -35,6 +36,7 @@ interface Notifica {
 }
 
 export function AppHeader() {
+  const { notification } = App.useApp();
   const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
   const collapsed = useLayoutStore((state) => state.sidebarCollapsed);
@@ -43,6 +45,23 @@ export function AppHeader() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [pannelloAperto, setPannelloAperto] = useState(false);
+  const [cambioPasswordAperto, setCambioPasswordAperto] = useState(false);
+  const [cambioForm] = Form.useForm();
+
+  const cambiaPassword = useMutation({
+    mutationFn: (values: { password_vecchia: string; password_nuova: string }) =>
+      apiClient.post('/auth/cambia-password', values),
+    onSuccess: () => {
+      notification.success({ message: 'Password cambiata con successo' });
+      setCambioPasswordAperto(false);
+      cambioForm.resetFields();
+    },
+    onError: (e: unknown) => {
+      const msg = (e as { response?: { data?: { detail?: { error?: { message?: string } } } } })
+        ?.response?.data?.detail?.error?.message ?? 'Errore';
+      notification.error({ message: msg });
+    },
+  });
 
   type CacheNotifiche = { data: Notifica[]; meta: { totale: number } };
 
@@ -90,7 +109,11 @@ export function AppHeader() {
     window.location.href = `${env.missioniUrl}/`;
   };
 
-  const userMenuItems = [{ key: 'logout', icon: <LogoutOutlined />, label: 'Esci', onClick: handleLogout }];
+  const userMenuItems = [
+    { key: 'password', icon: <LockOutlined />, label: 'Cambia password', onClick: () => setCambioPasswordAperto(true) },
+    { type: 'divider' as const },
+    { key: 'logout', icon: <LogoutOutlined />, label: 'Esci', onClick: handleLogout },
+  ];
 
   const pannelloNotifiche = (
     <div style={{ width: 360 }}>
@@ -156,6 +179,7 @@ export function AppHeader() {
   );
 
   return (
+    <>
     <Header style={{
       background: '#fff', padding: '0 24px', display: 'flex',
       alignItems: 'center', justifyContent: 'space-between',
@@ -191,5 +215,52 @@ export function AppHeader() {
         </Dropdown>
       </Space>
     </Header>
+
+    <Modal
+      title="Cambia password"
+      open={cambioPasswordAperto}
+      onCancel={() => { setCambioPasswordAperto(false); cambioForm.resetFields(); }}
+      onOk={() => cambioForm.submit()}
+      confirmLoading={cambiaPassword.isPending}
+      okText="Cambia" cancelText="Annulla"
+      width={440}
+    >
+      <Alert
+        type="info" showIcon style={{ marginBottom: 16 }}
+        message="Requisiti password"
+        description={
+          <ul style={{ margin: '4px 0 0', paddingLeft: 18, fontSize: 12 }}>
+            <li>Almeno 8 caratteri</li>
+            <li>Almeno una lettera maiuscola e una minuscola</li>
+            <li>Almeno un numero</li>
+            <li>Almeno un carattere speciale: <span style={{ fontFamily: 'monospace' }}>{SPECIAL_CHARS_LABEL}</span></li>
+          </ul>
+        }
+      />
+      <Form form={cambioForm} layout="vertical" style={{ marginTop: 4 }}
+        onFinish={v => cambiaPassword.mutate(v)}>
+        <Form.Item name="password_vecchia" label="Password attuale"
+          rules={[{ required: true, message: 'Inserisci la password attuale' }]}>
+          <Input.Password autoComplete="current-password" />
+        </Form.Item>
+        <Form.Item name="password_nuova" label="Nuova password" rules={passwordRules}>
+          <Input.Password autoComplete="new-password" />
+        </Form.Item>
+        <Form.Item name="password_conferma" label="Conferma nuova password"
+          dependencies={['password_nuova']}
+          rules={[
+            { required: true, message: 'Conferma la nuova password' },
+            ({ getFieldValue }) => ({
+              validator(_, value) {
+                if (!value || getFieldValue('password_nuova') === value) return Promise.resolve();
+                return Promise.reject(new Error('Le password non coincidono'));
+              },
+            }),
+          ]}>
+          <Input.Password autoComplete="new-password" />
+        </Form.Item>
+      </Form>
+    </Modal>
+    </>
   );
 }

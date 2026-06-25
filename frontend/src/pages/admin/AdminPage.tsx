@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Tabs, Table, Button, Modal, Form, Input, Select, Switch, Space,
          Typography, App, Popconfirm, Tag, Row, Col, Alert, Statistic, Card, Spin } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, DatabaseOutlined,
-         DownloadOutlined, CloudUploadOutlined, UserOutlined } from '@ant-design/icons';
+         DownloadOutlined, CloudUploadOutlined, UserOutlined, KeyOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../../api/client';
 import { env } from '../../config/env';
@@ -29,6 +29,9 @@ function TabUtenti() {
   const [modalAperta, setModalAperta] = useState(false);
   const [inModifica, setInModifica] = useState<Record<string, unknown> | null>(null);
   const [form] = Form.useForm();
+  const [resetTarget, setResetTarget] = useState<Record<string, unknown> | null>(null);
+  const [resetPassword, setResetPassword] = useState('');
+  const [passwordReset, setPasswordReset] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'utenti'],
@@ -60,6 +63,21 @@ function TabUtenti() {
     },
   });
 
+  const eseguiReset = useMutation({
+    mutationFn: ({ id, password }: { id: string; password: string }) =>
+      apiClient.post(`/admin/utenti/${id}/reset-password`, { password }),
+    onSuccess: (_, { password }) => {
+      setPasswordReset(password);
+      setResetTarget(null);
+      setResetPassword('');
+    },
+    onError: (e: unknown) => {
+      const msg = (e as { response?: { data?: { detail?: { error?: { message?: string } } } } })
+        ?.response?.data?.detail?.error?.message ?? 'Errore durante il reset';
+      notification.error({ message: msg });
+    },
+  });
+
   const apriModifica = (r: Record<string, unknown>) => {
     setInModifica(r);
     form.setFieldsValue({ ...r, password: '' });
@@ -76,10 +94,13 @@ function TabUtenti() {
     { title: 'Attivo', dataIndex: 'attivo', width: 80,
       render: (v: boolean) => <Tag color={v ? 'green' : 'red'}>{v ? 'Si' : 'No'}</Tag> },
     {
-      title: '', width: 90,
+      title: '', width: 120,
       render: (_: unknown, r: Record<string, unknown>) => (
         <Space>
           <Button size="small" icon={<EditOutlined />} type="text" onClick={() => apriModifica(r)} />
+          <Button size="small" icon={<KeyOutlined />} type="text"
+            title="Reset password"
+            onClick={() => { setResetTarget(r); setResetPassword(''); }} />
           <Popconfirm title="Disattivare questo utente?"
             onConfirm={() => disattiva.mutate(r.id as string)}
             okText="Disattiva" cancelText="No" okButtonProps={{ danger: true }}>
@@ -133,6 +154,43 @@ function TabUtenti() {
             <Form.Item name="attivo" label="Attivo" valuePropName="checked"><Switch /></Form.Item>
           )}
         </Form>
+      </Modal>
+
+      {/* Modal reset password */}
+      <Modal
+        title={`Reset password — ${resetTarget?.cognome} ${resetTarget?.nome}`}
+        open={!!resetTarget}
+        onCancel={() => { setResetTarget(null); setResetPassword(''); }}
+        onOk={() => eseguiReset.mutate({ id: resetTarget!.id as string, password: resetPassword })}
+        confirmLoading={eseguiReset.isPending}
+        okText="Reimposta" cancelText="Annulla"
+        okButtonProps={{ disabled: !resetPassword }}
+        width={420}
+      >
+        <Alert type="warning" showIcon style={{ marginBottom: 16 }}
+          message="L'utente dovrà cambiare questa password al prossimo accesso." />
+        <Input.Password
+          placeholder="Nuova password temporanea"
+          value={resetPassword}
+          onChange={e => setResetPassword(e.target.value)}
+          autoComplete="new-password"
+        />
+      </Modal>
+
+      {/* Modal conferma con password temporanea */}
+      <Modal
+        title="Password reimpostata"
+        open={!!passwordReset}
+        onCancel={() => setPasswordReset(null)}
+        footer={<Button type="primary" onClick={() => setPasswordReset(null)}>Chiudi</Button>}
+        width={380}
+      >
+        <Alert type="success" showIcon style={{ marginBottom: 16 }}
+          message="Password reimpostata con successo. Comunica la password temporanea all'utente." />
+        <div style={{ background: '#f5f5f5', padding: '10px 16px', borderRadius: 6,
+          fontFamily: 'monospace', fontSize: 16, letterSpacing: 1, textAlign: 'center' }}>
+          {passwordReset}
+        </div>
       </Modal>
     </div>
   );

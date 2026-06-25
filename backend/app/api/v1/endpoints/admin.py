@@ -55,6 +55,20 @@ def aggiorna_utente(id: str, body: dict, db: Session = Depends(get_db), utente: 
     return {"data": _persona_dict(p)}
 
 
+@router.post("/utenti/{id}/reset-password")
+def reset_password_utente(id: str, body: dict, db: Session = Depends(get_db), utente: Persona = Depends(solo_superadmin)):
+    p = db.query(Persona).filter(Persona.id == id).first()
+    if not p:
+        raise HTTPException(status_code=404, detail={"error": {"code": "NOT_FOUND", "message": "Utente non trovato"}})
+    nuova = body.get("password", "")
+    if not nuova:
+        raise HTTPException(status_code=422, detail={"error": {"code": "PASSWORD_MANCANTE", "message": "Password obbligatoria"}})
+    p.password_hash = hash_password(nuova)
+    p.deve_cambiare_password = True
+    db.commit()
+    return {"data": {"message": "Password reimpostata. L'utente dovrà cambiarla al prossimo accesso."}}
+
+
 @router.delete("/utenti/{id}")
 def elimina_utente(id: str, db: Session = Depends(get_db), utente: Persona = Depends(solo_superadmin)):
     p = db.query(Persona).filter(Persona.id == id).first()

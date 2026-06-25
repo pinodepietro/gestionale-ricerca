@@ -426,16 +426,40 @@ def lista_budget(id: str, db: Session = Depends(get_db), utente: Persona = Depen
 
 @router.post("/{id}/budget")
 def salva_budget(id: str, body: dict, db: Session = Depends(get_db), utente: Persona = Depends(solo_amministrativo)):
+    from sqlalchemy import func as sqlfunc
     p = _get_or_404(id, db)
-    # Controlla che il totale budget non superi il costo totale del progetto
-    totale_voci = sum(float(v.get("importo_previsto", 0)) for v in body.get("voci", []))
-    if totale_voci > float(p.costo_totale):
+    voci_input = body.get("voci", [])
+
+    # Constraint 1: importo >= speso + impegnato per ogni voce esistente
+    existing_map = {str(bv.voce_id): bv for bv in db.query(BudgetVoce).filter(BudgetVoce.progetto_id == id).all()}
+    spese_per_voce = dict(
+        db.query(Spesa.voce_id, sqlfunc.sum(Spesa.importo))
+        .filter(Spesa.progetto_id == id, Spesa.stato == "registrata")
+        .group_by(Spesa.voce_id).all()
+    )
+    for voce_data in voci_input:
+        vid = voce_data["voce_id"]
+        if vid in existing_map:
+            bv = existing_map[vid]
+            min_importo = float(bv.importo_impegnato or 0) + float(spese_per_voce.get(bv.voce_id, 0) or 0)
+            nuovo_importo = float(voce_data.get("importo_previsto", 0))
+            if nuovo_importo < min_importo - 0.01:
+                raise HTTPException(
+                    status_code=422,
+                    detail={"error": {
+                        "code": "IMPORTO_SOTTO_MINIMO",
+                        "message": f"Importo previsto ({nuovo_importo:,.2f}€) inferiore a speso+impegnato ({min_importo:,.2f}€) per la voce",
+                    }},
+                )
+
+    # Constraint 2: totale voci deve essere uguale al costo totale del progetto
+    totale_voci = sum(float(v.get("importo_previsto", 0)) for v in voci_input)
+    if abs(totale_voci - float(p.costo_totale)) > 0.01:
         raise HTTPException(
             status_code=422,
             detail={"error": {
-                "code": "BUDGET_SUPERA_COSTO_TOTALE",
-                "message": f"Il totale delle voci ({totale_voci:,.2f}€) supera il costo totale del progetto ({float(p.costo_totale):,.2f}€)",
-                "detail": {"totale_voci": totale_voci, "costo_totale": float(p.costo_totale)},
+                "code": "BUDGET_NON_BILANCIA",
+                "message": f"Il totale delle voci ({totale_voci:,.2f}€) deve essere uguale al costo totale del progetto ({float(p.costo_totale):,.2f}€)",
             }},
         )
     voci_ids = [v["voce_id"] for v in body.get("voci", [])]

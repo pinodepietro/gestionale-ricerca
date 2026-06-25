@@ -6,8 +6,25 @@ from app.core.database import get_db
 from app.core.security import verifica_password, crea_access_token, hash_password
 from app.core.deps import get_utente_corrente
 from app.models.persona import Persona
+import re
 
 router = APIRouter()
+
+SPECIAL_CHARS = r'[!@#$%^&*()\-_+=\[\]{};:,.?]'
+SPECIAL_CHARS_LABEL = "! @ # $ % ^ & * ( ) _ - + = { } [ ] ; : , . ?"
+
+def _valida_password(password: str) -> str | None:
+    if len(password) < 8:
+        return "La password deve essere di almeno 8 caratteri"
+    if not re.search(r'[A-Z]', password):
+        return "La password deve contenere almeno una lettera maiuscola"
+    if not re.search(r'[a-z]', password):
+        return "La password deve contenere almeno una lettera minuscola"
+    if not re.search(r'\d', password):
+        return "La password deve contenere almeno un numero"
+    if not re.search(SPECIAL_CHARS, password):
+        return f"La password deve contenere almeno un carattere speciale tra: {SPECIAL_CHARS_LABEL}"
+    return None
 
 
 class LoginRequest(BaseModel):
@@ -78,16 +95,17 @@ def cambia_password(
     vecchia = payload.get("password_vecchia", "")
     nuova = payload.get("password_nuova", "")
 
-    if not nuova or len(nuova) < 6:
+    errore = _valida_password(nuova)
+    if errore:
         raise HTTPException(status_code=422, detail={"error": {
-            "code": "PASSWORD_TROPPO_CORTA",
-            "message": "La nuova password deve essere di almeno 6 caratteri"
+            "code": "PASSWORD_NON_VALIDA",
+            "message": errore,
         }})
 
     if not verifica_password(vecchia, utente.password_hash):
         raise HTTPException(status_code=401, detail={"error": {
             "code": "PASSWORD_ERRATA",
-            "message": "La password attuale non e corretta"
+            "message": "La password attuale non è corretta",
         }})
 
     utente.password_hash = hash_password(nuova)
