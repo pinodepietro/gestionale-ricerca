@@ -312,6 +312,52 @@ def inserisci_costo_orario(
     return {"data": costo_dict(nuovo)}
 
 
+@router.patch("/persone/{id}/costi-orari/{costo_id}")
+def modifica_costo_orario(
+    id: str,
+    costo_id: str,
+    body: dict,
+    db: Session = Depends(get_db),
+    utente: Persona = Depends(solo_amministrativo),
+):
+    _get_persona_or_404(id, db)
+    costo = db.query(CostoOrarioPersona).filter(
+        CostoOrarioPersona.id == costo_id,
+        CostoOrarioPersona.persona_id == id,
+    ).first()
+    if not costo:
+        raise HTTPException(status_code=404, detail={"error": {"code": "NOT_FOUND", "message": "Costo orario non trovato"}})
+
+    if "costo_orario" in body:
+        costo.costo_orario = body["costo_orario"]
+    if "motivazione" in body:
+        costo.motivazione = body["motivazione"]
+
+    db.commit()
+    db.refresh(costo)
+    return {"data": costo_dict(costo)}
+
+
+@router.delete("/persone/{id}/costi-orari/{costo_id}")
+def elimina_costo_orario(
+    id: str,
+    costo_id: str,
+    db: Session = Depends(get_db),
+    utente: Persona = Depends(solo_amministrativo),
+):
+    _get_persona_or_404(id, db)
+    costo = db.query(CostoOrarioPersona).filter(
+        CostoOrarioPersona.id == costo_id,
+        CostoOrarioPersona.persona_id == id,
+    ).first()
+    if not costo:
+        raise HTTPException(status_code=404, detail={"error": {"code": "NOT_FOUND", "message": "Costo orario non trovato"}})
+
+    db.delete(costo)
+    db.commit()
+    return {"data": {"deleted": True}}
+
+
 # ─── Monte Ore ────────────────────────────────────────────────────────────────
 
 @router.get("/persone/{id}/monte-ore")

@@ -20,6 +20,7 @@ def crea_notifica(
     link: str = None,
     urgente: bool = False,
     riferimento_id: str = None,
+    richiede_azione: bool = False,
 ) -> Notifica:
     n = Notifica(
         id=uuid.uuid4(),
@@ -30,9 +31,18 @@ def crea_notifica(
         link=link,
         urgente=urgente,
         riferimento_id=riferimento_id,
+        richiede_azione=richiede_azione,
     )
     db.add(n)
     return n
+
+
+def segna_lette_per_link(db: Session, persona_id, link: str) -> None:
+    """Marca come lette e chiude richiede_azione per le notifiche di persona_id che puntano a link."""
+    db.query(Notifica).filter(
+        Notifica.persona_id == persona_id,
+        Notifica.link == link,
+    ).update({"letta": True, "richiede_azione": False})
 
 
 def invia_email(destinatario: str, titolo: str, messaggio: str) -> None:

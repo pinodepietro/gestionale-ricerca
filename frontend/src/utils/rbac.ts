@@ -27,6 +27,7 @@ export type Azione =
   | 'sal:registra_erogazione'
   | 'personale:visualizza'
   | 'personale:gestisci'           // crea/modifica persone, costi orari, monte ore
+  | 'personale:reimposta_password' // reimposta password di altri utenti
   | 'partner:gestisci'
   | 'config:gestisci'             // tipi finanziamento, voci di costo, template
   | 'documento:carica'             // upload documenti progetto
@@ -61,6 +62,7 @@ const PERMESSI: Record<Azione, Ruolo[]> = {
 
   'personale:visualizza':        ['amministrativo', 'management', 'superadmin', 'monitor'],
   'personale:gestisci':          ['amministrativo', 'superadmin'],
+  'personale:reimposta_password': ['superadmin'],
   'partner:gestisci':            ['amministrativo'],
   'config:gestisci':             ['amministrativo'],
   'documento:carica':            ['amministrativo', 'ricercatore', 'superadmin'],

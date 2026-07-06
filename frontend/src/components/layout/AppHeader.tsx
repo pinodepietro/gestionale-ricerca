@@ -79,9 +79,7 @@ export function AppHeader() {
 
   const { mutate: segnaLetteTutte } = useMutation({
     mutationFn: () => apiClient.post('/notifiche/leggi-tutte', {}),
-    onMutate: () => {
-      queryClient.setQueryData<CacheNotifiche>(['notifiche'], { data: [], meta: { totale: 0 } });
-    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notifiche'] }),
     onError: () => queryClient.invalidateQueries({ queryKey: ['notifiche'] }),
   });
 
@@ -106,7 +104,7 @@ export function AppHeader() {
   const handleLogout = () => {
     queryClient.clear();
     logout();
-    window.location.href = `${env.missioniUrl}/`;
+    window.location.href = '/login';
   };
 
   const userMenuItems = [

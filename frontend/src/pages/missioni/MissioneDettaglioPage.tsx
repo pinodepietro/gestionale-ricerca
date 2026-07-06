@@ -285,6 +285,21 @@ export function MissioneDettaglioPage() {
                   onChange={setVoceImpegno}
                   options={opzioniVoce}
                 />
+                {isAmmin && voceImpegno && (() => {
+                  const disponibile = (budgetVoci as BudgetVoce[])
+                    .filter(v => v.wp_id == null && v.voce?.categoria === voceImpegno)
+                    .reduce((sum, v) => sum + ((v as unknown as { importo_disponibile: number }).importo_disponibile ?? 0), 0);
+                  const colore = disponibile >= (m.importo_stimato ?? 0) ? '#52c41a' : '#ff4d4f';
+                  return (
+                    <div style={{ marginTop: 6 }}>
+                      <Text type="secondary">Disponibilità attuale su questa voce: </Text>
+                      <Text strong style={{ color: colore }}>{formatEuro(disponibile)}</Text>
+                      {disponibile < (m.importo_stimato ?? 0) && (
+                        <Text type="danger" style={{ marginLeft: 8 }}>⚠ insufficiente rispetto all'importo stimato</Text>
+                      )}
+                    </div>
+                  );
+                })()}
               </Col>
             )}
             {stato !== 'attesa_ammin' && m.voce_impegno && (
@@ -369,7 +384,7 @@ export function MissioneDettaglioPage() {
           )}
           <Descriptions.Item label="Importo stimato" span={1}>{formatEuro(m.importo_stimato)}</Descriptions.Item>
           <Descriptions.Item label="Voce impegno" span={1}>
-            {opzioniVoce.find(o => o.value === m.voce_impegno)?.label ?? m.voce_impegno ?? '—'}
+            {opzioniVoce.find(o => o.value === (voceImpegno ?? m.voce_impegno))?.label ?? voceImpegno ?? m.voce_impegno ?? '—'}
           </Descriptions.Item>
           {m.luogo_approvazione && (
             <Descriptions.Item label="Luogo approvazione PI" span={2}>{m.luogo_approvazione}</Descriptions.Item>

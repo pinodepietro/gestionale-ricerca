@@ -9,7 +9,7 @@ from app.core.database import Base
 class TipoProgetto(Base):
     __tablename__ = "tipo_progetto"
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    nome = Column(String(50), nullable=False, unique=True)
+    nome = Column(String(255), nullable=False, unique=True)
 
 
 class Partner(Base):

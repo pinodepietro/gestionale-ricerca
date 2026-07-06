@@ -17,7 +17,7 @@ from app.models.personale import Allocazione
 from app.models.persona import Persona
 from app.models.budget import BudgetVoce, VoceDiCosto, Impegno, Spesa
 from app.models.autorizzazione_spesa import Dipartimento
-from app.services.notifiche import crea_notifica, invia_email
+from app.services.notifiche import crea_notifica, invia_email, segna_lette_per_link
 
 router = APIRouter()
 
@@ -44,9 +44,10 @@ def _pi(progetto_id, db: Session) -> Persona | None:
 
 
 def _ammin(progetto_id, db: Session) -> Persona | None:
-    alloc = db.query(Allocazione).filter(
-        Allocazione.progetto_id == progetto_id, Allocazione.is_ammin == True).first()
-    return alloc.persona if alloc else None
+    prog = db.query(Progetto).filter(Progetto.id == progetto_id).first()
+    if prog and prog.amministrativo_id:
+        return db.query(Persona).filter(Persona.id == prog.amministrativo_id).first()
+    return None
 
 
 def _dir_dip(progetto_id, db: Session) -> Persona | None:
@@ -145,6 +146,7 @@ def _rimborso_dict(r: RimborsoMissione, db: Session = None) -> dict:
     return {
         "id": str(r.id),
         "missione_id": str(r.missione_id),
+        "progetto_id": str(progetto_id) if progetto_id else None,
         "missione_titolo": missione.titolo if missione else None,
         "richiedente_id": str(r.richiedente_id),
         "richiedente_nome": _nome(r.richiedente),
@@ -244,10 +246,10 @@ def _get_riga(riga_id: str, db: Session) -> RigaRimborsoMissione:
     return r
 
 
-def _notifica(db: Session, persona: Persona | None, titolo: str, messaggio: str, link: str):
+def _notifica(db: Session, persona: Persona | None, titolo: str, messaggio: str, link: str, richiede_azione: bool = False):
     if not persona:
         return
-    crea_notifica(db, persona.id, tipo="missione", titolo=titolo, messaggio=messaggio, link=link)
+    crea_notifica(db, persona.id, tipo="missione", titolo=titolo, messaggio=messaggio, link=link, richiede_azione=richiede_azione)
     invia_email(persona.email, titolo, messaggio)
 
 
@@ -627,7 +629,7 @@ def invia_missione(id: str, db: Session = Depends(get_db), utente: Persona = Dep
     _notifica(db, ammin,
               titolo="Nuova richiesta di missione — verifica disponibilità",
               messaggio=f"{_nome(m.richiedente)} ha richiesto una missione a {m.destinazione} ({m.data_inizio} - {m.data_fine}). Importo stimato: {m.importo_stimato} €. Verifica la disponibilità di budget e approva.",
-              link=f"/missioni/{m.id}")
+              link=f"/missioni/{m.id}", richiede_azione=True)
     db.commit()
     db.refresh(m)
     return {"data": _missione_dict(m, db)}
@@ -654,7 +656,8 @@ def approva_missione(id: str, body: dict, db: Session = Depends(get_db), utente:
         _notifica(db, pi,
                   titolo="Nuova richiesta di missione da approvare",
                   messaggio=f"La missione di {_nome(m.richiedente)} a {m.destinazione} ({m.data_inizio} - {m.data_fine}) è stata verificata dall'amministratore. Importo stimato: {m.importo_stimato} €.",
-                  link=f"/missioni/{m.id}")
+                  link=f"/missioni/{m.id}", richiede_azione=True)
+        segna_lette_per_link(db, utente.id, f"/missioni/{m.id}")
 
     elif m.stato == "attesa_pi":
         pi = _pi(m.progetto_id, db)
@@ -675,7 +678,8 @@ def approva_missione(id: str, body: dict, db: Session = Depends(get_db), utente:
         dest = _dir_dip(m.progetto_id, db)
         _notifica(db, dest, titolo="Missione approvata dal PI — tua approvazione richiesta",
                   messaggio=f"La missione di {_nome(m.richiedente)} a {m.destinazione} è stata approvata dal PI. Attende la tua approvazione come Direttore di Dipartimento.",
-                  link=f"/missioni/{m.id}")
+                  link=f"/missioni/{m.id}", richiede_azione=True)
+        segna_lette_per_link(db, utente.id, f"/missioni/{m.id}")
 
     elif m.stato == "attesa_dir_dip":
         dir_dip = _dir_dip(m.progetto_id, db)
@@ -688,7 +692,8 @@ def approva_missione(id: str, body: dict, db: Session = Depends(get_db), utente:
         dest = _dg(db)
         _notifica(db, dest, titolo="Missione — tua approvazione finale richiesta",
                   messaggio=f"La missione di {_nome(m.richiedente)} a {m.destinazione} è stata approvata dal Direttore di Dipartimento. Attende la tua approvazione definitiva.",
-                  link=f"/missioni/{m.id}")
+                  link=f"/missioni/{m.id}", richiede_azione=True)
+        segna_lette_per_link(db, utente.id, f"/missioni/{m.id}")
 
     elif m.stato == "attesa_dg":
         if utente.ruolo != "direttore_generale" and utente.ruolo != "superadmin":
@@ -701,6 +706,7 @@ def approva_missione(id: str, body: dict, db: Session = Depends(get_db), utente:
         _notifica(db, m.richiedente, titolo="Missione APPROVATA",
                   messaggio=f"La tua missione a {m.destinazione} è stata approvata definitivamente. Puoi scaricare il PDF di autorizzazione.",
                   link=f"/missioni/{m.id}")
+        segna_lette_per_link(db, utente.id, f"/missioni/{m.id}")
         # Commit prima del PDF: step.decided_at (server_default) e la collection step_approvazione
         # devono essere disponibili con i valori corretti dal DB.
         db.commit()
@@ -1079,7 +1085,7 @@ def invia_rimborso(id: str, db: Session = Depends(get_db), utente: Persona = Dep
     totale = sum(float(riga.importo or 0) for riga in r.righe)
     _notifica(db, ammin, titolo="Nuovo rimborso missione da approvare",
               messaggio=f"{_nome(r.richiedente)} ha inviato un rimborso missione per {r.missione.titolo} — totale {totale:,.2f} €. In attesa della tua approvazione.",
-              link=f"/rimborsi-missione/{r.id}")
+              link=f"/rimborsi-missione/{r.id}", richiede_azione=True)
     db.commit()
     db.refresh(r)
     return {"data": _rimborso_dict(r, db)}
@@ -1104,7 +1110,7 @@ def approva_rimborso(id: str, body: dict, db: Session = Depends(get_db), utente:
         dest = _pi(progetto_id, db)
         _notifica(db, dest, titolo="Rimborso missione — tua approvazione richiesta",
                   messaggio=f"Il rimborso missione di {_nome(r.richiedente)} ({totale:,.2f} €) è stato verificato dall'Amministrativo. Attende la tua approvazione come PI.",
-                  link=f"/rimborsi-missione/{r.id}")
+                  link=f"/rimborsi-missione/{r.id}", richiede_azione=True)
 
     elif r.stato == "attesa_pi":
         pi = _pi(progetto_id, db)
@@ -1119,7 +1125,7 @@ def approva_rimborso(id: str, body: dict, db: Session = Depends(get_db), utente:
         dest = _dir_dip(progetto_id, db)
         _notifica(db, dest, titolo="Rimborso missione — tua approvazione richiesta",
                   messaggio=f"Il rimborso missione di {_nome(r.richiedente)} ({totale:,.2f} €) è stato approvato dal PI. Attende la tua approvazione come Direttore di Dipartimento.",
-                  link=f"/rimborsi-missione/{r.id}")
+                  link=f"/rimborsi-missione/{r.id}", richiede_azione=True)
 
     elif r.stato == "attesa_dir_dip":
         dir_dip = _dir_dip(progetto_id, db)
@@ -1132,7 +1138,7 @@ def approva_rimborso(id: str, body: dict, db: Session = Depends(get_db), utente:
         dest = _dg(db)
         _notifica(db, dest, titolo="Rimborso missione — tua approvazione finale richiesta",
                   messaggio=f"Il rimborso missione di {_nome(r.richiedente)} ({totale:,.2f} €) è stato approvato dal Direttore di Dipartimento. Attende la tua approvazione definitiva.",
-                  link=f"/rimborsi-missione/{r.id}")
+                  link=f"/rimborsi-missione/{r.id}", richiede_azione=True)
 
     elif r.stato == "attesa_dg":
         if utente.ruolo != "direttore_generale" and utente.ruolo != "superadmin":

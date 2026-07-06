@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Tabs, Typography, Spin, Button, Space, Descriptions, Tag, Table, Modal, Form, Input, InputNumber, DatePicker, Row, Col, Select, Switch } from 'antd';
-import { ArrowLeftOutlined, PlusOutlined, EditOutlined } from '@ant-design/icons';
+import { ArrowLeftOutlined, PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { personaleApi } from '../../api/personale';
@@ -20,6 +20,7 @@ export function PersonaPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [modalCosto, setModalCosto] = useState(false);
+  const [costoInModifica, setCostoInModifica] = useState<string | null>(null);
   const [modalAnagrafica, setModalAnagrafica] = useState(false);
   const [formAnagrafica] = Form.useForm();
   const [modalPassword, setModalPassword] = useState(false);
@@ -87,16 +88,27 @@ export function PersonaPage() {
   });
 
   const { mutate: inserisciCosto, isPending: caricandoCosto } = useMutation({
-    mutationFn: (values: Record<string, unknown>) =>
-      personaleApi.costiOrari.create(id!, {
+    mutationFn: (values: Record<string, unknown>) => {
+      const payload = {
         ...values,
         data_inizio: dayjs(values.data_inizio as string).format('YYYY-MM-DD'),
-      }).then(r => r.data.data),
+      };
+      if (costoInModifica) {
+        return personaleApi.costiOrari.update(id!, costoInModifica, payload as Record<string, unknown>).then(r => r.data.data);
+      }
+      return personaleApi.costiOrari.create(id!, payload).then(r => r.data.data);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.personale.costiOrari(id!) });
       setModalCosto(false);
+      setCostoInModifica(null);
       formCosto.resetFields();
     },
+  });
+
+  const { mutate: deleteCosto } = useMutation({
+    mutationFn: (costoId: string) => personaleApi.costiOrari.delete(id!, costoId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.personale.costiOrari(id!) }),
   });
 
   const { mutate: upsertMonte, isPending: caricandoMonte } = useMutation({
@@ -130,6 +142,18 @@ export function PersonaPage() {
     { title: 'Dal', dataIndex: 'data_inizio', render: formatData },
     { title: 'Al', dataIndex: 'data_fine', render: (v: string) => v ? formatData(v) : <Tag color="green">In vigore</Tag> },
     { title: 'Motivazione', dataIndex: 'motivazione', ellipsis: true },
+    {
+      title: 'Azioni', width: 100, render: (_: unknown, r: { id: string; costo_orario: number; data_inizio: string; data_fine?: string; motivazione?: string }) => (
+        <RbacGuard azione="personale:gestisci">
+          <Space>
+            <Button icon={<EditOutlined />} size="small" type="text"
+              onClick={() => { formCosto.setFieldsValue({ ...r, data_inizio: dayjs(r.data_inizio) }); setModalCosto(true); setCostoInModifica(r.id); }} />
+            <Button icon={<DeleteOutlined />} danger size="small" type="text"
+              onClick={() => Modal.confirm({ title: 'Eliminare?', onOk: () => deleteCosto.mutate(r.id) }) } />
+          </Space>
+        </RbacGuard>
+      ),
+    },
   ];
 
   const colonneMonte = [
@@ -193,8 +217,10 @@ export function PersonaPage() {
                     });
                     setModalAnagrafica(true);
                   }}>Modifica anagrafica</Button>
-                  <Button onClick={() => setModalPassword(true)}>Reimposta password</Button>
                 </Space>
+              </RbacGuard>
+              <RbacGuard azione="personale:reimposta_password">
+                <Button onClick={() => setModalPassword(true)}>Reimposta password</Button>
               </RbacGuard>
             </div>
             <Descriptions bordered column={2} size="small">
@@ -374,8 +400,8 @@ export function PersonaPage() {
 
       <Modal
         open={modalCosto}
-        title="Nuovo costo orario"
-        onCancel={() => { setModalCosto(false); formCosto.resetFields(); }}
+        title={costoInModifica ? "Modifica costo orario" : "Nuovo costo orario"}
+        onCancel={() => { setModalCosto(false); setCostoInModifica(null); formCosto.resetFields(); }}
         onOk={() => formCosto.submit()}
         confirmLoading={caricandoCosto}
         okText="Salva"

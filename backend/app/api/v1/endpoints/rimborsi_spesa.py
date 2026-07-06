@@ -12,9 +12,11 @@ from app.core.config import settings
 from app.models.rimborso_spesa import RichiestaRimborsoSpesa, RimborsoSpesaRiga
 from app.models.autorizzazione_spesa import RichiestaAutorizzazioneSpesa, Dipartimento
 from app.models.personale import Allocazione
+from app.models.progetto import Progetto
 from app.models.budget import BudgetVoce, Spesa, Impegno
 from app.models.persona import Persona
-from app.services.notifiche import crea_notifica, invia_email
+from app.services.notifiche import crea_notifica, invia_email, segna_lette_per_link
+from sqlalchemy import or_
 
 router = APIRouter()
 
@@ -125,11 +127,8 @@ def _calcola_disponibile(bv: BudgetVoce, db: Session) -> float:
 
 def _persona_ammin(ras: RichiestaAutorizzazioneSpesa, db: Session):
     if ras.progetto_id:
-        alloc = db.query(Allocazione).filter(
-            Allocazione.progetto_id == ras.progetto_id, Allocazione.is_ammin == True).first()
-        if alloc:
-            return alloc.persona_id
-        return None
+        prog = db.query(Progetto).filter(Progetto.id == ras.progetto_id).first()
+        return prog.amministrativo_id if prog else None
     # Fondi individuali: nessun progetto, risolvi via ruolo + dipartimento
     p = db.query(Persona).filter(
         Persona.ruolo == "amministrativo",
@@ -159,10 +158,11 @@ def _persona_dg(db: Session):
     return dg.id if dg else None
 
 
-def _notifica_step(db: Session, r: RichiestaRimborsoSpesa, persona_id, titolo: str, messaggio: str):
+def _notifica_step(db: Session, r: RichiestaRimborsoSpesa, persona_id, titolo: str, messaggio: str, richiede_azione: bool = False):
     link = f"/rimborsi-spesa/{r.id}"
     crea_notifica(db, persona_id, tipo="rimborso_spesa", titolo=titolo,
-                  messaggio=messaggio, link=link, riferimento_id=str(r.id))
+                  messaggio=messaggio, link=link, riferimento_id=str(r.id),
+                  richiede_azione=richiede_azione)
     persona = db.query(Persona).filter(Persona.id == persona_id).first()
     if persona:
         invia_email(persona.email, titolo, messaggio)
@@ -190,9 +190,16 @@ def lista_rimborsi(
         aut_in_projects = db.query(RichiestaAutorizzazioneSpesa.id).filter(
             RichiestaAutorizzazioneSpesa.progetto_id.in_(alloc_proj_ids)
         ).subquery()
+        ammin_proj_ids = db.query(Progetto.id).filter(Progetto.amministrativo_id == utente.id).subquery()
+        aut_ammin_projects = db.query(RichiestaAutorizzazioneSpesa.id).filter(
+            RichiestaAutorizzazioneSpesa.progetto_id.in_(ammin_proj_ids)
+        ).subquery()
         q = q.filter(
-            RichiestaRimborsoSpesa.richiedente_id == utente.id,
-            RichiestaRimborsoSpesa.richiesta_autorizzazione_spesa_id.in_(aut_in_projects),
+            or_(
+                (RichiestaRimborsoSpesa.richiedente_id == utente.id) &
+                RichiestaRimborsoSpesa.richiesta_autorizzazione_spesa_id.in_(aut_in_projects),
+                RichiestaRimborsoSpesa.richiesta_autorizzazione_spesa_id.in_(aut_ammin_projects),
+            )
         )
     total = q.count()
     items = q.order_by(RichiestaRimborsoSpesa.created_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
@@ -456,7 +463,8 @@ def invia(id: str, db: Session = Depends(get_db), utente: Persona = Depends(tutt
     if dest:
         _notifica_step(db, r, dest,
             titolo="Nuova richiesta di rimborso spesa",
-            messaggio=f"{r.richiedente.cognome if r.richiedente else ''} ha richiesto il rimborso spesa per '{ras.oggetto}' — totale {totale:,.2f} €. In attesa della tua approvazione come Responsabile Amministrativo.")
+            messaggio=f"{r.richiedente.cognome if r.richiedente else ''} ha richiesto il rimborso spesa per '{ras.oggetto}' — totale {totale:,.2f} €. In attesa della tua approvazione come Responsabile Amministrativo.",
+            richiede_azione=True)
 
     db.commit()
     db.refresh(r)
@@ -488,8 +496,10 @@ def approva_ammin(id: str, db: Session = Depends(get_db), utente: Persona = Depe
     if dest:
         _notifica_step(db, r, dest,
             titolo="Richiesta rimborso spesa — tua approvazione richiesta",
-            messaggio=f"La richiesta di rimborso per '{ras.oggetto}' ({totale:,.2f} €) è stata controllata dall'Amministrativo e attende la tua approvazione come {step_label}.")
+            messaggio=f"La richiesta di rimborso per '{ras.oggetto}' ({totale:,.2f} €) è stata controllata dall'Amministrativo e attende la tua approvazione come {step_label}.",
+            richiede_azione=True)
 
+    segna_lette_per_link(db, utente.id, f"/rimborsi-spesa/{r.id}")
     db.commit()
     db.refresh(r)
     return {"data": _rrs_dict(r, db)}
@@ -514,8 +524,10 @@ def approva_rs(id: str, db: Session = Depends(get_db), utente: Persona = Depends
     if dest:
         _notifica_step(db, r, dest,
             titolo="Richiesta rimborso spesa — tua approvazione richiesta",
-            messaggio=f"La richiesta di rimborso per '{ras.oggetto}' ({totale:,.2f} €) è stata approvata dal Responsabile Scientifico e attende la tua approvazione come Direttore di Dipartimento.")
+            messaggio=f"La richiesta di rimborso per '{ras.oggetto}' ({totale:,.2f} €) è stata approvata dal Responsabile Scientifico e attende la tua approvazione come Direttore di Dipartimento.",
+            richiede_azione=True)
 
+    segna_lette_per_link(db, utente.id, f"/rimborsi-spesa/{r.id}")
     db.commit()
     db.refresh(r)
     return {"data": _rrs_dict(r, db)}
@@ -540,8 +552,10 @@ def approva_dir_dip(id: str, db: Session = Depends(get_db), utente: Persona = De
     if dest:
         _notifica_step(db, r, dest,
             titolo="Richiesta rimborso spesa — tua approvazione richiesta",
-            messaggio=f"La richiesta di rimborso per '{ras.oggetto}' ({totale:,.2f} €) è stata approvata dal Direttore di Dipartimento e attende la tua approvazione definitiva come Direttore Generale.")
+            messaggio=f"La richiesta di rimborso per '{ras.oggetto}' ({totale:,.2f} €) è stata approvata dal Direttore di Dipartimento e attende la tua approvazione definitiva come Direttore Generale.",
+            richiede_azione=True)
 
+    segna_lette_per_link(db, utente.id, f"/rimborsi-spesa/{r.id}")
     db.commit()
     db.refresh(r)
     return {"data": _rrs_dict(r, db)}
@@ -599,6 +613,7 @@ def approva_dg(
         titolo="Richiesta rimborso spesa APPROVATA",
         messaggio=f"La tua richiesta di rimborso per '{ras.oggetto}' ({totale_righe:,.2f} €) è stata approvata definitivamente dal Direttore Generale. Il PDF è disponibile nella sezione Rimborsi Spesa.")
 
+    segna_lette_per_link(db, utente.id, f"/rimborsi-spesa/{r.id}")
     # Genera PDF
     try:
         from app.services.pdf_rimborso_spesa import genera_pdf_rimborso_spesa

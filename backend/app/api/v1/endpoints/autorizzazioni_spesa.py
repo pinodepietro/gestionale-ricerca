@@ -4,7 +4,7 @@ from datetime import date, datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, or_
 import os
 
 from app.core.database import get_db
@@ -13,7 +13,7 @@ from app.core.config import settings
 from app.models.autorizzazione_spesa import RichiestaAutorizzazioneSpesa, Dipartimento
 from app.models.progetto import Progetto
 from app.models.personale import Allocazione
-from app.services.notifiche import crea_notifica, invia_email
+from app.services.notifiche import crea_notifica, invia_email, segna_lette_per_link
 from app.models.budget import BudgetVoce, Spesa, VoceDiCosto, Impegno
 from app.models.persona import Persona
 
@@ -67,6 +67,8 @@ def _ras_dict(r: RichiestaAutorizzazioneSpesa, db: Session) -> dict:
         "ha_allegato_g": bool(r.allegato_voce_g),
         "ha_allegato_preventivo": bool(r.allegato_preventivo),
         "budget_voce_id": str(r.budget_voce_id) if r.budget_voce_id else None,
+        "budget_voce_codice": r.budget_voce.voce.codice if r.budget_voce and r.budget_voce.voce else None,
+        "budget_voce_descrizione": r.budget_voce.voce.descrizione if r.budget_voce and r.budget_voce.voce else None,
         "stato": r.stato,
         "motivazione_rigetto": r.motivazione_rigetto,
         "impegno_id": str(r.impegno_id) if r.impegno_id else None,
@@ -89,7 +91,7 @@ def _calcola_disponibile(bv: BudgetVoce, db: Session) -> float:
         Spesa.voce_id == bv.voce_id,
         Spesa.stato == "registrata",
     ).scalar())
-    return float(bv.importo_erogato or 0) - float(bv.importo_impegnato) - speso
+    return round(float(bv.importo_erogato or 0) - float(bv.importo_impegnato) - speso, 2)
 
 
 # ── CRUD ──────────────────────────────────────────────────────────────────────
@@ -113,10 +115,18 @@ def lista_autorizzazioni(
     if solo_mie:
         q = q.filter(RichiestaAutorizzazioneSpesa.richiedente_id == utente.id)
     elif utente.ruolo not in ("superadmin", "direttore_generale"):
+        # Progetti dove l'utente è allocato (come richiedente)
         alloc_ids = db.query(Allocazione.progetto_id).filter(Allocazione.persona_id == utente.id).subquery()
+        # Progetti dove l'utente è amministrativo (per approvazione)
+        ammin_proj_ids = db.query(Progetto.id).filter(Progetto.amministrativo_id == utente.id).subquery()
         q = q.filter(
-            RichiestaAutorizzazioneSpesa.richiedente_id == utente.id,
-            RichiestaAutorizzazioneSpesa.progetto_id.in_(alloc_ids),
+            or_(
+                # Richieste che l'utente ha creato sui propri progetti
+                (RichiestaAutorizzazioneSpesa.richiedente_id == utente.id) &
+                RichiestaAutorizzazioneSpesa.progetto_id.in_(alloc_ids),
+                # Richieste sui progetti di cui è amministrativo
+                RichiestaAutorizzazioneSpesa.progetto_id.in_(ammin_proj_ids),
+            )
         )
     total = q.count()
     items = q.order_by(RichiestaAutorizzazioneSpesa.created_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
@@ -157,8 +167,7 @@ def crea_autorizzazione(
         if not ha_pi:
             raise HTTPException(status_code=422, detail={"error": {"code": "PROGETTO_SENZA_PI", "message": "Il progetto non ha un Responsabile Scientifico (PI) allocato"}})
         # Controlla Ammin
-        ha_ammin = db.query(Allocazione).filter(Allocazione.progetto_id == progetto_id, Allocazione.is_ammin == True).first()
-        if not ha_ammin:
+        if not p.amministrativo_id:
             raise HTTPException(status_code=422, detail={"error": {"code": "PROGETTO_SENZA_AMMIN", "message": "Il progetto non ha un Responsabile Amministrativo allocato"}})
         # Dipartimento dal progetto
         if not dipartimento_id and p.dipartimento_id:
@@ -304,20 +313,21 @@ def _notifica_step(
     persona_id,
     titolo: str,
     messaggio: str,
+    richiede_azione: bool = False,
 ):
     """Crea notifica in-app e tenta invio email."""
     link = f"/autorizzazioni/{r.id}"
     crea_notifica(db, persona_id, tipo="autorizzazione_spesa", titolo=titolo,
-                  messaggio=messaggio, link=link, riferimento_id=str(r.id))
+                  messaggio=messaggio, link=link, riferimento_id=str(r.id),
+                  richiede_azione=richiede_azione)
     persona = db.query(Persona).filter(Persona.id == persona_id).first()
     if persona:
         invia_email(persona.email, titolo, messaggio)
 
 
 def _persona_ammin(r: RichiestaAutorizzazioneSpesa, db: Session):
-    alloc = db.query(Allocazione).filter(
-        Allocazione.progetto_id == r.progetto_id, Allocazione.is_ammin == True).first()
-    return alloc.persona_id if alloc else None
+    prog = db.query(Progetto).filter(Progetto.id == r.progetto_id).first()
+    return prog.amministrativo_id if prog else None
 
 
 def _persona_pi(r: RichiestaAutorizzazioneSpesa, db: Session):
@@ -362,7 +372,8 @@ def invia(id: str, db: Session = Depends(get_db), utente: Persona = Depends(tutt
     if dest:
         _notifica_step(db, r, dest,
             titolo="Nuova richiesta di autorizzazione spesa",
-            messaggio=f"{r.richiedente.cognome if r.richiedente else ''} ha inviato una richiesta di autorizzazione spesa per '{r.oggetto}' — importo {float(r.importo):,.2f} €. In attesa della tua approvazione come {step_label}.")
+            messaggio=f"{r.richiedente.cognome if r.richiedente else ''} ha inviato una richiesta di autorizzazione spesa per '{r.oggetto}' — importo {float(r.importo):,.2f} €. In attesa della tua approvazione come {step_label}.",
+            richiede_azione=True)
 
     db.commit()
     db.refresh(r)
@@ -381,12 +392,9 @@ def approva_ammin(
         raise HTTPException(status_code=409, detail={"error": {"code": "TRANSIZIONE_NON_VALIDA", "message": f"La richiesta è in stato '{r.stato}', non attesa_ammin"}})
 
     # Verifica che l'utente sia il Responsabile Ammin del progetto
-    alloc_ammin = db.query(Allocazione).filter(
-        Allocazione.progetto_id == r.progetto_id,
-        Allocazione.persona_id == utente.id,
-        Allocazione.is_ammin == True,
-    ).first()
-    if not alloc_ammin and utente.ruolo != "superadmin":
+    prog_ammin = db.query(Progetto).filter(Progetto.id == r.progetto_id).first()
+    is_ammin_progetto = prog_ammin and str(prog_ammin.amministrativo_id) == str(utente.id)
+    if not is_ammin_progetto and utente.ruolo != "superadmin":
         raise HTTPException(status_code=403, detail={"error": {"code": "FORBIDDEN", "message": "Solo il Responsabile Amministrativo del progetto può approvare in questo step"}})
 
     # Verifica voce di budget selezionata
@@ -402,7 +410,7 @@ def approva_ammin(
         raise HTTPException(status_code=404, detail={"error": {"code": "NOT_FOUND", "message": "Voce di budget non trovata per questo progetto"}})
 
     disponibile = _calcola_disponibile(bv, db)
-    if disponibile < float(r.importo):
+    if round(disponibile, 2) < round(float(r.importo), 2):
         raise HTTPException(status_code=422, detail={"error": {
             "code": "DISPONIBILITA_INSUFFICIENTE",
             "message": f"Disponibilità insufficiente sulla voce selezionata. Disponibile: {disponibile:,.2f} € — Richiesto: {float(r.importo):,.2f} €",
@@ -415,8 +423,10 @@ def approva_ammin(
     if dest:
         _notifica_step(db, r, dest,
             titolo="Richiesta autorizzazione spesa — tua approvazione richiesta",
-            messaggio=f"La richiesta '{r.oggetto}' ({float(r.importo):,.2f} €) è stata approvata dall'Amministrativo e attende la tua approvazione come Responsabile Scientifico.")
+            messaggio=f"La richiesta '{r.oggetto}' ({float(r.importo):,.2f} €) è stata approvata dall'Amministrativo e attende la tua approvazione come Responsabile Scientifico.",
+            richiede_azione=True)
 
+    segna_lette_per_link(db, utente.id, f"/autorizzazioni/{r.id}")
     db.commit()
     db.refresh(r)
     return {"data": _ras_dict(r, db)}
@@ -443,8 +453,10 @@ def approva_rs(id: str, db: Session = Depends(get_db), utente: Persona = Depends
     if dest:
         _notifica_step(db, r, dest,
             titolo="Richiesta autorizzazione spesa — tua approvazione richiesta",
-            messaggio=f"La richiesta '{r.oggetto}' ({float(r.importo):,.2f} €) è stata approvata dal Responsabile Scientifico e attende la tua approvazione come Direttore di Dipartimento.")
+            messaggio=f"La richiesta '{r.oggetto}' ({float(r.importo):,.2f} €) è stata approvata dal Responsabile Scientifico e attende la tua approvazione come Direttore di Dipartimento.",
+            richiede_azione=True)
 
+    segna_lette_per_link(db, utente.id, f"/autorizzazioni/{r.id}")
     db.commit()
     db.refresh(r)
     return {"data": _ras_dict(r, db)}
@@ -467,8 +479,10 @@ def approva_dir_dip(id: str, db: Session = Depends(get_db), utente: Persona = De
     if dest:
         _notifica_step(db, r, dest,
             titolo="Richiesta autorizzazione spesa — tua approvazione richiesta",
-            messaggio=f"La richiesta '{r.oggetto}' ({float(r.importo):,.2f} €) è stata approvata dal Direttore di Dipartimento e attende la tua approvazione definitiva come Direttore Generale.")
+            messaggio=f"La richiesta '{r.oggetto}' ({float(r.importo):,.2f} €) è stata approvata dal Direttore di Dipartimento e attende la tua approvazione definitiva come Direttore Generale.",
+            richiede_azione=True)
 
+    segna_lette_per_link(db, utente.id, f"/autorizzazioni/{r.id}")
     db.commit()
     db.refresh(r)
     return {"data": _ras_dict(r, db)}

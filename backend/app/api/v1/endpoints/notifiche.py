@@ -1,7 +1,7 @@
 # backend/app/api/v1/endpoints/notifiche.py
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from sqlalchemy import and_
+from sqlalchemy import and_, or_
 from datetime import date, timedelta
 from app.core.database import get_db
 from app.core.deps import tutti_i_ruoli
@@ -25,6 +25,7 @@ def _notifica_dict(n: Notifica, giorni_rimanenti: int | None = None) -> dict:
         "link": n.link or "",
         "urgente": n.urgente,
         "letta": n.letta,
+        "richiede_azione": getattr(n, 'richiede_azione', False),
         "giorni_rimanenti": giorni_rimanenti,
         "created_at": n.created_at.isoformat() if n.created_at else None,
     }
@@ -90,10 +91,10 @@ def lista_notifiche(
     sal_notifiche = _genera_notifiche_sal_scadenza(db, utente)
     db.commit()
 
-    # Recupera tutte le notifiche non lette dal DB
+    # Recupera notifiche non lette + quelle che richiedono ancora un'azione
     notifiche_db = db.query(Notifica).filter(
         Notifica.persona_id == utente.id,
-        Notifica.letta == False,
+        or_(Notifica.letta == False, Notifica.richiede_azione == True),
     ).order_by(Notifica.created_at.desc()).limit(50).all()
 
     # Mappa id → giorni_rimanenti per le SAL
@@ -133,7 +134,6 @@ def segna_tutte_lette(
 ):
     db.query(Notifica).filter(
         Notifica.persona_id == utente.id,
-        Notifica.letta == False,
-    ).update({"letta": True})
+    ).update({"letta": True, "richiede_azione": False})
     db.commit()
     return {"data": {"ok": True}}

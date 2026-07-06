@@ -117,6 +117,13 @@ export function RimborsoMissioneDettaglioPage() {
     mutationFn: (data: { luogo?: string; note?: string }) => rimborsiMissioneApi.approva(id!, data).then(r => r.data),
     onSuccess: (res) => {
       queryClient.setQueryData(['rimborso-missione', id], res.data);
+      const pid = res.data?.progetto_id;
+      if (pid) {
+        queryClient.invalidateQueries({ queryKey: ['progetti', pid, 'spese'] });
+        queryClient.invalidateQueries({ queryKey: ['progetti', pid, 'impegni'] });
+        queryClient.invalidateQueries({ queryKey: ['erogazioni', pid] });
+        queryClient.invalidateQueries({ queryKey: ['budget-voci', pid] });
+      }
       setLuogo('Napoli'); setNoteAppr('');
       message.success('Approvato');
     },
@@ -521,10 +528,9 @@ export function RimborsoMissioneDettaglioPage() {
               <Col span={4}>
                 <Text style={{ fontSize: 12 }}>Importo (€)</Text>
                 <InputNumber style={{ width: '100%', marginTop: 2 }} min={0} precision={2}
+                  decimalSeparator=","
                   value={rigaEdit.importo}
                   onChange={v => setRigaEdit(e => ({ ...e, importo: v ?? null }))}
-                  formatter={v => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, '.')}
-                  parser={v => parseFloat(v?.replace(/\./g, '').replace(',', '.') ?? '0') as 0}
                 />
               </Col>
               <Col span={2}>

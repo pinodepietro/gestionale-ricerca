@@ -17,5 +17,6 @@ class Notifica(Base):
     link = Column(String(300), nullable=True)
     letta = Column(Boolean, nullable=False, default=False)
     urgente = Column(Boolean, nullable=False, default=False)
+    richiede_azione = Column(Boolean, nullable=False, default=False)
     riferimento_id = Column(String(100), nullable=True)  # SAL id o timesheet id
     created_at = Column(DateTime(timezone=True), server_default=func.now())

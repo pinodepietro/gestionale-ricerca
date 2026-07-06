@@ -221,12 +221,6 @@ export function AutorizzazioneDettaglioPage() {
                 Riapri e correggi
               </Button>
             )}
-            {/* Admin: approva scegliendo voce budget */}
-            {r.stato === 'attesa_ammin' && puoApprovareStep && (
-              <Button type="primary" icon={<CheckOutlined />} onClick={() => setModalBudgetVoce(true)}>
-                Approva (seleziona voce budget)
-              </Button>
-            )}
             {/* RS: approva */}
             {r.stato === 'attesa_rs' && puoApprovareStep && (
               <Button type="primary" icon={<CheckOutlined />} loading={approvaRs.isPending} onClick={() => approvaRs.mutate()}>
@@ -252,8 +246,8 @@ export function AutorizzazioneDettaglioPage() {
                 </Button>
               </Popconfirm>
             )}
-            {/* Rigetta (solo l'approvatore dello step corrente) */}
-            {['attesa_ammin','attesa_rs','attesa_dir_dip','attesa_dg'].includes(r.stato) && puoApprovareStep && (
+            {/* Rigetta (solo per gli step successivi all'ammin) */}
+            {['attesa_rs','attesa_dir_dip','attesa_dg'].includes(r.stato) && puoApprovareStep && (
               <Button danger icon={<CloseOutlined />} onClick={() => setModalRigetto(true)}>
                 Rigetta
               </Button>
@@ -279,6 +273,72 @@ export function AutorizzazioneDettaglioPage() {
           message="Richiesta rigettata"
           description={r.motivazione_rigetto ? `Motivazione: ${r.motivazione_rigetto}` : undefined}
         />
+      )}
+
+      {/* Avviso doppio ruolo: l'utente ha già approvato uno step precedente e può approvare quello corrente */}
+      {r.stato === 'attesa_dir_dip' && isPI && isDirDip && (
+        <Alert
+          type="info" showIcon style={{ marginBottom: 16 }}
+          message="Hai già approvato come Responsabile Scientifico"
+          description="Ricopri anche il ruolo di Direttore di Dipartimento per questo progetto. Puoi procedere con l'approvazione del passo corrente."
+        />
+      )}
+      {r.stato === 'attesa_dg' && isDirDip && isDG && (
+        <Alert
+          type="info" showIcon style={{ marginBottom: 16 }}
+          message="Hai già approvato come Direttore di Dipartimento"
+          description="Ricopri anche il ruolo di Direttore Generale. Puoi procedere con l'approvazione definitiva."
+        />
+      )}
+
+      {/* Card verifica budget — solo per l'amministrativo allo step attesa_ammin */}
+      {r.stato === 'attesa_ammin' && puoApprovareStep && (
+        <Card
+          title="Verifica disponibilità di budget — Resp. Amministrativo"
+          style={{ marginBottom: 16, borderColor: '#1677ff', borderWidth: 2 }}
+          styles={{ header: { background: '#e6f4ff', fontWeight: 600 } }}
+        >
+          <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
+            Seleziona la voce di budget su cui imputare l'impegno di <Text strong>{fmtEuro(r.importo)}</Text>.
+          </Text>
+          <Table
+            dataSource={(budgetVoci as BudgetVoceDisponibile[] | undefined) ?? []}
+            columns={colonneBudget}
+            rowKey="id"
+            size="small"
+            pagination={false}
+            rowClassName={(v: BudgetVoceDisponibile) => v.sufficiente ? '' : 'ant-table-row-disabled'}
+            onRow={(v: BudgetVoceDisponibile) => ({
+              onClick: () => { if (v.sufficiente) setBudgetVoceSelezionata(v.id); },
+              style: {
+                cursor: v.sufficiente ? 'pointer' : 'not-allowed',
+                opacity: v.sufficiente ? 1 : 0.45,
+                background: budgetVoceSelezionata === v.id ? '#e6f4ff' : undefined,
+              },
+            })}
+          />
+          {budgetVoceSelezionata && (
+            <Alert type="info" style={{ marginTop: 12 }}
+              message={`Voce selezionata: ${(budgetVoci as BudgetVoceDisponibile[] | undefined)?.find(v => v.id === budgetVoceSelezionata)?.codice} — ${(budgetVoci as BudgetVoceDisponibile[] | undefined)?.find(v => v.id === budgetVoceSelezionata)?.descrizione}`}
+            />
+          )}
+          <Row justify="end" style={{ marginTop: 16 }}>
+            <Space>
+              <Button
+                type="primary"
+                icon={<CheckOutlined />}
+                loading={approvaAmmin.isPending}
+                disabled={!budgetVoceSelezionata}
+                onClick={() => approvaAmmin.mutate()}
+              >
+                Conferma e approva
+              </Button>
+              <Button danger icon={<CloseOutlined />} onClick={() => setModalRigetto(true)}>
+                Rigetta
+              </Button>
+            </Space>
+          </Row>
+        </Card>
       )}
 
       {/* Dettaglio richiedente */}
@@ -317,7 +377,15 @@ export function AutorizzazioneDettaglioPage() {
           <Descriptions.Item label="Anticipazione spesa">{r.anticipazione_spesa ? 'SÌ' : 'NO'}</Descriptions.Item>
           {r.durata_da && <Descriptions.Item label="Durata">{formatData(r.durata_da)} → {r.durata_a ? formatData(r.durata_a) : '—'}</Descriptions.Item>}
           {r.termini_pagamento && <Descriptions.Item label="Termini pagamento">{r.termini_pagamento}</Descriptions.Item>}
-          {r.budget_voce_id && <Descriptions.Item label="Voce budget assegnata" span={2}><Tag color="blue">Assegnata dall'amministrativo</Tag></Descriptions.Item>}
+          {r.budget_voce_id && (
+            <Descriptions.Item label="Voce budget assegnata" span={2}>
+              <Tag color="blue">
+                {r.budget_voce_codice
+                  ? `${r.budget_voce_codice} — ${r.budget_voce_descrizione}`
+                  : 'Assegnata dall\'amministrativo'}
+              </Tag>
+            </Descriptions.Item>
+          )}
         </Descriptions>
       </Card>
 

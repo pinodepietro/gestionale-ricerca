@@ -955,8 +955,8 @@ def export_sal_pdf(
                               headers={"Content-Disposition": f"attachment; filename={nome_file}"})
 
 
-@router.get("/notifiche")
-def notifiche(
+@router.get("/sal-notifiche")
+def sal_notifiche(
     db: Session = Depends(get_db),
     utente: Persona = Depends(tutti_i_ruoli),
 ):

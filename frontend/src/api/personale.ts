@@ -24,6 +24,10 @@ export const personaleApi = {
       apiClient.get<ApiResponse<CostoOrarioPersona[]>>(`/persone/${personaId}/costi-orari`),
     create: (personaId: string, data: Partial<CostoOrarioPersona>) =>
       apiClient.post<ApiResponse<CostoOrarioPersona>>(`/persone/${personaId}/costi-orari`, data),
+    update: (personaId: string, costoId: string, data: Record<string, unknown>) =>
+      apiClient.patch<ApiResponse<CostoOrarioPersona>>(`/persone/${personaId}/costi-orari/${costoId}`, data),
+    delete: (personaId: string, costoId: string) =>
+      apiClient.delete(`/persone/${personaId}/costi-orari/${costoId}`),
   },
 
   monteOre: {

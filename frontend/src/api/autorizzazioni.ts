@@ -37,6 +37,8 @@ export interface AutorizzazioneSpesa {
   ha_allegato_g: boolean;
   ha_allegato_preventivo: boolean;
   budget_voce_id?: string;
+  budget_voce_codice?: string;
+  budget_voce_descrizione?: string;
   stato: string;
   motivazione_rigetto?: string;
   impegno_id?: string;
