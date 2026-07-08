@@ -4,6 +4,7 @@ import {
   DashboardOutlined, ProjectOutlined, TeamOutlined,
   FileTextOutlined, BarChartOutlined, SettingOutlined, BankOutlined, ToolOutlined,
   FundOutlined, FormOutlined, AuditOutlined, WalletOutlined, CompassOutlined, EuroCircleOutlined,
+  RobotOutlined,
 } from '@ant-design/icons';
 import { useLayoutStore } from '../../store/useLayoutStore';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -20,6 +21,8 @@ export function AppSidebar() {
 
   const menuItems = [
     { key: '/dashboard', icon: <DashboardOutlined />, label: 'Dashboard' },
+    ...(user?.ruolo === 'superadmin'
+      ? [{ key: '/query', icon: <RobotOutlined />, label: 'Query IA (Beta)' }] : []),
     { key: '/proposte', icon: <FormOutlined />, label: 'Proposte' },
     { key: '/autorizzazioni', icon: <AuditOutlined />, label: <>Autorizzazioni<br />Spesa</>, className: 'menu-item-2righe' },
     { key: '/rimborsi-spesa', icon: <WalletOutlined />, label: <>Rimborsi<br />Spesa</>, className: 'menu-item-2righe' },
