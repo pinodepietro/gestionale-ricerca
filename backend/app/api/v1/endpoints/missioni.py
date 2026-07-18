@@ -1109,7 +1109,7 @@ def approva_rimborso(id: str, body: dict, db: Session = Depends(get_db), utente:
         from app.models.notifica import Notifica
         from sqlalchemy import update
         db.execute(update(Notifica).where(
-            (Notifica.link == f"/rimborsi-missione/{r.id}") &
+            (Notifica.link == f"/rimborsi-missione/{str(r.id)}") &
             (Notifica.richiede_azione == True)
         ).values(richiede_azione=False))
         r.stato = "attesa_pi"
@@ -1130,7 +1130,7 @@ def approva_rimborso(id: str, body: dict, db: Session = Depends(get_db), utente:
         from app.models.notifica import Notifica
         from sqlalchemy import update
         db.execute(update(Notifica).where(
-            (Notifica.link == f"/rimborsi-missione/{r.id}") &
+            (Notifica.link == f"/rimborsi-missione/{str(r.id)}") &
             (Notifica.richiede_azione == True)
         ).values(richiede_azione=False))
         r.stato = "attesa_dir_dip"
@@ -1149,7 +1149,7 @@ def approva_rimborso(id: str, body: dict, db: Session = Depends(get_db), utente:
         from app.models.notifica import Notifica
         from sqlalchemy import update
         db.execute(update(Notifica).where(
-            (Notifica.link == f"/rimborsi-missione/{r.id}") &
+            (Notifica.link == f"/rimborsi-missione/{str(r.id)}") &
             (Notifica.richiede_azione == True)
         ).values(richiede_azione=False))
         r.stato = "attesa_dg"
@@ -1167,7 +1167,7 @@ def approva_rimborso(id: str, body: dict, db: Session = Depends(get_db), utente:
         from app.models.notifica import Notifica
         from sqlalchemy import update
         db.execute(update(Notifica).where(
-            (Notifica.link == f"/rimborsi-missione/{r.id}") &
+            (Notifica.link == f"/rimborsi-missione/{str(r.id)}") &
             (Notifica.richiede_azione == True)
         ).values(richiede_azione=False))
         r.stato = "approvata"
