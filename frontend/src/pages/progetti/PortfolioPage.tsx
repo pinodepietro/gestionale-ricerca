@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Table, Progress, Tag, Typography, Statistic, Row, Col, Card, Alert, Divider } from 'antd';
+import { Table, Progress, Tag, Typography, Statistic, Row, Col, Card, Alert, Divider, Tooltip } from 'antd';
 import {
   ProjectOutlined, EuroOutlined, WarningOutlined, FileTextOutlined,
 } from '@ant-design/icons';
@@ -109,7 +109,11 @@ export function PortfolioPage() {
       dataIndex: 'tipo',
       width: 130,
       ellipsis: true,
-      render: (tipo: string) => tipo ? <Tag style={{ maxWidth: '100%' }}>{tipo}</Tag> : '—',
+      render: (tipo: string) => tipo ? (
+        <Tooltip title={tipo}>
+          <Tag style={{ maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>{tipo}</Tag>
+        </Tooltip>
+      ) : '—',
     },
     {
       title: 'Finanziato vs Speso',
