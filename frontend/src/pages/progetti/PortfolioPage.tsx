@@ -108,7 +108,8 @@ export function PortfolioPage() {
       title: 'Tipo',
       dataIndex: 'tipo',
       width: 130,
-      render: (tipo: string) => tipo ? <Tag>{tipo}</Tag> : '—',
+      ellipsis: true,
+      render: (tipo: string) => tipo ? <Tag style={{ maxWidth: '100%' }}>{tipo}</Tag> : '—',
     },
     {
       title: 'Finanziato vs Speso',

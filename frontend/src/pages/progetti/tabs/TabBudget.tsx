@@ -53,7 +53,7 @@ export function TabBudget({ progettoId }: { progettoId: string }) {
         ? <Tag color="blue" style={{ fontSize: 11 }}>{wpNome(id)}</Tag>
         : <Text type="secondary">—</Text>,
     }] : []),
-    { title: 'Voce di costo', dataIndex: ['voce', 'descrizione'], ellipsis: true },
+    { title: 'Voce di costo', dataIndex: ['voce', 'descrizione'], ellipsis: true, width: 250 },
     { title: 'Previsto', dataIndex: 'importo_previsto', align: 'right' as const, width: 130, render: formatEuro },
     { title: 'Erogato', dataIndex: 'importo_erogato', align: 'right' as const, width: 120,
       render: (v: number) => <Text type={v > 0 ? 'success' : undefined}>{formatEuro(v)}</Text>,
