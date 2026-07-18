@@ -38,9 +38,9 @@ export const progettiApi = {
       apiClient.post<ApiResponse<DocumentoProgetto>>(`/progetti/${progettoId}/documenti`, formData,
         { headers: { 'Content-Type': 'multipart/form-data' } }),
     update: (docId: string, data: { descrizione?: string; tipo_documento?: string }) =>
-      apiClient.patch<ApiResponse<DocumentoProgetto>>(`/documenti/${docId}`, data),
+      apiClient.patch<ApiResponse<DocumentoProgetto>>(`/progetti/documenti/${docId}`, data),
     delete: (docId: string) =>
-      apiClient.delete<{ data: { deleted: boolean } }>(`/documenti/${docId}`),
+      apiClient.delete<{ data: { deleted: boolean } }>(`/progetti/documenti/${docId}`),
   },
 
   partner: {
