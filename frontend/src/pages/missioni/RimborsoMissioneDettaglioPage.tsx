@@ -117,6 +117,7 @@ export function RimborsoMissioneDettaglioPage() {
     mutationFn: (data: { luogo?: string; note?: string }) => rimborsiMissioneApi.approva(id!, data).then(r => r.data),
     onSuccess: (res) => {
       queryClient.setQueryData(['rimborso-missione', id], res.data);
+      queryClient.invalidateQueries({ queryKey: ['notifiche'] });
       const pid = res.data?.progetto_id;
       if (pid) {
         queryClient.invalidateQueries({ queryKey: ['progetti', pid, 'spese'] });
