@@ -93,7 +93,7 @@ export function TabDocumenti({ progettoId, piId }: Props) {
   });
 
   const elimina = useMutation({
-    mutationFn: (id: string) => apiClient.delete(`/documenti/${id}`),
+    mutationFn: (id: string) => progettiApi.documenti.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.progetti.documenti(progettoId) });
       notification.success({ message: 'Documento eliminato' });
