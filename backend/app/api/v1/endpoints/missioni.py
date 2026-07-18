@@ -1107,10 +1107,11 @@ def approva_rimborso(id: str, body: dict, db: Session = Depends(get_db), utente:
                                          decisione="approvato", luogo_firma=luogo, note=note, ciclo=r.ciclo)
         db.add(step)
         from app.models.notifica import Notifica
-        db.query(Notifica).filter(
-            Notifica.link == f"/rimborsi-missione/{r.id}",
-            Notifica.richiede_azione == True
-        ).update({Notifica.richiede_azione: False})
+        from sqlalchemy import update
+        db.execute(update(Notifica).where(
+            (Notifica.link == f"/rimborsi-missione/{r.id}") &
+            (Notifica.richiede_azione == True)
+        ).values(richiede_azione=False))
         r.stato = "attesa_pi"
         dest = _pi(progetto_id, db)
         _notifica(db, dest, titolo="Rimborso missione — tua approvazione richiesta",
@@ -1127,10 +1128,11 @@ def approva_rimborso(id: str, body: dict, db: Session = Depends(get_db), utente:
                                          decisione="approvato", luogo_firma=luogo, note=note, ciclo=r.ciclo)
         db.add(step)
         from app.models.notifica import Notifica
-        db.query(Notifica).filter(
-            Notifica.link == f"/rimborsi-missione/{r.id}",
-            Notifica.richiede_azione == True
-        ).update({Notifica.richiede_azione: False})
+        from sqlalchemy import update
+        db.execute(update(Notifica).where(
+            (Notifica.link == f"/rimborsi-missione/{r.id}") &
+            (Notifica.richiede_azione == True)
+        ).values(richiede_azione=False))
         r.stato = "attesa_dir_dip"
         dest = _dir_dip(progetto_id, db)
         _notifica(db, dest, titolo="Rimborso missione — tua approvazione richiesta",
@@ -1145,10 +1147,11 @@ def approva_rimborso(id: str, body: dict, db: Session = Depends(get_db), utente:
                                          decisione="approvato", luogo_firma=luogo, note=note, ciclo=r.ciclo)
         db.add(step)
         from app.models.notifica import Notifica
-        db.query(Notifica).filter(
-            Notifica.link == f"/rimborsi-missione/{r.id}",
-            Notifica.richiede_azione == True
-        ).update({Notifica.richiede_azione: False})
+        from sqlalchemy import update
+        db.execute(update(Notifica).where(
+            (Notifica.link == f"/rimborsi-missione/{r.id}") &
+            (Notifica.richiede_azione == True)
+        ).values(richiede_azione=False))
         r.stato = "attesa_dg"
         dest = _dg(db)
         _notifica(db, dest, titolo="Rimborso missione — tua approvazione finale richiesta",
@@ -1162,10 +1165,11 @@ def approva_rimborso(id: str, body: dict, db: Session = Depends(get_db), utente:
                                          decisione="approvato", luogo_firma=luogo, note=note, ciclo=r.ciclo)
         db.add(step)
         from app.models.notifica import Notifica
-        db.query(Notifica).filter(
-            Notifica.link == f"/rimborsi-missione/{r.id}",
-            Notifica.richiede_azione == True
-        ).update({Notifica.richiede_azione: False})
+        from sqlalchemy import update
+        db.execute(update(Notifica).where(
+            (Notifica.link == f"/rimborsi-missione/{r.id}") &
+            (Notifica.richiede_azione == True)
+        ).values(richiede_azione=False))
         r.stato = "approvata"
         r.approvata_il = datetime.now(timezone.utc)
         _finalizza_rimborso_budget(r, db)
