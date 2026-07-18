@@ -15,7 +15,9 @@ export const queryKeys = {
     documenti: (id: string) => ['progetti', id, 'documenti'] as const,
     allocazioni: (id: string) => ['progetti', id, 'allocazioni'] as const,
     budget: (id: string) => ['progetti', id, 'budget'] as const,
-    spese: (id: string, params?: object) => ['progetti', id, 'spese', params] as const,
+    spese: (id: string, params?: object) => params
+      ? ['progetti', id, 'spese', params] as const
+      : ['progetti', id, 'spese'] as const,
     impegni: (id: string) => ['progetti', id, 'impegni'] as const,
     partner: (id: string) => ['progetti', id, 'partner'] as const,
   },
