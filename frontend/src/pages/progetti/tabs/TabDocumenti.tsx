@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { Table, Button, Space, Upload, Modal, Form, Input, Select, Typography,
          App, Popconfirm, Tag } from 'antd';
-import { UploadOutlined, DownloadOutlined, DeleteOutlined, PlusOutlined,
+import { UploadOutlined, DownloadOutlined, DeleteOutlined, PlusOutlined, EditOutlined,
          FileOutlined, FilePdfOutlined, FileExcelOutlined, FileWordOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../../../api/client';
@@ -10,6 +10,7 @@ import { env } from '../../../config/env';
 import { queryKeys } from '../../../utils/queryKeys';
 import { useAuthStore } from '../../../store/useAuthStore';
 import { canDo } from '../../../utils/rbac';
+import { progettiApi } from '../../../api/progetti';
 
 const { Text } = Typography;
 
@@ -58,6 +59,9 @@ export function TabDocumenti({ progettoId, piId }: Props) {
   const [modalAperta, setModalAperta] = useState(false);
   const [fileSelezionato, setFileSelezionato] = useState<File | null>(null);
   const [form] = Form.useForm();
+  const [modalModificaAperta, setModalModificaAperta] = useState(false);
+  const [documentoInModifica, setDocumentoInModifica] = useState<Documento | null>(null);
+  const [formModifica] = Form.useForm();
 
   const { data, isLoading } = useQuery({
     queryKey: queryKeys.progetti.documenti(progettoId),
@@ -94,6 +98,19 @@ export function TabDocumenti({ progettoId, piId }: Props) {
       queryClient.invalidateQueries({ queryKey: queryKeys.progetti.documenti(progettoId) });
       notification.success({ message: 'Documento eliminato' });
     },
+  });
+
+  const aggiorna = useMutation({
+    mutationFn: (values: { descrizione?: string; tipo_documento?: string }) =>
+      progettiApi.documenti.update(documentoInModifica!.id, values),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.progetti.documenti(progettoId) });
+      notification.success({ message: 'Documento aggiornato' });
+      setModalModificaAperta(false);
+      setDocumentoInModifica(null);
+      formModifica.resetFields();
+    },
+    onError: () => notification.error({ message: 'Errore durante l\'aggiornamento' }),
   });
 
   const scarica = async (doc: Documento) => {
@@ -137,17 +154,28 @@ export function TabDocumenti({ progettoId, piId }: Props) {
       }) : '—',
     },
     {
-      title: '', key: 'azioni', width: 90,
+      title: '', key: 'azioni', width: 120,
       render: (_: unknown, r: Documento) => (
         <Space>
           <Button size="small" icon={<DownloadOutlined />} type="text"
             onClick={() => scarica(r)} />
           {puoCaricareDocumenti && (
-            <Popconfirm title="Eliminare questo documento?"
-              onConfirm={() => elimina.mutate(r.id)}
-              okText="Elimina" cancelText="No" okButtonProps={{ danger: true }}>
-              <Button size="small" icon={<DeleteOutlined />} type="text" danger />
-            </Popconfirm>
+            <>
+              <Button size="small" icon={<EditOutlined />} type="text"
+                onClick={() => {
+                  setDocumentoInModifica(r);
+                  formModifica.setFieldsValue({
+                    descrizione: r.descrizione || '',
+                    tipo_documento: r.tipo_documento,
+                  });
+                  setModalModificaAperta(true);
+                }} />
+              <Popconfirm title="Eliminare questo documento?"
+                onConfirm={() => elimina.mutate(r.id)}
+                okText="Elimina" cancelText="No" okButtonProps={{ danger: true }}>
+                <Button size="small" icon={<DeleteOutlined />} type="text" danger />
+              </Popconfirm>
+            </>
           )}
         </Space>
       ),
@@ -211,6 +239,27 @@ export function TabDocumenti({ progettoId, piId }: Props) {
           </Form.Item>
           <Form.Item name="descrizione" label="Descrizione">
             <Input.TextArea rows={2} placeholder="Descrizione del documento" />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={`Modifica documento: ${documentoInModifica?.nome_file || ''}`}
+        open={modalModificaAperta}
+        onCancel={() => { setModalModificaAperta(false); setDocumentoInModifica(null); formModifica.resetFields(); }}
+        onOk={() => formModifica.submit()}
+        okText="Salva"
+        cancelText="Annulla"
+        confirmLoading={aggiorna.isPending}
+        width={480}
+      >
+        <Form form={formModifica} layout="vertical" onFinish={v => aggiorna.mutate(v)}
+          style={{ marginTop: 16 }}>
+          <Form.Item name="tipo_documento" label="Tipo documento" rules={[{ required: true }]}>
+            <Select options={TIPI_DOCUMENTO} />
+          </Form.Item>
+          <Form.Item name="descrizione" label="Descrizione">
+            <Input.TextArea rows={3} placeholder="Descrizione del documento" />
           </Form.Item>
         </Form>
       </Modal>
