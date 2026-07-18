@@ -1272,6 +1272,27 @@ def download_documento(
     return FileResponse(doc.path_file, filename=doc.nome_file)
 
 
+@router.patch("/documenti/{doc_id}")
+def aggiorna_documento(
+    doc_id: str,
+    body: dict,
+    db: Session = Depends(get_db),
+    utente: Persona = Depends(tutti_i_ruoli),
+):
+    from app.models.documento import DocumentoProgetto
+    doc = db.query(DocumentoProgetto).filter(DocumentoProgetto.id == doc_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail={"error": {"code": "NOT_FOUND", "message": "Documento non trovato"}})
+
+    if "descrizione" in body:
+        doc.descrizione = body.get("descrizione")
+    if "tipo_documento" in body:
+        doc.tipo_documento = body.get("tipo_documento")
+
+    db.commit()
+    return {"data": _doc_dict(doc)}
+
+
 def _doc_dict(d) -> dict:
     return {
         "id": str(d.id),
