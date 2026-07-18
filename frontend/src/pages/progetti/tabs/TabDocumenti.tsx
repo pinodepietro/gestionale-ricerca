@@ -216,7 +216,7 @@ export function TabDocumenti({ progettoId, piId }: Props) {
       >
         <Form form={form} layout="vertical" onFinish={v => upload.mutate(v)}
           style={{ marginTop: 16 }}
-          initialValues={{ tipo_documento: 'altro' }}>
+          initialValues={{ tipo_documento: 'altro', descrizione: '' }}>
           <Form.Item label="File" required>
             <Upload
               beforeUpload={(file) => { setFileSelezionato(file); return false; }}
