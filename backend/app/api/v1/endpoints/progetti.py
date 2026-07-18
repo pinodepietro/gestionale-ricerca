@@ -1,5 +1,5 @@
 # backend/app/api/v1/endpoints/progetti.py
-from fastapi import APIRouter, Depends, HTTPException, Query, status, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, Query, status, UploadFile, File, Body
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, func
@@ -1275,7 +1275,7 @@ def download_documento(
 @router.patch("/documenti/{doc_id}")
 def aggiorna_documento(
     doc_id: str,
-    body: dict,
+    body: dict = Body(...),
     db: Session = Depends(get_db),
     utente: Persona = Depends(tutti_i_ruoli),
 ):
