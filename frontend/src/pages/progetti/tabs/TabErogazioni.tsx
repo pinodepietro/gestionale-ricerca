@@ -38,6 +38,7 @@ export function TabErogazioni({ progettoId, stato }: Props) {
   const [form] = Form.useForm();
   const [fileSelezionato, setFileSelezionato] = useState<File | null>(null);
   const [allocazioni, setAllocazioni] = useState<Record<string, number>>({});
+  const [totaleErogazione, setTotaleErogazione] = useState<number>(0);
 
   const { data, isLoading } = useQuery({
     queryKey: ['erogazioni', progettoId],
@@ -61,9 +62,13 @@ export function TabErogazioni({ progettoId, stato }: Props) {
       if (vociFiltrate.length === 0) {
         throw new Error('Allocare almeno una voce di costo');
       }
-      const importo = vociFiltrate.reduce((s, v) => s + v.importo, 0);
+      const totaleAllocatoVoci = vociFiltrate.reduce((s, v) => s + v.importo, 0);
+      const totaleInserito = values.totale_erogazione as number;
+      if (Math.abs(totaleAllocatoVoci - totaleInserito) > 0.01) {
+        throw new Error(`Errore: la somma allocata (€ ${fmtEuro(totaleAllocatoVoci)}) non coincide con il totale erogazione (€ ${fmtEuro(totaleInserito)})`);
+      }
       const fd = new FormData();
-      fd.append('importo', String(importo));
+      fd.append('importo', String(totaleInserito));
       fd.append('data_erogazione', (values.data_erogazione as dayjs.Dayjs).format('YYYY-MM-DD'));
       fd.append('tipo', values.tipo as string);
       if (values.descrizione) fd.append('descrizione', values.descrizione as string);
@@ -101,10 +106,12 @@ export function TabErogazioni({ progettoId, stato }: Props) {
       data_erogazione: dayjs(e.data_erogazione),
       tipo: e.tipo,
       descrizione: e.descrizione,
+      totale_erogazione: e.importo,
     });
     const alloc: Record<string, number> = {};
     (e.voci ?? []).forEach(v => { alloc[v.budget_voce_id] = v.importo; });
     setAllocazioni(alloc);
+    setTotaleErogazione(e.importo);
     setFileSelezionato(null);
     setModalAperta(true);
   }
@@ -114,6 +121,7 @@ export function TabErogazioni({ progettoId, stato }: Props) {
     setInModifica(null);
     setFileSelezionato(null);
     setAllocazioni({});
+    setTotaleErogazione(0);
     form.resetFields();
   }
 
@@ -240,6 +248,20 @@ export function TabErogazioni({ progettoId, stato }: Props) {
           <Form.Item name="descrizione" label="Descrizione (opzionale)">
             <Input.TextArea rows={2} />
           </Form.Item>
+          <Form.Item
+            name="totale_erogazione"
+            label="Totale erogazione"
+            rules={[{ required: true, message: 'Obbligatorio' }]}
+          >
+            <InputNumber
+              min={0}
+              precision={2}
+              style={{ width: '100%' }}
+              onChange={(v) => setTotaleErogazione(v ?? 0)}
+              formatter={v => v !== undefined ? `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, '.') : ''}
+              parser={v => (parseFloat((v || '').replace(/\./g, '').replace(',', '.')) || 0) as unknown as 0}
+            />
+          </Form.Item>
           <Form.Item label="Documentazione (opzionale)">
             <Upload
               maxCount={1}
@@ -257,7 +279,7 @@ export function TabErogazioni({ progettoId, stato }: Props) {
           </Form.Item>
 
           <Divider orientation="left" style={{ fontSize: 13, marginTop: 8 }}>
-            Allocazione per voce di costo
+            Allocazione per voce di costo (totale deve coincidere: € {fmtEuro(totaleErogazione)})
           </Divider>
           {(budgetVoci ?? []).length === 0 && (
             <Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
