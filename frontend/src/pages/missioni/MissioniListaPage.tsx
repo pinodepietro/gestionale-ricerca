@@ -24,7 +24,7 @@ const STATI_CONFIG: Record<string, { label: string; color: string }> = {
 export function MissioniListaPage() {
   const navigate = useNavigate();
   const user = useAuthStore(s => s.user);
-  const isPrivilegiato = user?.ruolo === 'superadmin' || user?.ruolo === 'direttore_generale';
+  const isPrivilegiato = user?.ruolo === 'superadmin' || user?.ruolo === 'direttore_generale' || user?.ruolo === 'monitor';
   const isAmministrativo = user?.ruolo === 'amministrativo';
   const [stato, setStato] = useState<string | undefined>();
   const [progettoId, setProgettoId] = useState<string | undefined>();
