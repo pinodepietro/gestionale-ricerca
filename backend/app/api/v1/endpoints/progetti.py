@@ -96,15 +96,14 @@ def lista_progetti(
         q = q.filter(or_(Progetto.codice.ilike(f"%{search}%"),
                          Progetto.titolo.ilike(f"%{search}%"),
                          Progetto.acronimo.ilike(f"%{search}%")))
-    if solo_allocati or utente.ruolo not in ("superadmin", "direttore_generale", "monitor", "management"):
-        proj_ids = db.query(Allocazione.progetto_id).filter(Allocazione.persona_id == utente.id).subquery()
-        if utente.ruolo == "amministrativo":
-            ammin_proj_ids = db.query(Progetto.id).filter(Progetto.amministrativo_id == utente.id).subquery()
-            q = q.filter(or_(Progetto.id.in_(proj_ids), Progetto.id.in_(ammin_proj_ids)))
-        else:
-            q = q.filter(Progetto.id.in_(proj_ids))
     if amministrativo_id:
         q = q.filter(Progetto.amministrativo_id == amministrativo_id)
+    elif solo_allocati or utente.ruolo not in ("superadmin", "direttore_generale", "monitor", "management"):
+        proj_ids = db.query(Allocazione.progetto_id).filter(Allocazione.persona_id == utente.id).subquery()
+        if utente.ruolo == "amministrativo":
+            q = q.filter(or_(Progetto.id.in_(proj_ids), Progetto.amministrativo_id == utente.id))
+        else:
+            q = q.filter(Progetto.id.in_(proj_ids))
     total = q.count()
     items = q.order_by(Progetto.codice).offset((page - 1) * page_size).limit(page_size).all()
     return pagina([progetto_dict(p) for p in items], total, page, page_size)
