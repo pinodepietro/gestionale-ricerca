@@ -27,7 +27,7 @@ export function RimborsiMissioneListaPage() {
   const isPrivilegiato = user?.ruolo === 'superadmin' || user?.ruolo === 'direttore_generale';
   const [stato, setStato] = useState<string | undefined>();
   const [progettoId, setProgettoId] = useState<string | undefined>();
-  const [soloMiei, setSoloMiei] = useState(false);
+  const [soloMiei, setSoloMiei] = useState(!isPrivilegiato);
   const [page, setPage] = useState(1);
 
   const { data: progetti } = useQuery({

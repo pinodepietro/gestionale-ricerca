@@ -27,7 +27,7 @@ export function MissioniListaPage() {
   const isPrivilegiato = user?.ruolo === 'superadmin' || user?.ruolo === 'direttore_generale';
   const [stato, setStato] = useState<string | undefined>();
   const [progettoId, setProgettoId] = useState<string | undefined>();
-  const [soloMie, setSoloMie] = useState(false);
+  const [soloMie, setSoloMie] = useState(!isPrivilegiato);
   const [page, setPage] = useState(1);
 
   const { data: progetti } = useQuery({
