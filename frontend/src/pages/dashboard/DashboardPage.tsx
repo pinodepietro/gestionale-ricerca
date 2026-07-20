@@ -528,14 +528,9 @@ function DashboardPI() {
   return (
     <div>
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-        <div>
-          <Title level={2} style={{ margin: 0 }}>Ciao, {user?.nome}</Title>
-          <Text type="secondary">I tuoi progetti di ricerca</Text>
-        </div>
-        <Button type="primary" icon={<FileTextOutlined />} onClick={() => navigate('/timesheet')}>
-          Timesheet
-        </Button>
+      <div style={{ marginBottom: 24 }}>
+        <Title level={2} style={{ margin: 0 }}>Ciao, {user?.nome}</Title>
+        <Text type="secondary">I tuoi progetti di ricerca</Text>
       </div>
 
       {/* Alert globali */}
