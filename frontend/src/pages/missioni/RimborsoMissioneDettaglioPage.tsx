@@ -118,7 +118,13 @@ export function RimborsoMissioneDettaglioPage() {
     onSuccess: (res) => {
       queryClient.setQueryData(['rimborso-missione', id], res.data);
       queryClient.invalidateQueries({ queryKey: ['notifiche'] });
-      queryClient.invalidateQueries({ queryKey: ['progetti'] });
+      const pid = res.data?.progetto_id;
+      if (pid) {
+        queryClient.invalidateQueries({ queryKey: ['progetti', pid, 'spese'] });
+        queryClient.invalidateQueries({ queryKey: ['progetti', pid, 'impegni'] });
+        queryClient.invalidateQueries({ queryKey: ['erogazioni', pid] });
+        queryClient.invalidateQueries({ queryKey: ['budget-voci', pid] });
+      }
       setLuogo('Napoli'); setNoteAppr('');
       message.success('Approvato');
     },

@@ -43,6 +43,7 @@ export interface MissioneDisponibile {
 export interface RimborsoMissione {
   id: string;
   missione_id: string;
+  progetto_id?: string;
   missione_titolo?: string;
   richiedente_id: string;
   richiedente_nome: string;
