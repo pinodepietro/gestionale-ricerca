@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Row, Col, Card, Tag, Typography, Space, Spin, Alert, List, Button, Divider, Empty, App } from 'antd';
 import { WarningOutlined, FileTextOutlined, ArrowLeftOutlined, ProjectOutlined,
-         PlusOutlined, EditOutlined, FileExcelOutlined } from '@ant-design/icons';
+         EditOutlined, FileExcelOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../../api/client';
 import { env } from '../../config/env';
@@ -399,9 +399,6 @@ function DashboardRicercatore() {
         <Title level={2} style={{ margin: 0 }}>
           Ciao, {user?.nome} 👋
         </Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/timesheet')}>
-          Nuovo timesheet
-        </Button>
       </div>
 
       {(tsPendenti > 0 || tsRifiutati > 0) && (
