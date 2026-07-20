@@ -191,7 +191,7 @@ def lista_rimborsi(
         q = q.filter(RichiestaRimborsoSpesa.richiesta_autorizzazione_spesa_id.in_(aut_project))
     if solo_miei:
         q = q.filter(RichiestaRimborsoSpesa.richiedente_id == utente.id)
-    elif utente.ruolo not in ("superadmin", "direttore_generale"):
+    elif utente.ruolo not in ("superadmin", "direttore_generale", "monitor"):
         alloc_proj_ids = db.query(Allocazione.progetto_id).filter(Allocazione.persona_id == utente.id).subquery()
         aut_in_projects = db.query(RichiestaAutorizzazioneSpesa.id).filter(
             RichiestaAutorizzazioneSpesa.progetto_id.in_(alloc_proj_ids)

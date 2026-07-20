@@ -434,7 +434,7 @@ def lista_missioni(
         q = q.filter(Missione.progetto_id == progetto_id)
     if solo_mie:
         q = q.filter(Missione.richiedente_id == utente.id)
-    elif utente.ruolo not in ("superadmin", "direttore_generale"):
+    elif utente.ruolo not in ("superadmin", "direttore_generale", "monitor"):
         alloc_ids = db.query(Allocazione.progetto_id).filter(Allocazione.persona_id == utente.id).subquery()
         ammin_proj_ids = db.query(Progetto.id).filter(Progetto.amministrativo_id == utente.id).subquery()
         q = q.filter(
@@ -830,7 +830,7 @@ def lista_rimborsi(
         q = q.filter(RimborsoMissione.missione_id.in_(missioni_project))
     if solo_miei:
         q = q.filter(RimborsoMissione.richiedente_id == utente.id)
-    elif utente.ruolo not in ("superadmin", "direttore_generale"):
+    elif utente.ruolo not in ("superadmin", "direttore_generale", "monitor"):
         alloc_proj_ids = db.query(Allocazione.progetto_id).filter(Allocazione.persona_id == utente.id).subquery()
         missioni_in_projects = db.query(Missione.id).filter(
             Missione.progetto_id.in_(alloc_proj_ids)

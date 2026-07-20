@@ -114,7 +114,7 @@ def lista_autorizzazioni(
         q = q.filter(RichiestaAutorizzazioneSpesa.progetto_id == progetto_id)
     if solo_mie:
         q = q.filter(RichiestaAutorizzazioneSpesa.richiedente_id == utente.id)
-    elif utente.ruolo not in ("superadmin", "direttore_generale"):
+    elif utente.ruolo not in ("superadmin", "direttore_generale", "monitor"):
         # Progetti dove l'utente è allocato (come richiedente)
         alloc_ids = db.query(Allocazione.progetto_id).filter(Allocazione.persona_id == utente.id).subquery()
         # Progetti dove l'utente è amministrativo (per approvazione)
