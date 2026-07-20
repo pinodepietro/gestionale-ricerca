@@ -6,6 +6,7 @@ import { Typography, Spin, Button, Space, Table, InputNumber, Tag, App, Popconfi
 import { ArrowLeftOutlined, SaveOutlined, SendOutlined, CheckOutlined, CloseOutlined, DeleteOutlined, FileExcelOutlined } from '@ant-design/icons';
 import { timesheetApi } from '../../api/timesheet';
 import { progettiApi } from '../../api/progetti';
+import { personaleApi } from '../../api/personale';
 import { queryKeys } from '../../utils/queryKeys';
 import { env } from '../../config/env';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -52,7 +53,7 @@ export function TimesheetEditor() {
 
   const { data: persona } = useQuery({
     queryKey: ['persona', ts?.persona_id],
-    queryFn: () => fetch(`${env.apiUrl}/api/v1/persone/${ts!.persona_id}`).then(r => r.json()).then(r => r.data),
+    queryFn: () => personaleApi.get(ts!.persona_id).then(r => r.data.data),
     enabled: !!ts?.persona_id,
   });
 
@@ -177,9 +178,6 @@ export function TimesheetEditor() {
   // Direttore Generale può approvare definitivamente
   const eDG = user?.ruolo === 'direttore_generale' || user?.ruolo === 'superadmin';
   const puoApprovareFinale = eDG && ts.stato === 'attesa_dg';
-
-  // Sia PI che DG possono rifiutare
-  const puoRifiutare = (ePI && ts.stato === 'inviato') || (eDG && ts.stato === 'attesa_dg');
 
   // Calcola giorni del mese per granularità giornaliera
   const giorni = isGiornaliero

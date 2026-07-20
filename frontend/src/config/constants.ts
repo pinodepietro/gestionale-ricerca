@@ -6,7 +6,7 @@ export type StatoProgetto = typeof STATI_PROGETTO[number];
 export const STATI_SAL = ['aperto', 'chiuso', 'inviato', 'contestato', 'rendicontato'] as const;
 export type StatoSal = typeof STATI_SAL[number];
 
-export const STATI_TIMESHEET = ['bozza', 'inviato', 'approvato', 'rifiutato'] as const;
+export const STATI_TIMESHEET = ['bozza', 'inviato', 'attesa_dg', 'approvato', 'rifiutato'] as const;
 export type StatoTimesheet = typeof STATI_TIMESHEET[number];
 
 export const STATI_DELIVERABLE = ['atteso', 'consegnato', 'in_ritardo', 'accettato'] as const;

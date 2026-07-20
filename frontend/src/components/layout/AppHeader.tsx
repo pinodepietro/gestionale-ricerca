@@ -10,7 +10,6 @@ import { useAuthStore } from '../../store/useAuthStore';
 import { useLayoutStore } from '../../store/useLayoutStore';
 import { MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons';
 import { apiClient } from '../../api/client';
-import { env } from '../../config/env';
 import { passwordRules, SPECIAL_CHARS_LABEL } from '../../utils/passwordRules';
 
 const { Header } = Layout;

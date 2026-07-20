@@ -15,7 +15,6 @@ import {
 } from 'antd';
 import {
   SendOutlined,
-  DownloadOutlined,
   CodeOutlined,
   LoadingOutlined,
 } from '@ant-design/icons';

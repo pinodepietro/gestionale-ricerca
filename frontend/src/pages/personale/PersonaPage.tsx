@@ -149,7 +149,7 @@ export function PersonaPage() {
             <Button icon={<EditOutlined />} size="small" type="text"
               onClick={() => { formCosto.setFieldsValue({ ...r, data_inizio: dayjs(r.data_inizio) }); setModalCosto(true); setCostoInModifica(r.id); }} />
             <Button icon={<DeleteOutlined />} danger size="small" type="text"
-              onClick={() => Modal.confirm({ title: 'Eliminare?', onOk: () => deleteCosto.mutate(r.id) }) } />
+              onClick={() => Modal.confirm({ title: 'Eliminare?', onOk: () => deleteCosto(r.id) }) } />
           </Space>
         </RbacGuard>
       ),
