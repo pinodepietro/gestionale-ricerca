@@ -31,7 +31,7 @@ export const progettiApi = {
   portfolio: () =>
     apiClient.get<ApiResponse<PortfolioGlobale>>('/progetti/cruscotto'),
   cruscottoDG: () =>
-    apiClient.get<ApiResponse<{ timesheet: number; missioni: number; rimborsi_missione: number; rimborsi_spesa: number; autorizzazioni_spesa: number; totale: number }>>('/progetti/cruscotto-dg'),
+    apiClient.get<ApiResponse<{ timesheet: number; timesheet_primo_id: string | null; missioni: number; missioni_primo_id: string | null; rimborsi_missione: number; rimborsi_missione_primo_id: string | null; rimborsi_spesa: number; rimborsi_spesa_primo_id: string | null; autorizzazioni_spesa: number; autorizzazioni_spesa_primo_id: string | null; totale: number }>>('/progetti/cruscotto-dg'),
 
   documenti: {
     list: (progettoId: string) =>

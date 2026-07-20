@@ -750,7 +750,7 @@ function DashboardDG() {
           <Col span={12}>
             <Card
               hoverable
-              onClick={() => navigate('/timesheet?stato=attesa_dg')}
+              onClick={() => navigate(approvazioni.timesheet_primo_id ? `/timesheet/${approvazioni.timesheet_primo_id}` : '/timesheet?stato=attesa_dg')}
               style={{ borderRadius: 12, borderColor: '#185FA5', cursor: 'pointer' }}
             >
               <Space style={{ justifyContent: 'space-between', width: '100%' }}>
@@ -769,7 +769,7 @@ function DashboardDG() {
           <Col span={12}>
             <Card
               hoverable
-              onClick={() => navigate('/missioni?stato=attesa_dg')}
+              onClick={() => navigate(approvazioni.missioni_primo_id ? `/missioni/${approvazioni.missioni_primo_id}` : '/missioni?stato=attesa_dg')}
               style={{ borderRadius: 12, borderColor: '#E24B4A', cursor: 'pointer' }}
             >
               <Space style={{ justifyContent: 'space-between', width: '100%' }}>
@@ -788,7 +788,7 @@ function DashboardDG() {
           <Col span={12}>
             <Card
               hoverable
-              onClick={() => navigate('/rimborsi-missione?stato=attesa_dg')}
+              onClick={() => navigate(approvazioni.rimborsi_missione_primo_id ? `/rimborsi-missione/${approvazioni.rimborsi_missione_primo_id}` : '/rimborsi-missione?stato=attesa_dg')}
               style={{ borderRadius: 12, borderColor: '#1D9E75', cursor: 'pointer' }}
             >
               <Space style={{ justifyContent: 'space-between', width: '100%' }}>
@@ -807,7 +807,7 @@ function DashboardDG() {
           <Col span={12}>
             <Card
               hoverable
-              onClick={() => navigate('/rimborsi-spese?stato=attesa_dg')}
+              onClick={() => navigate(approvazioni.rimborsi_spesa_primo_id ? `/rimborsi-spese/${approvazioni.rimborsi_spesa_primo_id}` : '/rimborsi-spese?stato=attesa_dg')}
               style={{ borderRadius: 12, borderColor: '#722ed1', cursor: 'pointer' }}
             >
               <Space style={{ justifyContent: 'space-between', width: '100%' }}>
@@ -826,7 +826,7 @@ function DashboardDG() {
           <Col span={12}>
             <Card
               hoverable
-              onClick={() => navigate('/autorizzazioni-spesa?stato=attesa_dg')}
+              onClick={() => navigate(approvazioni.autorizzazioni_spesa_primo_id ? `/autorizzazioni-spesa/${approvazioni.autorizzazioni_spesa_primo_id}` : '/autorizzazioni-spesa?stato=attesa_dg')}
               style={{ borderRadius: 12, borderColor: '#faad14', cursor: 'pointer' }}
             >
               <Space style={{ justifyContent: 'space-between', width: '100%' }}>

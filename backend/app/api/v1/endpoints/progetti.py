@@ -297,26 +297,26 @@ def cruscotto_direttore_generale(
         from fastapi import HTTPException
         raise HTTPException(status_code=403, detail={"error": {"code": "FORBIDDEN"}})
 
-    # Conteggi approvazioni in attesa
-    timesheet_da_approvare = db.query(TimesheetTestata).filter(
-        TimesheetTestata.stato == "attesa_dg"
-    ).count()
+    # Conteggi approvazioni in attesa + ID primo elemento
+    ts_query = db.query(TimesheetTestata).filter(TimesheetTestata.stato == "attesa_dg")
+    timesheet_da_approvare = ts_query.count()
+    timesheet_primo_id = str(ts_query.first().id) if ts_query.first() else None
 
-    missioni_da_approvare = db.query(Missione).filter(
-        Missione.stato == "attesa_dg"
-    ).count()
+    m_query = db.query(Missione).filter(Missione.stato == "attesa_dg")
+    missioni_da_approvare = m_query.count()
+    missioni_primo_id = str(m_query.first().id) if m_query.first() else None
 
-    rimborsi_missione_da_approvare = db.query(RimborsoMissione).filter(
-        RimborsoMissione.stato == "attesa_dg"
-    ).count()
+    rm_query = db.query(RimborsoMissione).filter(RimborsoMissione.stato == "attesa_dg")
+    rimborsi_missione_da_approvare = rm_query.count()
+    rimborsi_missione_primo_id = str(rm_query.first().id) if rm_query.first() else None
 
-    rimborsi_spesa_da_approvare = db.query(RichiestaRimborsoSpesa).filter(
-        RichiestaRimborsoSpesa.stato == "attesa_dg"
-    ).count()
+    rs_query = db.query(RichiestaRimborsoSpesa).filter(RichiestaRimborsoSpesa.stato == "attesa_dg")
+    rimborsi_spesa_da_approvare = rs_query.count()
+    rimborsi_spesa_primo_id = str(rs_query.first().id) if rs_query.first() else None
 
-    autorizzazioni_spesa_da_approvare = db.query(RichiestaAutorizzazioneSpesa).filter(
-        RichiestaAutorizzazioneSpesa.stato == "attesa_dg"
-    ).count()
+    as_query = db.query(RichiestaAutorizzazioneSpesa).filter(RichiestaAutorizzazioneSpesa.stato == "attesa_dg")
+    autorizzazioni_spesa_da_approvare = as_query.count()
+    autorizzazioni_spesa_primo_id = str(as_query.first().id) if as_query.first() else None
 
     totale_approvazioni = (
         timesheet_da_approvare +
@@ -328,10 +328,15 @@ def cruscotto_direttore_generale(
 
     return {"data": {
         "timesheet": timesheet_da_approvare,
+        "timesheet_primo_id": timesheet_primo_id,
         "missioni": missioni_da_approvare,
+        "missioni_primo_id": missioni_primo_id,
         "rimborsi_missione": rimborsi_missione_da_approvare,
+        "rimborsi_missione_primo_id": rimborsi_missione_primo_id,
         "rimborsi_spesa": rimborsi_spesa_da_approvare,
+        "rimborsi_spesa_primo_id": rimborsi_spesa_primo_id,
         "autorizzazioni_spesa": autorizzazioni_spesa_da_approvare,
+        "autorizzazioni_spesa_primo_id": autorizzazioni_spesa_primo_id,
         "totale": totale_approvazioni,
     }}
 
