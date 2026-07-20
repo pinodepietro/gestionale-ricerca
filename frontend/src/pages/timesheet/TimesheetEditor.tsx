@@ -17,7 +17,7 @@ const MESI = ['','Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno',
               'Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
 
 const COLORI_STATO: Record<string, string> = {
-  bozza: 'default', inviato: 'blue', approvato: 'green', rifiutato: 'red',
+  bozza: 'default', inviato: 'blue', attesa_dg: 'orange', approvato: 'green', rifiutato: 'red',
 };
 
 const LABEL_TIPO: Record<string, string> = {
@@ -117,6 +117,15 @@ export function TimesheetEditor() {
     },
   });
 
+  const approvaFinaleTimesheet = useMutation({
+    mutationFn: () => timesheetApi.approvaFinale(id!).then(r => r.data.data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.timesheet.detail(id!) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.timesheet.all });
+      notification.success({ message: 'Timesheet approvato definitivamente' });
+    },
+  });
+
   const eliminaTimesheet = useMutation({
     mutationFn: () => timesheetApi.delete!(id!),
     onSuccess: () => {
@@ -148,10 +157,17 @@ export function TimesheetEditor() {
   const isGiornaliero = ts.granularita === 'giornaliero';
   const isModificabile = ts.stato === 'bozza' || ts.stato === 'rifiutato';
   const puoEliminare = isModificabile || user?.ruolo === 'amministrativo';
-  // PI del progetto specifico può approvare — ma non il proprio timesheet
+  // PI del progetto specifico può approvare (anche il proprio timesheet)
   const ePI = (allocazioni as { persona_id: string; is_pi?: boolean }[] | undefined)
     ?.some(a => a.persona_id === user?.id && a.is_pi) ?? false;
-  const puoApprovare = ePI && ts?.persona_id !== user?.id;
+  const puoApprovarePI = ePI && ts.stato === 'inviato';
+
+  // Direttore Generale può approvare definitivamente
+  const eDG = user?.ruolo === 'direttore_generale' || user?.ruolo === 'superadmin';
+  const puoApprovareFinale = eDG && ts.stato === 'attesa_dg';
+
+  // Sia PI che DG possono rifiutare
+  const puoRifiutare = (ePI && ts.stato === 'inviato') || (eDG && ts.stato === 'attesa_dg');
 
   // Calcola giorni del mese per granularità giornaliera
   const giorni = isGiornaliero

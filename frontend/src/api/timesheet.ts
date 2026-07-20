@@ -34,6 +34,9 @@ export const timesheetApi = {
   approva: (id: string) =>
     apiClient.post<ApiResponse<TimesheetTestata>>(`/timesheet/${id}/approva`),
 
+  approvaFinale: (id: string) =>
+    apiClient.post<ApiResponse<TimesheetTestata>>(`/timesheet/${id}/approva-finale`),
+
   rifiuta: (id: string, note: string) =>
     apiClient.post<ApiResponse<TimesheetTestata>>(`/timesheet/${id}/rifiuta`, { note }),
 
