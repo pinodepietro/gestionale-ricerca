@@ -213,6 +213,19 @@ function TabAnagrafica({ progettoId, onSalvato }: { progettoId: string; onSalvat
           : 'Non modificabile: il progetto è già stato attivato'}>
         <Switch disabled={progetto?.stato !== 'bozza'} />
       </Form.Item>
+      <Form.Item name="granularita_timesheet" label="Granularità timesheet" rules={[{ required: true }]}
+        tooltip={progetto?.stato === 'bozza'
+          ? 'Scegli il livello di dettaglio per i timesheet: giornaliero o mensile. Non modificabile dopo l\'attivazione.'
+          : 'Non modificabile: il progetto è già stato attivato'}>
+        <Select
+          placeholder="Seleziona granularità"
+          disabled={progetto?.stato !== 'bozza'}
+          options={[
+            { value: 'giornaliero', label: 'Giornaliero' },
+            { value: 'mensile', label: 'Mensile' },
+          ]}
+        />
+      </Form.Item>
       <Form.Item name="note" label="Note">
         <Input.TextArea rows={2} />
       </Form.Item>

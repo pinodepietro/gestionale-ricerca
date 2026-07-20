@@ -53,6 +53,17 @@ export function TimesheetPage() {
     queryFn: () => progettiApi.list({ stato: 'attivo' }).then(r => r.data.data),
   });
 
+  // Sincronizza granularità con quella del progetto selezionato
+  useEffect(() => {
+    const progettoId = form.getFieldValue('progetto_id');
+    if (progettoId && progetti) {
+      const progetto = progetti.find((p: any) => p.id === progettoId);
+      if (progetto?.granularita_timesheet) {
+        form.setFieldValue('granularita', progetto.granularita_timesheet);
+      }
+    }
+  }, [form.getFieldValue('progetto_id'), progetti]);
+
   const creaTimesheet = useMutation({
     mutationFn: (values: Record<string, unknown>) =>
       timesheetApi.create({ ...values, persona_id: user?.id }).then(r => r.data.data),
@@ -180,7 +191,7 @@ export function TimesheetPage() {
             <Select options={MESI.slice(1).map((m, i) => ({ value: i + 1, label: m }))} />
           </Form.Item>
           <Form.Item name="granularita" label="Granularità" rules={[{ required: true }]}>
-            <Select options={[
+            <Select disabled placeholder="Impostata dal progetto" options={[
               { value: 'mensile', label: 'Mensile (totale mese per WP)' },
               { value: 'giornaliero', label: 'Giornaliero (colonna per ogni giorno)' },
             ]} />

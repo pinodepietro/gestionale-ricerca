@@ -20,6 +20,7 @@ export interface Progetto {
   budget_per_partner: boolean;
   gestione_per_wp: boolean;
   template_timesheet_id?: string;
+  granularita_timesheet?: 'giornaliero' | 'mensile';
   note?: string;
   pi_id?: string | null;
   pi_nome?: string;
