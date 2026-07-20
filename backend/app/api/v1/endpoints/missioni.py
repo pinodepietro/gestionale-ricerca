@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 
 from app.core.database import get_db
 from app.core.deps import tutti_i_ruoli
