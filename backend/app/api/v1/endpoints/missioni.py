@@ -438,7 +438,8 @@ def lista_missioni(
         ammin_proj_ids = db.query(Progetto.id).filter(Progetto.amministrativo_id == utente.id).subquery()
         q = q.filter(
             or_(
-                (Missione.richiedente_id == utente.id) & Missione.progetto_id.in_(alloc_ids),
+                Missione.richiedente_id == utente.id,
+                Missione.progetto_id.in_(alloc_ids),
                 Missione.progetto_id.in_(ammin_proj_ids),
             )
         )
@@ -839,7 +840,8 @@ def lista_rimborsi(
         ).subquery()
         q = q.filter(
             or_(
-                (RimborsoMissione.richiedente_id == utente.id) & RimborsoMissione.missione_id.in_(missioni_in_projects),
+                RimborsoMissione.richiedente_id == utente.id,
+                RimborsoMissione.missione_id.in_(missioni_in_projects),
                 RimborsoMissione.missione_id.in_(missioni_ammin_projects),
             )
         )
