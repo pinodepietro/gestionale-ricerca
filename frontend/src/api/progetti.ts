@@ -32,6 +32,10 @@ export const progettiApi = {
     apiClient.get<ApiResponse<PortfolioGlobale>>('/progetti/cruscotto'),
   cruscottoDG: () =>
     apiClient.get<ApiResponse<{ timesheet: number; timesheet_primo_id: string | null; missioni: number; missioni_primo_id: string | null; rimborsi_missione: number; rimborsi_missione_primo_id: string | null; rimborsi_spesa: number; rimborsi_spesa_primo_id: string | null; autorizzazioni_spesa: number; autorizzazioni_spesa_primo_id: string | null; totale: number }>>('/progetti/cruscotto-dg'),
+  cruscottoAmministrativo: () =>
+    apiClient.get<ApiResponse<{ timesheet: number; timesheet_primo_id: string | null; missioni: number; missioni_primo_id: string | null; rimborsi_missione: number; rimborsi_missione_primo_id: string | null; rimborsi_spesa: number; rimborsi_spesa_primo_id: string | null; autorizzazioni_spesa: number; autorizzazioni_spesa_primo_id: string | null; totale: number }>>('/progetti/cruscotto-amministrativo'),
+  cruscottoPi: () =>
+    apiClient.get<ApiResponse<{ timesheet: number; timesheet_primo_id: string | null; missioni: number; missioni_primo_id: string | null; rimborsi_missione: number; rimborsi_missione_primo_id: string | null; rimborsi_spesa: number; rimborsi_spesa_primo_id: string | null; autorizzazioni_spesa: number; autorizzazioni_spesa_primo_id: string | null; totale: number }>>('/progetti/cruscotto-pi'),
 
   documenti: {
     list: (progettoId: string) =>

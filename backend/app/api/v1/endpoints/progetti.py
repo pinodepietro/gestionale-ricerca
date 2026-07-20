@@ -349,6 +349,199 @@ def cruscotto_direttore_generale(
     }}
 
 
+@router.get("/cruscotto-amministrativo")
+def cruscotto_amministrativo(
+    db: Session = Depends(get_db),
+    utente: Persona = Depends(tutti_i_ruoli),
+):
+    """Cruscotto dell'Amministrativo di progetto con approvazioni da fare"""
+    from app.models.timesheet import TimesheetTestata
+    from app.models.missione import Missione, RimborsoMissione
+    from app.models.rimborso_spesa import RichiestaRimborsoSpesa
+    from app.models.autorizzazione_spesa import RichiestaAutorizzazioneSpesa
+
+    if utente.ruolo not in ("amministrativo", "superadmin"):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=403, detail={"error": {"code": "FORBIDDEN"}})
+
+    # Progetti dove l'utente è amministrativo
+    progetti = db.query(Progetto).filter(Progetto.amministrativo_id == utente.id).all()
+    progetto_ids = [str(p.id) for p in progetti]
+
+    if not progetto_ids:
+        return {"data": {
+            "timesheet": 0, "timesheet_primo_id": None,
+            "missioni": 0, "missioni_primo_id": None,
+            "rimborsi_missione": 0, "rimborsi_missione_primo_id": None,
+            "rimborsi_spesa": 0, "rimborsi_spesa_primo_id": None,
+            "autorizzazioni_spesa": 0, "autorizzazioni_spesa_primo_id": None,
+            "totale": 0,
+        }}
+
+    # Conteggi approvazioni in attesa per amministrativo
+    ts_query = db.query(TimesheetTestata).filter(
+        TimesheetTestata.stato == "attesa_ammin",
+        TimesheetTestata.progetto_id.in_(progetto_ids)
+    )
+    ts_primo = ts_query.first()
+    timesheet_da_approvare = ts_query.count()
+    timesheet_primo_id = str(ts_primo.id) if ts_primo else None
+
+    m_query = db.query(Missione).filter(
+        Missione.stato == "attesa_ammin",
+        Missione.progetto_id.in_(progetto_ids)
+    )
+    m_primo = m_query.first()
+    missioni_da_approvare = m_query.count()
+    missioni_primo_id = str(m_primo.id) if m_primo else None
+
+    rm_query = db.query(RimborsoMissione).filter(
+        RimborsoMissione.stato == "attesa_ammin",
+        RimborsoMissione.missione_id.in_(
+            db.query(Missione.id).filter(Missione.progetto_id.in_(progetto_ids))
+        )
+    )
+    rm_primo = rm_query.first()
+    rimborsi_missione_da_approvare = rm_query.count()
+    rimborsi_missione_primo_id = str(rm_primo.id) if rm_primo else None
+
+    rs_query = db.query(RichiestaRimborsoSpesa).filter(
+        RichiestaRimborsoSpesa.stato == "attesa_ammin",
+        RichiestaRimborsoSpesa.progetto_id.in_(progetto_ids)
+    )
+    rs_primo = rs_query.first()
+    rimborsi_spesa_da_approvare = rs_query.count()
+    rimborsi_spesa_primo_id = str(rs_primo.id) if rs_primo else None
+
+    as_query = db.query(RichiestaAutorizzazioneSpesa).filter(
+        RichiestaAutorizzazioneSpesa.stato == "attesa_ammin",
+        RichiestaAutorizzazioneSpesa.progetto_id.in_(progetto_ids)
+    )
+    as_primo = as_query.first()
+    autorizzazioni_spesa_da_approvare = as_query.count()
+    autorizzazioni_spesa_primo_id = str(as_primo.id) if as_primo else None
+
+    totale_approvazioni = (
+        timesheet_da_approvare +
+        missioni_da_approvare +
+        rimborsi_missione_da_approvare +
+        rimborsi_spesa_da_approvare +
+        autorizzazioni_spesa_da_approvare
+    )
+
+    return {"data": {
+        "timesheet": timesheet_da_approvare,
+        "timesheet_primo_id": timesheet_primo_id,
+        "missioni": missioni_da_approvare,
+        "missioni_primo_id": missioni_primo_id,
+        "rimborsi_missione": rimborsi_missione_da_approvare,
+        "rimborsi_missione_primo_id": rimborsi_missione_primo_id,
+        "rimborsi_spesa": rimborsi_spesa_da_approvare,
+        "rimborsi_spesa_primo_id": rimborsi_spesa_primo_id,
+        "autorizzazioni_spesa": autorizzazioni_spesa_da_approvare,
+        "autorizzazioni_spesa_primo_id": autorizzazioni_spesa_primo_id,
+        "totale": totale_approvazioni,
+    }}
+
+
+@router.get("/cruscotto-pi")
+def cruscotto_pi(
+    db: Session = Depends(get_db),
+    utente: Persona = Depends(tutti_i_ruoli),
+):
+    """Cruscotto del PI con approvazioni da fare"""
+    from app.models.timesheet import TimesheetTestata
+    from app.models.missione import Missione, RimborsoMissione
+    from app.models.rimborso_spesa import RichiestaRimborsoSpesa
+    from app.models.autorizzazione_spesa import RichiestaAutorizzazioneSpesa
+
+    if utente.ruolo not in ("ricercatore", "responsabile_scientifico", "superadmin"):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=403, detail={"error": {"code": "FORBIDDEN"}})
+
+    # Progetti dove l'utente è PI
+    allocazioni_pi = db.query(Allocazione).filter(
+        Allocazione.persona_id == utente.id,
+        Allocazione.is_pi == True
+    ).all()
+    progetto_ids = [str(a.progetto_id) for a in allocazioni_pi]
+
+    if not progetto_ids:
+        return {"data": {
+            "timesheet": 0, "timesheet_primo_id": None,
+            "missioni": 0, "missioni_primo_id": None,
+            "rimborsi_missione": 0, "rimborsi_missione_primo_id": None,
+            "rimborsi_spesa": 0, "rimborsi_spesa_primo_id": None,
+            "autorizzazioni_spesa": 0, "autorizzazioni_spesa_primo_id": None,
+            "totale": 0,
+        }}
+
+    # Conteggi approvazioni in attesa per PI
+    ts_query = db.query(TimesheetTestata).filter(
+        TimesheetTestata.stato == "attesa_pi",
+        TimesheetTestata.progetto_id.in_(progetto_ids)
+    )
+    ts_primo = ts_query.first()
+    timesheet_da_approvare = ts_query.count()
+    timesheet_primo_id = str(ts_primo.id) if ts_primo else None
+
+    m_query = db.query(Missione).filter(
+        Missione.stato == "attesa_pi",
+        Missione.progetto_id.in_(progetto_ids)
+    )
+    m_primo = m_query.first()
+    missioni_da_approvare = m_query.count()
+    missioni_primo_id = str(m_primo.id) if m_primo else None
+
+    rm_query = db.query(RimborsoMissione).filter(
+        RimborsoMissione.stato == "attesa_pi",
+        RimborsoMissione.missione_id.in_(
+            db.query(Missione.id).filter(Missione.progetto_id.in_(progetto_ids))
+        )
+    )
+    rm_primo = rm_query.first()
+    rimborsi_missione_da_approvare = rm_query.count()
+    rimborsi_missione_primo_id = str(rm_primo.id) if rm_primo else None
+
+    rs_query = db.query(RichiestaRimborsoSpesa).filter(
+        RichiestaRimborsoSpesa.stato == "attesa_pi",
+        RichiestaRimborsoSpesa.progetto_id.in_(progetto_ids)
+    )
+    rs_primo = rs_query.first()
+    rimborsi_spesa_da_approvare = rs_query.count()
+    rimborsi_spesa_primo_id = str(rs_primo.id) if rs_primo else None
+
+    as_query = db.query(RichiestaAutorizzazioneSpesa).filter(
+        RichiestaAutorizzazioneSpesa.stato == "attesa_pi",
+        RichiestaAutorizzazioneSpesa.progetto_id.in_(progetto_ids)
+    )
+    as_primo = as_query.first()
+    autorizzazioni_spesa_da_approvare = as_query.count()
+    autorizzazioni_spesa_primo_id = str(as_primo.id) if as_primo else None
+
+    totale_approvazioni = (
+        timesheet_da_approvare +
+        missioni_da_approvare +
+        rimborsi_missione_da_approvare +
+        rimborsi_spesa_da_approvare +
+        autorizzazioni_spesa_da_approvare
+    )
+
+    return {"data": {
+        "timesheet": timesheet_da_approvare,
+        "timesheet_primo_id": timesheet_primo_id,
+        "missioni": missioni_da_approvare,
+        "missioni_primo_id": missioni_primo_id,
+        "rimborsi_missione": rimborsi_missione_da_approvare,
+        "rimborsi_missione_primo_id": rimborsi_missione_primo_id,
+        "rimborsi_spesa": rimborsi_spesa_da_approvare,
+        "rimborsi_spesa_primo_id": rimborsi_spesa_primo_id,
+        "autorizzazioni_spesa": autorizzazioni_spesa_da_approvare,
+        "autorizzazioni_spesa_primo_id": autorizzazioni_spesa_primo_id,
+        "totale": totale_approvazioni,
+    }}
+
+
 @router.get("/{id}")
 def get_progetto(id: str, db: Session = Depends(get_db), utente: Persona = Depends(tutti_i_ruoli)):
     p = _get_or_404(id, db)

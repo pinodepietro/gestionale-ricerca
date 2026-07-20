@@ -505,6 +505,12 @@ function DashboardPI() {
     refetchInterval: 120000,
   });
 
+  const { data: approvazioni } = useQuery({
+    queryKey: ['cruscotto-pi'],
+    queryFn: () => progettiApi.cruscottoPi().then(r => r.data.data),
+    refetchInterval: 60000,
+  });
+
   const { data: tsData } = useQuery({
     queryKey: queryKeys.timesheet.list({ stato: 'inviato' }),
     queryFn: () => timesheetApi.list({ stato: 'inviato' }).then(r =>
@@ -524,6 +530,7 @@ function DashboardPI() {
 
   const tsPendenti = (tsData as unknown[] ?? []).length;
   const salInScadenza = d.sal_in_scadenza;
+  const totaleApprovazioni = approvazioni?.totale ?? 0;
 
   return (
     <div>
@@ -534,8 +541,19 @@ function DashboardPI() {
       </div>
 
       {/* Alert globali */}
-      {(tsPendenti > 0 || salInScadenza > 0) && (
+      {(tsPendenti > 0 || salInScadenza > 0 || totaleApprovazioni > 0) && (
         <Row gutter={12} style={{ marginBottom: 20 }}>
+          {totaleApprovazioni > 0 && (
+            <Col span={24}>
+              <Alert
+                type="error"
+                showIcon
+                message={`${totaleApprovazioni} approvazioni in sospeso`}
+                description="Accedi alle sezioni sottostanti per completare le approvazioni"
+                style={{ marginBottom: 12 }}
+              />
+            </Col>
+          )}
           {tsPendenti > 0 && (
             <Col span={salInScadenza > 0 ? 12 : 24}>
               <Alert type="info" showIcon icon={<FileTextOutlined />}
@@ -562,18 +580,144 @@ function DashboardPI() {
 
       {/* KPI box */}
       <Row gutter={16} style={{ marginBottom: 24 }}>
-        <Col span={8}>
-          <KpiBox label="Progetti attivi" value={d.progetti_attivi} color="#185FA5" />
+        <Col span={4.8}>
+          <KpiBox
+            label="Timesheet"
+            value={approvazioni?.timesheet ?? 0}
+            color={(approvazioni?.timesheet ?? 0) > 0 ? '#185FA5' : '#888'}
+          />
         </Col>
-        <Col span={8}>
-          <KpiBox label="Timesheet da approvare" value={tsPendenti}
-            color={tsPendenti > 0 ? '#185FA5' : '#888'} />
+        <Col span={4.8}>
+          <KpiBox
+            label="Missioni"
+            value={approvazioni?.missioni ?? 0}
+            color={(approvazioni?.missioni ?? 0) > 0 ? '#E24B4A' : '#888'}
+          />
         </Col>
-        <Col span={8}>
-          <KpiBox label="SAL in scadenza" value={salInScadenza}
-            color={salInScadenza > 0 ? '#E24B4A' : '#888'} />
+        <Col span={4.8}>
+          <KpiBox
+            label="Rimborsi missione"
+            value={approvazioni?.rimborsi_missione ?? 0}
+            color={(approvazioni?.rimborsi_missione ?? 0) > 0 ? '#1D9E75' : '#888'}
+          />
+        </Col>
+        <Col span={4.8}>
+          <KpiBox
+            label="Rimborsi spese"
+            value={approvazioni?.rimborsi_spesa ?? 0}
+            color={(approvazioni?.rimborsi_spesa ?? 0) > 0 ? '#722ed1' : '#888'}
+          />
+        </Col>
+        <Col span={4.8}>
+          <KpiBox
+            label="Autorizzazioni"
+            value={approvazioni?.autorizzazioni_spesa ?? 0}
+            color={(approvazioni?.autorizzazioni_spesa ?? 0) > 0 ? '#faad14' : '#888'}
+          />
         </Col>
       </Row>
+
+      {/* Link alle sezioni */}
+      <Row gutter={16} style={{ marginBottom: 24 }}>
+        {(approvazioni?.timesheet ?? 0) > 0 && (
+          <Col span={12}>
+            <Card
+              hoverable
+              onClick={() => navigate(approvazioni?.timesheet_primo_id ? `/timesheet/${approvazioni.timesheet_primo_id}` : '/timesheet?stato=attesa_pi')}
+              style={{ borderRadius: 12, borderColor: '#185FA5', cursor: 'pointer' }}
+            >
+              <Space style={{ justifyContent: 'space-between', width: '100%' }}>
+                <div>
+                  <Text strong>Timesheet da approvare</Text>
+                  <Text type="secondary" style={{ display: 'block', fontSize: 12, marginTop: 4 }}>
+                    {approvazioni?.timesheet} timesheet in attesa della tua approvazione
+                  </Text>
+                </div>
+                <FileTextOutlined style={{ fontSize: 24, color: '#185FA5' }} />
+              </Space>
+            </Card>
+          </Col>
+        )}
+        {(approvazioni?.missioni ?? 0) > 0 && (
+          <Col span={12}>
+            <Card
+              hoverable
+              onClick={() => navigate(approvazioni?.missioni_primo_id ? `/missioni/${approvazioni.missioni_primo_id}` : '/missioni?stato=attesa_pi')}
+              style={{ borderRadius: 12, borderColor: '#E24B4A', cursor: 'pointer' }}
+            >
+              <Space style={{ justifyContent: 'space-between', width: '100%' }}>
+                <div>
+                  <Text strong>Missioni da approvare</Text>
+                  <Text type="secondary" style={{ display: 'block', fontSize: 12, marginTop: 4 }}>
+                    {approvazioni?.missioni} richieste missione in attesa della tua approvazione
+                  </Text>
+                </div>
+                <ProjectOutlined style={{ fontSize: 24, color: '#E24B4A' }} />
+              </Space>
+            </Card>
+          </Col>
+        )}
+        {(approvazioni?.rimborsi_missione ?? 0) > 0 && (
+          <Col span={12}>
+            <Card
+              hoverable
+              onClick={() => navigate(approvazioni?.rimborsi_missione_primo_id ? `/rimborsi-missione/${approvazioni.rimborsi_missione_primo_id}` : '/rimborsi-missione?stato=attesa_pi')}
+              style={{ borderRadius: 12, borderColor: '#1D9E75', cursor: 'pointer' }}
+            >
+              <Space style={{ justifyContent: 'space-between', width: '100%' }}>
+                <div>
+                  <Text strong>Rimborsi missione da approvare</Text>
+                  <Text type="secondary" style={{ display: 'block', fontSize: 12, marginTop: 4 }}>
+                    {approvazioni?.rimborsi_missione} rimborsi in attesa della tua approvazione
+                  </Text>
+                </div>
+                <FileTextOutlined style={{ fontSize: 24, color: '#1D9E75' }} />
+              </Space>
+            </Card>
+          </Col>
+        )}
+        {(approvazioni?.rimborsi_spesa ?? 0) > 0 && (
+          <Col span={12}>
+            <Card
+              hoverable
+              onClick={() => navigate(approvazioni?.rimborsi_spesa_primo_id ? `/rimborsi-spese/${approvazioni.rimborsi_spesa_primo_id}` : '/rimborsi-spese?stato=attesa_pi')}
+              style={{ borderRadius: 12, borderColor: '#722ed1', cursor: 'pointer' }}
+            >
+              <Space style={{ justifyContent: 'space-between', width: '100%' }}>
+                <div>
+                  <Text strong>Rimborsi spese da approvare</Text>
+                  <Text type="secondary" style={{ display: 'block', fontSize: 12, marginTop: 4 }}>
+                    {approvazioni?.rimborsi_spesa} rimborsi in attesa della tua approvazione
+                  </Text>
+                </div>
+                <FileTextOutlined style={{ fontSize: 24, color: '#722ed1' }} />
+              </Space>
+            </Card>
+          </Col>
+        )}
+        {(approvazioni?.autorizzazioni_spesa ?? 0) > 0 && (
+          <Col span={12}>
+            <Card
+              hoverable
+              onClick={() => navigate(approvazioni?.autorizzazioni_spesa_primo_id ? `/autorizzazioni-spesa/${approvazioni.autorizzazioni_spesa_primo_id}` : '/autorizzazioni-spesa?stato=attesa_pi')}
+              style={{ borderRadius: 12, borderColor: '#faad14', cursor: 'pointer' }}
+            >
+              <Space style={{ justifyContent: 'space-between', width: '100%' }}>
+                <div>
+                  <Text strong>Autorizzazioni spesa da approvare</Text>
+                  <Text type="secondary" style={{ display: 'block', fontSize: 12, marginTop: 4 }}>
+                    {approvazioni?.autorizzazioni_spesa} richieste in attesa della tua approvazione
+                  </Text>
+                </div>
+                <FileTextOutlined style={{ fontSize: 24, color: '#faad14' }} />
+              </Space>
+            </Card>
+          </Col>
+        )}
+      </Row>
+
+      {/* Divider */}
+      <Divider style={{ margin: '32px 0' }} />
 
       {/* Schede progetto */}
       {d.progetti.length === 0 ? (
@@ -664,6 +808,12 @@ function DashboardAmministrativo() {
     refetchInterval: 120000,
   });
 
+  const { data: approvazioni } = useQuery({
+    queryKey: ['cruscotto-amministrativo'],
+    queryFn: () => progettiApi.cruscottoAmministrativo().then(r => r.data.data),
+    refetchInterval: 60000,
+  });
+
   const { data: tsData } = useQuery({
     queryKey: queryKeys.timesheet.list({ stato: 'inviato' }),
     queryFn: () => timesheetApi.list({ stato: 'inviato' }).then(r =>
@@ -683,6 +833,7 @@ function DashboardAmministrativo() {
 
   const tsPendenti = (tsData as unknown[] ?? []).length;
   const salInScadenza = d.sal_in_scadenza;
+  const totaleApprovazioni = approvazioni?.totale ?? 0;
 
   return (
     <div>
@@ -693,8 +844,19 @@ function DashboardAmministrativo() {
       </div>
 
       {/* Alert globali */}
-      {(tsPendenti > 0 || salInScadenza > 0) && (
+      {(tsPendenti > 0 || salInScadenza > 0 || totaleApprovazioni > 0) && (
         <Row gutter={12} style={{ marginBottom: 20 }}>
+          {totaleApprovazioni > 0 && (
+            <Col span={24}>
+              <Alert
+                type="error"
+                showIcon
+                message={`${totaleApprovazioni} approvazioni in sospeso`}
+                description="Accedi alle sezioni sottostanti per completare le approvazioni"
+                style={{ marginBottom: 12 }}
+              />
+            </Col>
+          )}
           {tsPendenti > 0 && (
             <Col span={salInScadenza > 0 ? 12 : 24}>
               <Alert type="info" showIcon icon={<FileTextOutlined />}
@@ -721,18 +883,144 @@ function DashboardAmministrativo() {
 
       {/* KPI box */}
       <Row gutter={16} style={{ marginBottom: 24 }}>
-        <Col span={8}>
-          <KpiBox label="Progetti attivi" value={d.progetti_attivi} color="#185FA5" />
+        <Col span={4.8}>
+          <KpiBox
+            label="Timesheet"
+            value={approvazioni?.timesheet ?? 0}
+            color={(approvazioni?.timesheet ?? 0) > 0 ? '#185FA5' : '#888'}
+          />
         </Col>
-        <Col span={8}>
-          <KpiBox label="Timesheet da approvare" value={tsPendenti}
-            color={tsPendenti > 0 ? '#185FA5' : '#888'} />
+        <Col span={4.8}>
+          <KpiBox
+            label="Missioni"
+            value={approvazioni?.missioni ?? 0}
+            color={(approvazioni?.missioni ?? 0) > 0 ? '#E24B4A' : '#888'}
+          />
         </Col>
-        <Col span={8}>
-          <KpiBox label="SAL in scadenza" value={salInScadenza}
-            color={salInScadenza > 0 ? '#E24B4A' : '#888'} />
+        <Col span={4.8}>
+          <KpiBox
+            label="Rimborsi missione"
+            value={approvazioni?.rimborsi_missione ?? 0}
+            color={(approvazioni?.rimborsi_missione ?? 0) > 0 ? '#1D9E75' : '#888'}
+          />
+        </Col>
+        <Col span={4.8}>
+          <KpiBox
+            label="Rimborsi spese"
+            value={approvazioni?.rimborsi_spesa ?? 0}
+            color={(approvazioni?.rimborsi_spesa ?? 0) > 0 ? '#722ed1' : '#888'}
+          />
+        </Col>
+        <Col span={4.8}>
+          <KpiBox
+            label="Autorizzazioni"
+            value={approvazioni?.autorizzazioni_spesa ?? 0}
+            color={(approvazioni?.autorizzazioni_spesa ?? 0) > 0 ? '#faad14' : '#888'}
+          />
         </Col>
       </Row>
+
+      {/* Link alle sezioni */}
+      <Row gutter={16} style={{ marginBottom: 24 }}>
+        {(approvazioni?.timesheet ?? 0) > 0 && (
+          <Col span={12}>
+            <Card
+              hoverable
+              onClick={() => navigate(approvazioni?.timesheet_primo_id ? `/timesheet/${approvazioni.timesheet_primo_id}` : '/timesheet?stato=attesa_ammin')}
+              style={{ borderRadius: 12, borderColor: '#185FA5', cursor: 'pointer' }}
+            >
+              <Space style={{ justifyContent: 'space-between', width: '100%' }}>
+                <div>
+                  <Text strong>Timesheet da approvare</Text>
+                  <Text type="secondary" style={{ display: 'block', fontSize: 12, marginTop: 4 }}>
+                    {approvazioni?.timesheet} timesheet in attesa della tua approvazione
+                  </Text>
+                </div>
+                <FileTextOutlined style={{ fontSize: 24, color: '#185FA5' }} />
+              </Space>
+            </Card>
+          </Col>
+        )}
+        {(approvazioni?.missioni ?? 0) > 0 && (
+          <Col span={12}>
+            <Card
+              hoverable
+              onClick={() => navigate(approvazioni?.missioni_primo_id ? `/missioni/${approvazioni.missioni_primo_id}` : '/missioni?stato=attesa_ammin')}
+              style={{ borderRadius: 12, borderColor: '#E24B4A', cursor: 'pointer' }}
+            >
+              <Space style={{ justifyContent: 'space-between', width: '100%' }}>
+                <div>
+                  <Text strong>Missioni da approvare</Text>
+                  <Text type="secondary" style={{ display: 'block', fontSize: 12, marginTop: 4 }}>
+                    {approvazioni?.missioni} richieste missione in attesa della tua approvazione
+                  </Text>
+                </div>
+                <ProjectOutlined style={{ fontSize: 24, color: '#E24B4A' }} />
+              </Space>
+            </Card>
+          </Col>
+        )}
+        {(approvazioni?.rimborsi_missione ?? 0) > 0 && (
+          <Col span={12}>
+            <Card
+              hoverable
+              onClick={() => navigate(approvazioni?.rimborsi_missione_primo_id ? `/rimborsi-missione/${approvazioni.rimborsi_missione_primo_id}` : '/rimborsi-missione?stato=attesa_ammin')}
+              style={{ borderRadius: 12, borderColor: '#1D9E75', cursor: 'pointer' }}
+            >
+              <Space style={{ justifyContent: 'space-between', width: '100%' }}>
+                <div>
+                  <Text strong>Rimborsi missione da approvare</Text>
+                  <Text type="secondary" style={{ display: 'block', fontSize: 12, marginTop: 4 }}>
+                    {approvazioni?.rimborsi_missione} rimborsi in attesa della tua approvazione
+                  </Text>
+                </div>
+                <FileTextOutlined style={{ fontSize: 24, color: '#1D9E75' }} />
+              </Space>
+            </Card>
+          </Col>
+        )}
+        {(approvazioni?.rimborsi_spesa ?? 0) > 0 && (
+          <Col span={12}>
+            <Card
+              hoverable
+              onClick={() => navigate(approvazioni?.rimborsi_spesa_primo_id ? `/rimborsi-spese/${approvazioni.rimborsi_spesa_primo_id}` : '/rimborsi-spese?stato=attesa_ammin')}
+              style={{ borderRadius: 12, borderColor: '#722ed1', cursor: 'pointer' }}
+            >
+              <Space style={{ justifyContent: 'space-between', width: '100%' }}>
+                <div>
+                  <Text strong>Rimborsi spese da approvare</Text>
+                  <Text type="secondary" style={{ display: 'block', fontSize: 12, marginTop: 4 }}>
+                    {approvazioni?.rimborsi_spesa} rimborsi in attesa della tua approvazione
+                  </Text>
+                </div>
+                <FileTextOutlined style={{ fontSize: 24, color: '#722ed1' }} />
+              </Space>
+            </Card>
+          </Col>
+        )}
+        {(approvazioni?.autorizzazioni_spesa ?? 0) > 0 && (
+          <Col span={12}>
+            <Card
+              hoverable
+              onClick={() => navigate(approvazioni?.autorizzazioni_spesa_primo_id ? `/autorizzazioni-spesa/${approvazioni.autorizzazioni_spesa_primo_id}` : '/autorizzazioni-spesa?stato=attesa_ammin')}
+              style={{ borderRadius: 12, borderColor: '#faad14', cursor: 'pointer' }}
+            >
+              <Space style={{ justifyContent: 'space-between', width: '100%' }}>
+                <div>
+                  <Text strong>Autorizzazioni spesa da approvare</Text>
+                  <Text type="secondary" style={{ display: 'block', fontSize: 12, marginTop: 4 }}>
+                    {approvazioni?.autorizzazioni_spesa} richieste in attesa della tua approvazione
+                  </Text>
+                </div>
+                <FileTextOutlined style={{ fontSize: 24, color: '#faad14' }} />
+              </Space>
+            </Card>
+          </Col>
+        )}
+      </Row>
+
+      {/* Divider */}
+      <Divider style={{ margin: '32px 0' }} />
 
       {/* Schede progetto */}
       {d.progetti.length === 0 ? (
