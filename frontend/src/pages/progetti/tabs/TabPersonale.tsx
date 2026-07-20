@@ -214,16 +214,16 @@ export function TabPersonale({ progettoId }: Props) {
                   <Text strong>Totale</Text>
                 </Table.Summary.Cell>
                 <Table.Summary.Cell index={1} align="right">
-                  <Text strong>{formatOre(totOre)}</Text>
+                  <Text strong style={{ whiteSpace: 'nowrap' }}>{formatOre(totOre)}</Text>
                 </Table.Summary.Cell>
                 <Table.Summary.Cell index={2} align="right">
-                  <Text strong style={{ color: '#b45309' }}>{formatEuro(totCosto)}</Text>
+                  <Text strong style={{ color: '#b45309', whiteSpace: 'nowrap' }}>{formatEuro(totCosto)}</Text>
                 </Table.Summary.Cell>
                 <Table.Summary.Cell index={3} align="right">
-                  <Text strong style={{ color: '#185FA5' }}>{formatOre(totRend)}</Text>
+                  <Text strong style={{ color: '#185FA5', whiteSpace: 'nowrap' }}>{formatOre(totRend)}</Text>
                 </Table.Summary.Cell>
                 <Table.Summary.Cell index={4} align="right">
-                  <Text strong style={{ color: '#065f46' }}>{formatEuro(totCostoRend)}</Text>
+                  <Text strong style={{ color: '#065f46', whiteSpace: 'nowrap' }}>{formatEuro(totCostoRend)}</Text>
                 </Table.Summary.Cell>
                 <Table.Summary.Cell index={5} colSpan={2} />
               </Table.Summary.Row>
@@ -236,7 +236,7 @@ export function TabPersonale({ progettoId }: Props) {
                   </Table.Summary.Cell>
                   <Table.Summary.Cell index={1} />
                   <Table.Summary.Cell index={2} align="right">
-                    <Text strong type={costoRimanente < 0 ? 'danger' : 'success'}>
+                    <Text strong type={costoRimanente < 0 ? 'danger' : 'success'} style={{ whiteSpace: 'nowrap' }}>
                       {formatEuro(costoRimanente)}
                     </Text>
                   </Table.Summary.Cell>
