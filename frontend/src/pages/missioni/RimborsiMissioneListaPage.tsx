@@ -4,8 +4,10 @@ import { Table, Button, Typography, Row, Col, Tag, Select, Space, Switch } from 
 import { PlusOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import { rimborsiMissioneApi } from '../../api/missioni';
+import { progettiApi } from '../../api/progetti';
 import { formatData, formatEuro } from '../../utils/formatters';
 import { useAuthStore } from '../../store/useAuthStore';
+import { queryKeys } from '../../utils/queryKeys';
 
 const { Title } = Typography;
 
@@ -24,12 +26,19 @@ export function RimborsiMissioneListaPage() {
   const user = useAuthStore(s => s.user);
   const isPrivilegiato = user?.ruolo === 'superadmin' || user?.ruolo === 'direttore_generale';
   const [stato, setStato] = useState<string | undefined>();
+  const [progettoId, setProgettoId] = useState<string | undefined>();
   const [soloMiei, setSoloMiei] = useState(false);
   const [page, setPage] = useState(1);
 
+  const { data: progetti } = useQuery({
+    queryKey: queryKeys.progetti.list({ amministrativo_id: user?.id }),
+    queryFn: () => progettiApi.list({ amministrativo_id: user?.id, page_size: 100 }).then(r => r.data.data),
+    enabled: !!user?.id,
+  });
+
   const { data, isLoading } = useQuery({
-    queryKey: ['rimborsi-missione-lista', stato, soloMiei, page],
-    queryFn: () => rimborsiMissioneApi.list({ stato, solo_miei: soloMiei, page, page_size: 20 }).then(r => r.data),
+    queryKey: ['rimborsi-missione-lista', stato, progettoId, soloMiei, page],
+    queryFn: () => rimborsiMissioneApi.list({ stato, progetto_id: progettoId, solo_miei: soloMiei, page, page_size: 20 }).then(r => r.data),
   });
 
   const colonne = [
@@ -65,7 +74,14 @@ export function RimborsiMissioneListaPage() {
         )}
       </Row>
 
-      <Space style={{ marginBottom: 16 }}>
+      <Space style={{ marginBottom: 16 }} wrap>
+        <Select
+          placeholder="Seleziona progetto"
+          allowClear style={{ width: 250 }}
+          options={progetti?.map(p => ({ value: p.id, label: p.acronimo || p.codice })) ?? []}
+          value={progettoId}
+          onChange={v => { setProgettoId(v); setPage(1); }}
+        />
         <Select
           placeholder="Filtra per stato"
           allowClear style={{ width: 200 }}

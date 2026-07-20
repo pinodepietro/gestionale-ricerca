@@ -5,7 +5,7 @@ import type { Progetto, DocumentoProgetto, CruscottoProgetto, PortfolioGlobale }
 export interface ProgettoFilters {
   stato?: string; tipo?: string; anno?: number;
   search?: string; page?: number; page_size?: number;
-  includi_bozze?: boolean; solo_allocati?: boolean;
+  includi_bozze?: boolean; solo_allocati?: boolean; amministrativo_id?: string;
 }
 
 export const progettiApi = {

@@ -55,7 +55,7 @@ export interface AutorizzazioneDisponibile {
 }
 
 export const rimborsiSpesaApi = {
-  list: (params: { stato?: string; solo_miei?: boolean; page?: number; page_size?: number } = {}) =>
+  list: (params: { stato?: string; progetto_id?: string; solo_miei?: boolean; page?: number; page_size?: number } = {}) =>
     apiClient.get<PaginatedResponse<RimborsoSpesa>>('/rimborsi-spesa', { params }),
 
   get: (id: string) =>

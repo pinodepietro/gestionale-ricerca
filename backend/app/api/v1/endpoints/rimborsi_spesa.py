@@ -173,6 +173,7 @@ def _notifica_step(db: Session, r: RichiestaRimborsoSpesa, persona_id, titolo: s
 @router.get("/rimborsi-spesa")
 def lista_rimborsi(
     stato: str = Query(None),
+    progetto_id: str = Query(None),
     solo_miei: bool = Query(False),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
@@ -183,6 +184,11 @@ def lista_rimborsi(
     q = db.query(RichiestaRimborsoSpesa)
     if stato:
         q = q.filter(RichiestaRimborsoSpesa.stato == stato)
+    if progetto_id:
+        aut_project = db.query(RichiestaAutorizzazioneSpesa.id).filter(
+            RichiestaAutorizzazioneSpesa.progetto_id == progetto_id
+        ).subquery()
+        q = q.filter(RichiestaRimborsoSpesa.richiesta_autorizzazione_spesa_id.in_(aut_project))
     if solo_miei:
         q = q.filter(RichiestaRimborsoSpesa.richiedente_id == utente.id)
     elif utente.ruolo not in ("superadmin", "direttore_generale"):

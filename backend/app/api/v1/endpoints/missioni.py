@@ -435,9 +435,12 @@ def lista_missioni(
         q = q.filter(Missione.richiedente_id == utente.id)
     elif utente.ruolo not in ("superadmin", "direttore_generale"):
         alloc_ids = db.query(Allocazione.progetto_id).filter(Allocazione.persona_id == utente.id).subquery()
+        ammin_proj_ids = db.query(Progetto.id).filter(Progetto.amministrativo_id == utente.id).subquery()
         q = q.filter(
-            Missione.richiedente_id == utente.id,
-            Missione.progetto_id.in_(alloc_ids),
+            or_(
+                (Missione.richiedente_id == utente.id) & Missione.progetto_id.in_(alloc_ids),
+                Missione.progetto_id.in_(ammin_proj_ids),
+            )
         )
     total = q.count()
     items = q.order_by(Missione.created_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
@@ -807,6 +810,7 @@ def riapri_missione(id: str, db: Session = Depends(get_db), utente: Persona = De
 @router.get("/rimborsi-missione")
 def lista_rimborsi(
     stato: str = Query(None),
+    progetto_id: str = Query(None),
     solo_miei: bool = Query(False),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
@@ -817,6 +821,11 @@ def lista_rimborsi(
     q = db.query(RimborsoMissione)
     if stato:
         q = q.filter(RimborsoMissione.stato == stato)
+    if progetto_id:
+        missioni_project = db.query(Missione.id).filter(
+            Missione.progetto_id == progetto_id
+        ).subquery()
+        q = q.filter(RimborsoMissione.missione_id.in_(missioni_project))
     if solo_miei:
         q = q.filter(RimborsoMissione.richiedente_id == utente.id)
     elif utente.ruolo not in ("superadmin", "direttore_generale"):
@@ -824,9 +833,15 @@ def lista_rimborsi(
         missioni_in_projects = db.query(Missione.id).filter(
             Missione.progetto_id.in_(alloc_proj_ids)
         ).subquery()
+        ammin_proj_ids = db.query(Progetto.id).filter(Progetto.amministrativo_id == utente.id).subquery()
+        missioni_ammin_projects = db.query(Missione.id).filter(
+            Missione.progetto_id.in_(ammin_proj_ids)
+        ).subquery()
         q = q.filter(
-            RimborsoMissione.richiedente_id == utente.id,
-            RimborsoMissione.missione_id.in_(missioni_in_projects),
+            or_(
+                (RimborsoMissione.richiedente_id == utente.id) & RimborsoMissione.missione_id.in_(missioni_in_projects),
+                RimborsoMissione.missione_id.in_(missioni_ammin_projects),
+            )
         )
     total = q.count()
     items = q.order_by(RimborsoMissione.created_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
