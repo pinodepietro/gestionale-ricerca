@@ -1,11 +1,12 @@
 // frontend/src/pages/timesheet/TimesheetPage.tsx
-import { useState, useEffect } from 'react';
-import { Table, Button, Tag, Space, Modal, Form, Select, Typography, App } from 'antd';
+import { useState, useEffect, useMemo } from 'react';
+import { Table, Button, Tag, Space, Modal, Form, Select, Typography, App, Alert } from 'antd';
 import { PlusOutlined, EditOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { timesheetApi } from '../../api/timesheet';
 import { progettiApi } from '../../api/progetti';
+import { salApi } from '../../api/sal';
 import { queryKeys } from '../../utils/queryKeys';
 import { useAuthStore } from '../../store/useAuthStore';
 import type { TimesheetTestata } from '../../types/timesheet';
@@ -52,6 +53,34 @@ export function TimesheetPage() {
     queryKey: queryKeys.progetti.list({ stato: 'attivo' }),
     queryFn: () => progettiApi.list({ stato: 'attivo' }).then(r => r.data.data),
   });
+
+  // Carica SAL per ogni progetto per filtro SAL aperti
+  const { data: salList = [] } = useQuery({
+    queryKey: ['sal-all'],
+    queryFn: async () => {
+      if (!progetti || progetti.length === 0) return [];
+      const allSal = [];
+      for (const p of progetti) {
+        try {
+          const result = await salApi.list(p.id).then(r => r.data?.data ?? []);
+          allSal.push(...result);
+        } catch {
+          // Ignora errori durante il caricamento SAL
+        }
+      }
+      return allSal;
+    },
+    enabled: !!progetti && progetti.length > 0,
+  });
+
+  // Filtra progetti che hanno SAL non chiuso
+  const progettiConSalAperti = useMemo(() => {
+    if (!progetti || salList.length === 0) return [];
+    const progettiConSal = new Set(
+      salList.filter((sal: any) => sal.stato !== 'chiuso').map((sal: any) => sal.progetto_id)
+    );
+    return progetti.filter((p: any) => progettiConSal.has(p.id));
+  }, [progetti, salList]);
 
   // Sincronizza granularità con quella del progetto selezionato
   useEffect(() => {
@@ -164,39 +193,49 @@ export function TimesheetPage() {
         confirmLoading={creaTimesheet.isPending}
         width={440}
       >
-        <Form form={form} layout="vertical" onFinish={(v) => creaTimesheet.mutate(v)}
-          style={{ marginTop: 16 }}
-          initialValues={{ anno: ANNO_CORRENTE, granularita: 'mensile',
-            progetto_id: progettoIdPreselezionato ?? undefined }}>
-          <Form.Item name="progetto_id" label="Progetto" rules={[{ required: true }]}>
-            {progettoIdPreselezionato ? (
-              <Select disabled
-                options={progetti?.map((p: {id: string; acronimo: string; titolo: string; codice: string}) => ({
-                  value: p.id, label: `${p.acronimo || p.codice} — ${p.titolo}`,
-                }))} />
-            ) : (
-              <Select placeholder="Seleziona progetto"
-                options={progetti?.map((p: {id: string; acronimo: string; titolo: string; codice: string}) => ({
-                  value: p.id, label: `${p.acronimo || p.codice} — ${p.titolo}`,
-                }))}
-                showSearch
-                filterOption={(input, option) =>
-                  (option?.label as string)?.toLowerCase().includes(input.toLowerCase())} />
-            )}
-          </Form.Item>
-          <Form.Item name="anno" label="Anno" rules={[{ required: true }]}>
-            <Select options={ANNI.map(a => ({ value: a, label: a }))} />
-          </Form.Item>
-          <Form.Item name="mese" label="Mese" rules={[{ required: true }]}>
-            <Select options={MESI.slice(1).map((m, i) => ({ value: i + 1, label: m }))} />
-          </Form.Item>
-          <Form.Item name="granularita" label="Granularità" rules={[{ required: true }]}>
-            <Select disabled placeholder="Impostata dal progetto" options={[
-              { value: 'mensile', label: 'Mensile (totale mese per WP)' },
-              { value: 'giornaliero', label: 'Giornaliero (colonna per ogni giorno)' },
-            ]} />
-          </Form.Item>
-        </Form>
+        {progettiConSalAperti.length === 0 ? (
+          <Alert
+            type="warning"
+            message="Non ci sono SAL aperti"
+            description="Non è possibile creare un timesheet se non ci sono SAL aperti nei tuoi progetti."
+            showIcon
+            style={{ marginTop: 16, marginBottom: 16 }}
+          />
+        ) : (
+          <Form form={form} layout="vertical" onFinish={(v) => creaTimesheet.mutate(v)}
+            style={{ marginTop: 16 }}
+            initialValues={{ anno: ANNO_CORRENTE, granularita: 'mensile',
+              progetto_id: progettoIdPreselezionato ?? undefined }}>
+            <Form.Item name="progetto_id" label="Progetto" rules={[{ required: true }]}>
+              {progettoIdPreselezionato ? (
+                <Select disabled
+                  options={progettiConSalAperti.map((p: {id: string; acronimo: string; titolo: string; codice: string}) => ({
+                    value: p.id, label: `${p.acronimo || p.codice} — ${p.titolo}`,
+                  }))} />
+              ) : (
+                <Select placeholder="Seleziona progetto"
+                  options={progettiConSalAperti.map((p: {id: string; acronimo: string; titolo: string; codice: string}) => ({
+                    value: p.id, label: `${p.acronimo || p.codice} — ${p.titolo}`,
+                  }))}
+                  showSearch
+                  filterOption={(input, option) =>
+                    (option?.label as string)?.toLowerCase().includes(input.toLowerCase())} />
+              )}
+            </Form.Item>
+            <Form.Item name="anno" label="Anno" rules={[{ required: true }]}>
+              <Select options={ANNI.map(a => ({ value: a, label: a }))} />
+            </Form.Item>
+            <Form.Item name="mese" label="Mese" rules={[{ required: true }]}>
+              <Select options={MESI.slice(1).map((m, i) => ({ value: i + 1, label: m }))} />
+            </Form.Item>
+            <Form.Item name="granularita" label="Granularità" rules={[{ required: true }]}>
+              <Select disabled placeholder="Impostata dal progetto" options={[
+                { value: 'mensile', label: 'Mensile (totale mese per WP)' },
+                { value: 'giornaliero', label: 'Giornaliero (colonna per ogni giorno)' },
+              ]} />
+            </Form.Item>
+          </Form>
+        )}
       </Modal>
     </div>
   );
