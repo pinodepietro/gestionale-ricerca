@@ -72,6 +72,7 @@ export function TabSpese({ progettoId, stato, onVaiAImpegno }: Props) {
       budgetApi.spese.create(progettoId, {
         ...values,
         data: values.data ? dayjs(values.data as dayjs.Dayjs).format('YYYY-MM-DD') : undefined,
+        data_documento: values.data_documento ? dayjs(values.data_documento as dayjs.Dayjs).format('YYYY-MM-DD') : undefined,
       }).then(r => r.data.data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['progetti', progettoId, 'spese'] });
@@ -265,7 +266,7 @@ export function TabSpese({ progettoId, stato, onVaiAImpegno }: Props) {
             </Form.Item>
           )}
           <Space style={{ width: '100%' }} size={12}>
-            <Form.Item name="data" label="Data documento" rules={[{ required: true }]}
+            <Form.Item name="data" label="Data spesa" rules={[{ required: true }]}
               style={{ flex: 1 }}>
               <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
             </Form.Item>
@@ -274,6 +275,9 @@ export function TabSpese({ progettoId, stato, onVaiAImpegno }: Props) {
               <InputNumber min={0} precision={2} style={{ width: '100%' }} placeholder="0.00" />
             </Form.Item>
           </Space>
+          <Form.Item name="data_documento" label="Data documento (per rendicontazione)">
+            <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
+          </Form.Item>
           <Form.Item name="numero_documento" label="N° documento (fattura/ricevuta)">
             <Input placeholder="Es. FT-2024-001" />
           </Form.Item>
