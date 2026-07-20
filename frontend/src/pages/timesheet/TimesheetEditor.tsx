@@ -50,6 +50,18 @@ export function TimesheetEditor() {
     enabled: !!ts?.progetto_id,
   });
 
+  const { data: persona } = useQuery({
+    queryKey: ['persona', ts?.persona_id],
+    queryFn: () => fetch(`${env.apiUrl}/api/v1/persone/${ts!.persona_id}`).then(r => r.json()).then(r => r.data),
+    enabled: !!ts?.persona_id,
+  });
+
+  const { data: progetto } = useQuery({
+    queryKey: queryKeys.progetti.detail(ts?.progetto_id ?? ''),
+    queryFn: () => progettiApi.get(ts!.progetto_id).then(r => r.data.data),
+    enabled: !!ts?.progetto_id,
+  });
+
   // Inizializza ore locali dai dati server
   useEffect(() => {
     if (ts && !modificato) {
@@ -268,6 +280,15 @@ export function TimesheetEditor() {
             </Title>
             <Tag color={COLORI_STATO[ts.stato]}>{ts.stato}</Tag>
           </Space>
+          <div style={{ marginTop: 8 }}>
+            <Text>
+              <Text strong>Persona:</Text> {persona?.nome} {persona?.cognome}
+            </Text>
+            <br />
+            <Text>
+              <Text strong>Progetto:</Text> {progetto?.acronimo || progetto?.codice} — {progetto?.titolo}
+            </Text>
+          </div>
           <div style={{ marginTop: 4 }}>
             <Text type="secondary">
               {isGiornaliero ? 'Granularità giornaliera' : 'Granularità mensile'}
