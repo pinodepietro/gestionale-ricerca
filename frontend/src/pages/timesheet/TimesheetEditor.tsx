@@ -117,6 +117,7 @@ export function TimesheetEditor() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.timesheet.detail(id!) });
       queryClient.invalidateQueries({ queryKey: queryKeys.timesheet.all });
+      queryClient.invalidateQueries({ queryKey: ['cruscotto-dg'] });
       notification.success({ message: 'Timesheet approvato' });
     },
   });
@@ -135,6 +136,7 @@ export function TimesheetEditor() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.timesheet.detail(id!) });
       queryClient.invalidateQueries({ queryKey: queryKeys.timesheet.all });
+      queryClient.invalidateQueries({ queryKey: ['cruscotto-dg'] });
       notification.success({ message: 'Timesheet approvato definitivamente' });
     },
   });

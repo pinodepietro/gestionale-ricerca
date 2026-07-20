@@ -118,6 +118,7 @@ export function RimborsoMissioneDettaglioPage() {
     onSuccess: (res) => {
       queryClient.setQueryData(['rimborso-missione', id], res.data);
       queryClient.invalidateQueries({ queryKey: ['notifiche'] });
+      queryClient.invalidateQueries({ queryKey: ['cruscotto-dg'] });
       const pid = res.data?.progetto_id;
       if (pid) {
         queryClient.invalidateQueries({ queryKey: ['progetti', pid, 'spese'] });
@@ -133,7 +134,7 @@ export function RimborsoMissioneDettaglioPage() {
 
   const rigetta = useMutation({
     mutationFn: (mot: string) => rimborsiMissioneApi.rigetta(id!, mot).then(r => r.data),
-    onSuccess: (res) => { queryClient.setQueryData(['rimborso-missione', id], res.data); setModalRigetto(false); setMotivazione(''); message.success('Rigettato'); },
+    onSuccess: (res) => { queryClient.setQueryData(['rimborso-missione', id], res.data); queryClient.invalidateQueries({ queryKey: ['cruscotto-dg'] }); setModalRigetto(false); setMotivazione(''); message.success('Rigettato'); },
     onError: (e: unknown) => message.error(apiErrorMessage(e, 'Errore nel rigetto')),
   });
 
