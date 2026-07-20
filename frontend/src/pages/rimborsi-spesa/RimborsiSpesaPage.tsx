@@ -25,9 +25,10 @@ export function RimborsiSpesaPage() {
   const navigate = useNavigate();
   const user = useAuthStore(s => s.user);
   const isPrivilegiato = user?.ruolo === 'superadmin' || user?.ruolo === 'direttore_generale';
+  const isAmministrativo = user?.ruolo === 'amministrativo';
   const [stato, setStato] = useState<string | undefined>();
   const [progettoId, setProgettoId] = useState<string | undefined>();
-  const [soloMiei, setSoloMiei] = useState(!isPrivilegiato);
+  const [soloMiei, setSoloMiei] = useState(!isPrivilegiato && !isAmministrativo);
   const [page, setPage] = useState(1);
 
   const { data: progetti } = useQuery({
