@@ -103,6 +103,7 @@ export function TimesheetEditor() {
     mutationFn: () => timesheetApi.approva(id!).then(r => r.data.data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.timesheet.detail(id!) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.timesheet.all });
       notification.success({ message: 'Timesheet approvato' });
     },
   });
@@ -111,6 +112,7 @@ export function TimesheetEditor() {
     mutationFn: () => timesheetApi.rifiuta(id!, '').then(r => r.data.data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.timesheet.detail(id!) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.timesheet.all });
       notification.success({ message: 'Timesheet rifiutato' });
     },
   });
