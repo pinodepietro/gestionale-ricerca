@@ -282,6 +282,60 @@ def cruscotto_globale(
     }}
 
 
+@router.get("/cruscotto-dg")
+def cruscotto_direttore_generale(
+    db: Session = Depends(get_db),
+    utente: Persona = Depends(tutti_i_ruoli),
+):
+    """Cruscotto del Direttore Generale con approvazioni da fare"""
+    from app.models.timesheet import TimesheetTestata
+    from app.models.missione import Missione, RimborsoMissione
+    from app.models.rimborso_spesa import RichiestaRimborsoSpesa
+    from app.models.autorizzazione_spesa import RichiestaAutorizzazioneSpesa
+
+    if utente.ruolo != "direttore_generale" and utente.ruolo != "superadmin":
+        from fastapi import HTTPException
+        raise HTTPException(status_code=403, detail={"error": {"code": "FORBIDDEN"}})
+
+    # Conteggi approvazioni in attesa
+    timesheet_da_approvare = db.query(TimesheetTestata).filter(
+        TimesheetTestata.stato == "attesa_dg"
+    ).count()
+
+    missioni_da_approvare = db.query(Missione).filter(
+        Missione.stato == "attesa_dg"
+    ).count()
+
+    rimborsi_missione_da_approvare = db.query(RimborsoMissione).filter(
+        RimborsoMissione.stato == "attesa_dg"
+    ).count()
+
+    rimborsi_spesa_da_approvare = db.query(RichiestaRimborsoSpesa).filter(
+        RichiestaRimborsoSpesa.stato == "attesa_dg"
+    ).count()
+
+    autorizzazioni_spesa_da_approvare = db.query(RichiestaAutorizzazioneSpesa).filter(
+        RichiestaAutorizzazioneSpesa.stato == "attesa_dg"
+    ).count()
+
+    totale_approvazioni = (
+        timesheet_da_approvare +
+        missioni_da_approvare +
+        rimborsi_missione_da_approvare +
+        rimborsi_spesa_da_approvare +
+        autorizzazioni_spesa_da_approvare
+    )
+
+    return {"data": {
+        "timesheet": timesheet_da_approvare,
+        "missioni": missioni_da_approvare,
+        "rimborsi_missione": rimborsi_missione_da_approvare,
+        "rimborsi_spesa": rimborsi_spesa_da_approvare,
+        "autorizzazioni_spesa": autorizzazioni_spesa_da_approvare,
+        "totale": totale_approvazioni,
+    }}
+
+
 @router.get("/{id}")
 def get_progetto(id: str, db: Session = Depends(get_db), utente: Persona = Depends(tutti_i_ruoli)):
     p = _get_or_404(id, db)

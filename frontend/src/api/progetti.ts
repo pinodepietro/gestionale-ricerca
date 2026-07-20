@@ -30,6 +30,8 @@ export const progettiApi = {
     apiClient.get<ApiResponse<CruscottoProgetto>>(`/progetti/${id}/cruscotto`),
   portfolio: () =>
     apiClient.get<ApiResponse<PortfolioGlobale>>('/progetti/cruscotto'),
+  cruscottoDG: () =>
+    apiClient.get<ApiResponse<{ timesheet: number; missioni: number; rimborsi_missione: number; rimborsi_spesa: number; autorizzazioni_spesa: number; totale: number }>>('/progetti/cruscotto-dg'),
 
   documenti: {
     list: (progettoId: string) =>

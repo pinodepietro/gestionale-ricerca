@@ -10,6 +10,7 @@ import { env } from '../../config/env';
 import { budgetApi } from '../../api/budget';
 import { salApi } from '../../api/sal';
 import { timesheetApi } from '../../api/timesheet';
+import { progettiApi } from '../../api/progetti';
 import { formatEuro, formatData } from '../../utils/formatters';
 import { queryKeys } from '../../utils/queryKeys';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -659,6 +660,181 @@ function DashboardPI() {
   );
 }
 
+// ── Dashboard Direttore Generale ─────────────────────────────────────────────
+function DashboardDG() {
+  const navigate = useNavigate();
+  const user = useAuthStore(s => s.user);
+
+  const { data: approvazioni } = useQuery({
+    queryKey: ['cruscotto-dg'],
+    queryFn: () => progettiApi.cruscottoDG().then(r => r.data.data),
+    refetchInterval: 60000,
+  });
+
+  if (!approvazioni) return <Spin size="large" style={{ display: 'block', margin: '80px auto' }} />;
+
+  const totale = approvazioni.totale || 0;
+
+  return (
+    <div>
+      {/* Header */}
+      <div style={{ marginBottom: 24 }}>
+        <Title level={2} style={{ margin: 0 }}>Ciao, {user?.nome}</Title>
+        <Text type="secondary">Approvazioni in sospeso</Text>
+      </div>
+
+      {/* Alert globale */}
+      {totale > 0 && (
+        <Alert
+          type="error"
+          showIcon
+          message={`${totale} approvazioni in sospeso`}
+          description="Accedi alle sezioni sottostanti per completare le approvazioni"
+          style={{ marginBottom: 24 }}
+        />
+      )}
+
+      {/* KPI box */}
+      <Row gutter={16} style={{ marginBottom: 24 }}>
+        <Col span={4.8}>
+          <KpiBox
+            label="Timesheet"
+            value={approvazioni.timesheet}
+            color={approvazioni.timesheet > 0 ? '#185FA5' : '#888'}
+          />
+        </Col>
+        <Col span={4.8}>
+          <KpiBox
+            label="Missioni"
+            value={approvazioni.missioni}
+            color={approvazioni.missioni > 0 ? '#E24B4A' : '#888'}
+          />
+        </Col>
+        <Col span={4.8}>
+          <KpiBox
+            label="Rimborsi missione"
+            value={approvazioni.rimborsi_missione}
+            color={approvazioni.rimborsi_missione > 0 ? '#1D9E75' : '#888'}
+          />
+        </Col>
+        <Col span={4.8}>
+          <KpiBox
+            label="Rimborsi spese"
+            value={approvazioni.rimborsi_spesa}
+            color={approvazioni.rimborsi_spesa > 0 ? '#722ed1' : '#888'}
+          />
+        </Col>
+        <Col span={4.8}>
+          <KpiBox
+            label="Autorizzazioni"
+            value={approvazioni.autorizzazioni_spesa}
+            color={approvazioni.autorizzazioni_spesa > 0 ? '#faad14' : '#888'}
+          />
+        </Col>
+      </Row>
+
+      {/* Link alle sezioni */}
+      <Row gutter={16}>
+        {approvazioni.timesheet > 0 && (
+          <Col span={12}>
+            <Card
+              hoverable
+              onClick={() => navigate('/timesheet')}
+              style={{ borderRadius: 12, borderColor: '#185FA5', cursor: 'pointer' }}
+            >
+              <Space style={{ justifyContent: 'space-between', width: '100%' }}>
+                <div>
+                  <Text strong>Timesheet da approvare</Text>
+                  <Text type="secondary" style={{ display: 'block', fontSize: 12, marginTop: 4 }}>
+                    {approvazioni.timesheet} timesheet in attesa della tua approvazione finale
+                  </Text>
+                </div>
+                <FileTextOutlined style={{ fontSize: 24, color: '#185FA5' }} />
+              </Space>
+            </Card>
+          </Col>
+        )}
+        {approvazioni.missioni > 0 && (
+          <Col span={12}>
+            <Card
+              hoverable
+              onClick={() => navigate('/missioni')}
+              style={{ borderRadius: 12, borderColor: '#E24B4A', cursor: 'pointer' }}
+            >
+              <Space style={{ justifyContent: 'space-between', width: '100%' }}>
+                <div>
+                  <Text strong>Missioni da approvare</Text>
+                  <Text type="secondary" style={{ display: 'block', fontSize: 12, marginTop: 4 }}>
+                    {approvazioni.missioni} richieste missione in attesa della tua approvazione
+                  </Text>
+                </div>
+                <ProjectOutlined style={{ fontSize: 24, color: '#E24B4A' }} />
+              </Space>
+            </Card>
+          </Col>
+        )}
+        {approvazioni.rimborsi_missione > 0 && (
+          <Col span={12}>
+            <Card
+              hoverable
+              onClick={() => navigate('/rimborsi-missione')}
+              style={{ borderRadius: 12, borderColor: '#1D9E75', cursor: 'pointer' }}
+            >
+              <Space style={{ justifyContent: 'space-between', width: '100%' }}>
+                <div>
+                  <Text strong>Rimborsi missione da approvare</Text>
+                  <Text type="secondary" style={{ display: 'block', fontSize: 12, marginTop: 4 }}>
+                    {approvazioni.rimborsi_missione} rimborsi in attesa della tua approvazione
+                  </Text>
+                </div>
+                <FileTextOutlined style={{ fontSize: 24, color: '#1D9E75' }} />
+              </Space>
+            </Card>
+          </Col>
+        )}
+        {approvazioni.rimborsi_spesa > 0 && (
+          <Col span={12}>
+            <Card
+              hoverable
+              onClick={() => navigate('/rimborsi-spese')}
+              style={{ borderRadius: 12, borderColor: '#722ed1', cursor: 'pointer' }}
+            >
+              <Space style={{ justifyContent: 'space-between', width: '100%' }}>
+                <div>
+                  <Text strong>Rimborsi spese da approvare</Text>
+                  <Text type="secondary" style={{ display: 'block', fontSize: 12, marginTop: 4 }}>
+                    {approvazioni.rimborsi_spesa} rimborsi in attesa della tua approvazione
+                  </Text>
+                </div>
+                <FileTextOutlined style={{ fontSize: 24, color: '#722ed1' }} />
+              </Space>
+            </Card>
+          </Col>
+        )}
+        {approvazioni.autorizzazioni_spesa > 0 && (
+          <Col span={12}>
+            <Card
+              hoverable
+              onClick={() => navigate('/autorizzazioni-spesa')}
+              style={{ borderRadius: 12, borderColor: '#faad14', cursor: 'pointer' }}
+            >
+              <Space style={{ justifyContent: 'space-between', width: '100%' }}>
+                <div>
+                  <Text strong>Autorizzazioni spesa da approvare</Text>
+                  <Text type="secondary" style={{ display: 'block', fontSize: 12, marginTop: 4 }}>
+                    {approvazioni.autorizzazioni_spesa} richieste in attesa della tua approvazione
+                  </Text>
+                </div>
+                <FileTextOutlined style={{ fontSize: 24, color: '#faad14' }} />
+              </Space>
+            </Card>
+          </Col>
+        )}
+      </Row>
+    </div>
+  );
+}
+
 // ── Lista progetti ────────────────────────────────────────────────────────────
 export function DashboardPage() {
   const user = useAuthStore(s => s.user);
@@ -670,6 +846,10 @@ export function DashboardPage() {
     enabled: user?.ruolo === 'ricercatore',
     staleTime: 5 * 60 * 1000,
   });
+
+  if (user?.ruolo === 'direttore_generale') {
+    return <DashboardDG />;
+  }
 
   if (user?.ruolo === 'ricercatore') {
     if (statoPi === undefined) return <Spin size="large" style={{ display: 'block', margin: '80px auto' }} />;
