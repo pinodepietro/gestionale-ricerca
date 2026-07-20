@@ -31,8 +31,15 @@ export function RimborsiSpesaPage() {
   const [page, setPage] = useState(1);
 
   const { data: progetti } = useQuery({
-    queryKey: queryKeys.progetti.list({ amministrativo_id: user?.id }),
-    queryFn: () => progettiApi.list({ amministrativo_id: user?.id, page_size: 100 }).then(r => r.data.data),
+    queryKey: queryKeys.progetti.list({
+      amministrativo_id: user?.ruolo === 'amministrativo' ? user?.id : undefined,
+      solo_allocati: user?.ruolo !== 'amministrativo' && user?.ruolo !== 'superadmin' ? true : undefined,
+    }),
+    queryFn: () => progettiApi.list({
+      amministrativo_id: user?.ruolo === 'amministrativo' ? user?.id : undefined,
+      solo_allocati: user?.ruolo !== 'amministrativo' && user?.ruolo !== 'superadmin' ? true : undefined,
+      page_size: 100
+    }).then(r => r.data.data),
     enabled: !!user?.id,
   });
 
