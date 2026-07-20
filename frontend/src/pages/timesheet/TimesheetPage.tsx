@@ -206,10 +206,25 @@ export function TimesheetPage() {
             style={{ marginTop: 16 }}
             initialValues={{ anno: ANNO_CORRENTE, granularita: 'mensile',
               progetto_id: progettoIdPreselezionato ?? undefined }}>
-            <Form.Item name="progetto_id" label="Progetto" rules={[{ required: true }]}>
+            <Form.Item
+              name="progetto_id"
+              label="Progetto"
+              rules={[
+                { required: true, message: 'Seleziona un progetto' },
+                {
+                  validator: (_, value) => {
+                    if (!value) return Promise.resolve();
+                    const hasOpenSal = progettiConSalAperti.some((p: any) => p.id === value);
+                    if (!hasOpenSal) {
+                      return Promise.reject(new Error('Questo progetto non ha SAL aperti'));
+                    }
+                    return Promise.resolve();
+                  }
+                }
+              ]}>
               {progettoIdPreselezionato ? (
                 <Select disabled
-                  options={progettiConSalAperti.map((p: {id: string; acronimo: string; titolo: string; codice: string}) => ({
+                  options={progetti?.map((p: {id: string; acronimo: string; titolo: string; codice: string}) => ({
                     value: p.id, label: `${p.acronimo || p.codice} — ${p.titolo}`,
                   }))} />
               ) : (
