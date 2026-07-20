@@ -80,10 +80,6 @@ export function TabPersonale({ progettoId }: Props) {
       .reduce((sum: number, ts: { ore_totali_progetto?: number }) =>
         sum + (ts.ore_totali_progetto ?? 0), 0);
 
-  const isAttivo = (dataInizio: string, dataFine: string) => {
-    const oggi = new Date();
-    return new Date(dataInizio) <= oggi && new Date(dataFine) >= oggi;
-  };
 
   // Budget voce personale (A.1 o categoria personale)
   const budgetPersonale = (budgetVoci as BudgetVoce[] | undefined)
@@ -122,12 +118,7 @@ export function TabPersonale({ progettoId }: Props) {
     {
       title: 'Periodo', key: 'periodo', width: 230,
       render: (_: unknown, r: Allocazione) => (
-        <Space>
-          <Text style={{ fontSize: 12 }}>{formatData(r.data_inizio)} → {formatData(r.data_fine)}</Text>
-          {isAttivo(r.data_inizio, r.data_fine)
-            ? <Tag color="green">Attivo</Tag>
-            : <Tag>Concluso</Tag>}
-        </Space>
+        <Text style={{ fontSize: 12 }}>{formatData(r.data_inizio)} → {formatData(r.data_fine)}</Text>
       ),
     },
     {
