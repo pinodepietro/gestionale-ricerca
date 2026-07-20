@@ -322,6 +322,7 @@ def dettaglio_sal(
             "wp_descrizione": None,
             "selezionato": str(sp.id) in ids_associate or sp.sal_id is None,
             "sal_id": str(sp.sal_id) if sp.sal_id else None,
+            "rendicontata": sp.rendicontata,
         })
 
     # ── Timesheet approvati nel periodo ───────────────────────────────────────
@@ -437,15 +438,15 @@ def associa_voci_sal(
     spese_ids = body.get("spese_ids", [])
     timesheet_ids = body.get("timesheet_ids", [])
 
-    # Disassocia tutte le spese precedentemente associate a questo SAL
+    # Disassocia tutte le spese precedentemente associate a questo SAL (e le libera)
     db.query(Spesa).filter(
         Spesa.sal_id == s.id,
         Spesa.progetto_id == s.progetto_id,
-    ).update({"sal_id": None})
+    ).update({"sal_id": None, "rendicontata": False})
 
-    # Associa le spese selezionate
+    # Associa le spese selezionate (e le blocca da ulteriore riuso)
     for spesa_id in spese_ids:
-        db.query(Spesa).filter(Spesa.id == spesa_id).update({"sal_id": str(s.id)})
+        db.query(Spesa).filter(Spesa.id == spesa_id).update({"sal_id": str(s.id), "rendicontata": True})
 
     # Disassocia tutti i timesheet precedentemente associati
     db.query(TimesheetTestata).filter(
