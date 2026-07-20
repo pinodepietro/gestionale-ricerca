@@ -81,7 +81,7 @@ def progetto_dict(p: Progetto) -> dict:
 def lista_progetti(
     stato: str = Query(None), tipo: str = Query(None),
     search: str = Query(None), includi_bozze: bool = Query(False),
-    solo_allocati: bool = Query(False),
+    solo_allocati: bool = Query(False), amministrativo_id: str = Query(None),
     page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=500),
     db: Session = Depends(get_db), utente: Persona = Depends(tutti_i_ruoli),
 ):
@@ -96,6 +96,8 @@ def lista_progetti(
         q = q.filter(or_(Progetto.codice.ilike(f"%{search}%"),
                          Progetto.titolo.ilike(f"%{search}%"),
                          Progetto.acronimo.ilike(f"%{search}%")))
+    if amministrativo_id:
+        q = q.filter(Progetto.amministrativo_id == amministrativo_id)
     if solo_allocati or utente.ruolo not in ("superadmin", "direttore_generale", "monitor", "management"):
         proj_ids = db.query(Allocazione.progetto_id).filter(Allocazione.persona_id == utente.id).subquery()
         if utente.ruolo == "amministrativo":
