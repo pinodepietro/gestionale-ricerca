@@ -380,7 +380,7 @@ def approva_timesheet(
     utente: Persona = Depends(tutti_i_ruoli),
 ):
     t = _get_testata_or_404(id, db)
-    # Solo il PI del progetto specifico può approvare (non il proprio timesheet)
+    # Solo il PI del progetto specifico può approvare
     e_pi_del_progetto = db.query(Allocazione).filter(
         Allocazione.persona_id == utente.id,
         Allocazione.progetto_id == t.progetto_id,
@@ -389,12 +389,114 @@ def approva_timesheet(
     if not e_pi_del_progetto:
         raise HTTPException(status_code=403, detail={"error": {"code": "FORBIDDEN",
             "message": "Solo il PI del progetto può approvare i timesheet"}})
-    if str(t.persona_id) == str(utente.id):
-        raise HTTPException(status_code=403, detail={"error": {"code": "FORBIDDEN",
-            "message": "Il PI non può approvare il proprio timesheet"}})
     if t.stato != "inviato":
         raise HTTPException(status_code=409, detail={"error": {"code": "TRANSIZIONE_NON_VALIDA",
             "message": "Solo i timesheet inviati possono essere approvati"}})
+
+    # Registra approvazione del PI
+    approvazione = ApprovazioneTimesheet(
+        id=uuid.uuid4(),
+        testata_id=t.id,
+        approvatore_id=utente.id,
+        ruolo_firma=utente.ruolo,
+        ordine_firma=1,
+        esito="approvato",
+        data=datetime.now(timezone.utc),
+    )
+    db.add(approvazione)
+
+    t.stato = "attesa_dg"
+
+    # Notifica il Direttore Generale
+    mese_label = MESI.get(t.mese, str(t.mese))
+    autore = db.query(Persona).filter(Persona.id == t.persona_id).first()
+    autore_nome = f"{autore.nome} {autore.cognome}" if autore else "Un membro del team"
+    titolo_dg = f"Timesheet in attesa di approvazione finale — {mese_label} {t.anno}"
+    messaggio_dg = f"Il timesheet di {autore_nome} per {mese_label} {t.anno} è stato approvato dal PI e attende la tua approvazione finale."
+    from app.models.persona import Persona as PersonaModel
+    dg = db.query(PersonaModel).filter(PersonaModel.ruolo == "direttore_generale").first()
+    if dg:
+        crea_notifica(db, dg.id, "timesheet_attesa_dg", titolo_dg, messaggio_dg,
+                      link=f"/timesheet/{t.id}", riferimento_id=str(t.id))
+
+    db.commit()
+    db.refresh(t)
+    return {"data": _testata_dict(t, db)}
+
+
+@router.post("/{id}/rifiuta")
+def rifiuta_timesheet(
+    id: str,
+    body: dict,
+    db: Session = Depends(get_db),
+    utente: Persona = Depends(tutti_i_ruoli),
+):
+    t = _get_testata_or_404(id, db)
+
+    # Controlla se è PI o DG
+    e_pi_del_progetto = db.query(Allocazione).filter(
+        Allocazione.persona_id == utente.id,
+        Allocazione.progetto_id == t.progetto_id,
+        Allocazione.is_pi == True,
+    ).first()
+    e_dg = utente.ruolo == "direttore_generale" or utente.ruolo == "superadmin"
+
+    if not e_pi_del_progetto and not e_dg:
+        raise HTTPException(status_code=403, detail={"error": {"code": "FORBIDDEN",
+            "message": "Solo il PI del progetto o il Direttore Generale possono rifiutare i timesheet"}})
+
+    # Controlla lo stato in base a chi sta rifiutando
+    if e_pi_del_progetto and t.stato != "inviato":
+        raise HTTPException(status_code=409, detail={"error": {"code": "TRANSIZIONE_NON_VALIDA",
+            "message": "Solo i timesheet inviati possono essere rifiutati dal PI"}})
+    if e_dg and t.stato != "attesa_dg":
+        raise HTTPException(status_code=409, detail={"error": {"code": "TRANSIZIONE_NON_VALIDA",
+            "message": "Solo i timesheet in attesa di approvazione finale possono essere rifiutati dal DG"}})
+    approvazione = ApprovazioneTimesheet(
+        id=uuid.uuid4(),
+        testata_id=t.id,
+        approvatore_id=utente.id,
+        ruolo_firma=utente.ruolo,
+        ordine_firma=2 if e_dg else 1,
+        esito="rifiutato",
+        data=datetime.now(timezone.utc),
+        note=body.get("note", ""),
+    )
+    db.add(approvazione)
+    t.stato = "rifiutato"
+
+    # Notifica l'autore del timesheet
+    mese_label = MESI.get(t.mese, str(t.mese))
+    note_testo = body.get("note", "")
+    titolo_rif = f"Timesheet rifiutato — {mese_label} {t.anno}"
+    messaggio_rif = f"Il tuo timesheet di {mese_label} {t.anno} è stato rifiutato."
+    if note_testo:
+        messaggio_rif += f" Motivazione: {note_testo}"
+    crea_notifica(db, t.persona_id, "timesheet_rifiutato", titolo_rif, messaggio_rif,
+                  link=f"/timesheet/{t.id}", urgente=True, riferimento_id=str(t.id))
+    autore = db.query(Persona).filter(Persona.id == t.persona_id).first()
+    if autore and autore.email:
+        invia_email(autore.email, titolo_rif, messaggio_rif)
+
+    db.commit()
+    db.refresh(t)
+    return {"data": _testata_dict(t, db)}
+
+
+@router.post("/{id}/approva-finale")
+def approva_finale_timesheet(
+    id: str,
+    db: Session = Depends(get_db),
+    utente: Persona = Depends(tutti_i_ruoli),
+):
+    t = _get_testata_or_404(id, db)
+    # Solo il Direttore Generale può fare l'approvazione finale
+    if utente.ruolo != "direttore_generale" and utente.ruolo != "superadmin":
+        raise HTTPException(status_code=403, detail={"error": {"code": "FORBIDDEN",
+            "message": "Solo il Direttore Generale può approvare definitivamente i timesheet"}})
+    if t.stato != "attesa_dg":
+        raise HTTPException(status_code=409, detail={"error": {"code": "TRANSIZIONE_NON_VALIDA",
+            "message": "Solo i timesheet in attesa di approvazione finale possono essere approvati"}})
 
     # Snapshot costo orario su tutte le celle di tipo progetto
     data_approvazione = date.today()
@@ -414,13 +516,13 @@ def approva_timesheet(
                 cella.costo_orario_applicato = costo_orario
                 cella.costo_calcolato = float(cella.ore) * costo_orario
 
-    # Registra approvazione
+    # Registra approvazione finale del DG
     approvazione = ApprovazioneTimesheet(
         id=uuid.uuid4(),
         testata_id=t.id,
         approvatore_id=utente.id,
         ruolo_firma=utente.ruolo,
-        ordine_firma=1,
+        ordine_firma=2,
         esito="approvato",
         data=datetime.now(timezone.utc),
     )
@@ -449,66 +551,13 @@ def approva_timesheet(
 
     # Notifica l'autore del timesheet
     mese_label = MESI.get(t.mese, str(t.mese))
-    titolo_esito = f"Timesheet approvato — {mese_label} {t.anno}"
-    messaggio_esito = f"Il tuo timesheet di {mese_label} {t.anno} è stato approvato."
+    titolo_esito = f"Timesheet approvato definitivamente — {mese_label} {t.anno}"
+    messaggio_esito = f"Il tuo timesheet di {mese_label} {t.anno} è stato approvato definitivamente dal Direttore Generale."
     crea_notifica(db, t.persona_id, "timesheet_approvato", titolo_esito, messaggio_esito,
                   link=f"/timesheet/{t.id}", riferimento_id=str(t.id))
     autore = db.query(Persona).filter(Persona.id == t.persona_id).first()
     if autore and autore.email:
         invia_email(autore.email, titolo_esito, messaggio_esito)
-
-    db.commit()
-    db.refresh(t)
-    return {"data": _testata_dict(t, db)}
-
-
-@router.post("/{id}/rifiuta")
-def rifiuta_timesheet(
-    id: str,
-    body: dict,
-    db: Session = Depends(get_db),
-    utente: Persona = Depends(tutti_i_ruoli),
-):
-    t = _get_testata_or_404(id, db)
-    e_pi_del_progetto = db.query(Allocazione).filter(
-        Allocazione.persona_id == utente.id,
-        Allocazione.progetto_id == t.progetto_id,
-        Allocazione.is_pi == True,
-    ).first()
-    if not e_pi_del_progetto:
-        raise HTTPException(status_code=403, detail={"error": {"code": "FORBIDDEN",
-            "message": "Solo il PI del progetto può rifiutare i timesheet"}})
-    if str(t.persona_id) == str(utente.id):
-        raise HTTPException(status_code=403, detail={"error": {"code": "FORBIDDEN",
-            "message": "Il PI non può rifiutare il proprio timesheet"}})
-    if t.stato != "inviato":
-        raise HTTPException(status_code=409, detail={"error": {"code": "TRANSIZIONE_NON_VALIDA",
-            "message": "Solo i timesheet inviati possono essere rifiutati"}})
-    approvazione = ApprovazioneTimesheet(
-        id=uuid.uuid4(),
-        testata_id=t.id,
-        approvatore_id=utente.id,
-        ruolo_firma=utente.ruolo,
-        ordine_firma=1,
-        esito="rifiutato",
-        data=datetime.now(timezone.utc),
-        note=body.get("note", ""),
-    )
-    db.add(approvazione)
-    t.stato = "rifiutato"
-
-    # Notifica l'autore del timesheet
-    mese_label = MESI.get(t.mese, str(t.mese))
-    note_testo = body.get("note", "")
-    titolo_rif = f"Timesheet rifiutato — {mese_label} {t.anno}"
-    messaggio_rif = f"Il tuo timesheet di {mese_label} {t.anno} è stato rifiutato."
-    if note_testo:
-        messaggio_rif += f" Motivazione: {note_testo}"
-    crea_notifica(db, t.persona_id, "timesheet_rifiutato", titolo_rif, messaggio_rif,
-                  link=f"/timesheet/{t.id}", urgente=True, riferimento_id=str(t.id))
-    autore = db.query(Persona).filter(Persona.id == t.persona_id).first()
-    if autore and autore.email:
-        invia_email(autore.email, titolo_rif, messaggio_rif)
 
     db.commit()
     db.refresh(t)
