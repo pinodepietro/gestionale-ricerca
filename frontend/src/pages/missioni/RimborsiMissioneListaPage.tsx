@@ -33,11 +33,11 @@ export function RimborsiMissioneListaPage() {
   const { data: progetti } = useQuery({
     queryKey: queryKeys.progetti.list({
       amministrativo_id: user?.ruolo === 'amministrativo' ? user?.id : undefined,
-      solo_allocati: user?.ruolo !== 'amministrativo' && user?.ruolo !== 'superadmin' ? true : undefined,
+      solo_allocati: user?.ruolo !== 'amministrativo' && user?.ruolo !== 'superadmin' && user?.ruolo !== 'direttore_generale' ? true : undefined,
     }),
     queryFn: () => progettiApi.list({
       amministrativo_id: user?.ruolo === 'amministrativo' ? user?.id : undefined,
-      solo_allocati: user?.ruolo !== 'amministrativo' && user?.ruolo !== 'superadmin' ? true : undefined,
+      solo_allocati: user?.ruolo !== 'amministrativo' && user?.ruolo !== 'superadmin' && user?.ruolo !== 'direttore_generale' ? true : undefined,
       page_size: 100
     }).then(r => r.data.data),
     enabled: !!user?.id,
