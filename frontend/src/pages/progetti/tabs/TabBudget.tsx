@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { progettiApi } from '../../../api/progetti';
 import { queryKeys } from '../../../utils/queryKeys';
-import { Table, Progress, Typography, Alert, Tag } from 'antd';
+import { Table, Progress, Typography, Alert, Tag, Tooltip } from 'antd';
 import { budgetApi } from '../../../api/budget';
 import { formatEuro, formatPercentuale, coloreBudget } from '../../../utils/formatters';
 import type { BudgetVoce } from '../../../types/budget';
@@ -50,7 +50,11 @@ export function TabBudget({ progettoId }: { progettoId: string }) {
     ...(gestionePerWp ? [{
       title: 'WP', dataIndex: 'wp_id', width: 160,
       render: (id: string | null) => id
-        ? <Tag color="blue" style={{ fontSize: 11 }}>{wpNome(id)}</Tag>
+        ? <Tooltip title={wpNome(id)} overlayStyle={{ maxWidth: 400 }}>
+            <Tag color="blue" style={{ fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-block', maxWidth: '100%' }}>
+              {wpNome(id)}
+            </Tag>
+          </Tooltip>
         : <Text type="secondary">—</Text>,
     }] : []),
     { title: 'Voce di costo', dataIndex: ['voce', 'descrizione'], ellipsis: true, width: 250 },
