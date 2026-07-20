@@ -343,12 +343,27 @@ export function TimesheetEditor() {
             </Space>
           )}
 
-          {ts.stato === 'inviato' && puoApprovare && (
+          {ts.stato === 'inviato' && puoApprovarePI && (
             <>
               <Button type="primary" icon={<CheckOutlined />}
                 onClick={() => approvaTimesheet.mutate()}
                 loading={approvaTimesheet.isPending}>
                 Approva
+              </Button>
+              <Popconfirm title="Rifiutare questo timesheet?"
+                onConfirm={() => rifiutaTimesheet.mutate()}
+                okText="Rifiuta" cancelText="Annulla" okButtonProps={{ danger: true }}>
+                <Button danger icon={<CloseOutlined />}>Rifiuta</Button>
+              </Popconfirm>
+            </>
+          )}
+
+          {ts.stato === 'attesa_dg' && puoApprovareFinale && (
+            <>
+              <Button type="primary" icon={<CheckOutlined />}
+                onClick={() => approvaFinaleTimesheet.mutate()}
+                loading={approvaFinaleTimesheet.isPending}>
+                Approva definitivamente
               </Button>
               <Popconfirm title="Rifiutare questo timesheet?"
                 onConfirm={() => rifiutaTimesheet.mutate()}
