@@ -116,7 +116,8 @@ export function TabSpese({ progettoId, stato, onVaiAImpegno }: Props) {
   const totale = spese.filter(s => s.stato === 'registrata').reduce((acc, r) => acc + r.importo, 0);
 
   const colonne = [
-    { title: 'Data', dataIndex: 'data', width: 110, render: formatData },
+    { title: 'Data spesa', dataIndex: 'data', width: 110, render: formatData },
+    { title: 'Data documento', dataIndex: 'data_documento', width: 110, render: formatData },
     { title: 'N° documento', dataIndex: 'numero_documento', width: 140,
       render: (v: string) => v || '—' },
     ...(gestionePerWp ? [{
@@ -275,7 +276,7 @@ export function TabSpese({ progettoId, stato, onVaiAImpegno }: Props) {
               <InputNumber min={0} precision={2} style={{ width: '100%' }} placeholder="0.00" />
             </Form.Item>
           </Space>
-          <Form.Item name="data_documento" label="Data documento (per rendicontazione)">
+          <Form.Item name="data_documento" label="Data documento (per rendicontazione)" rules={[{ required: true, message: 'Seleziona la data documento' }]}>
             <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
           </Form.Item>
           <Form.Item name="numero_documento" label="N° documento (fattura/ricevuta)">
