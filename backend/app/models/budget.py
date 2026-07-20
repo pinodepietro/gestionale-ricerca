@@ -1,6 +1,6 @@
 # backend/app/models/budget.py
 import uuid
-from sqlalchemy import String, Date, Numeric, Text, ForeignKey, Column, Integer, DateTime
+from sqlalchemy import String, Date, Numeric, Text, ForeignKey, Column, Integer, DateTime, Boolean
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.core.database import Base
