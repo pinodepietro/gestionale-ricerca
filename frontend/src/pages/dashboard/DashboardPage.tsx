@@ -652,6 +652,165 @@ function DashboardPI() {
   );
 }
 
+// ── Dashboard Amministrativo ──────────────────────────────────────────────────
+function DashboardAmministrativo() {
+  const navigate = useNavigate();
+  const user = useAuthStore(s => s.user);
+  const [progettoSelezionato, setProgettoSelezionato] = useState<ProgettoKPI | null>(null);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['cruscotto-globale'],
+    queryFn: () => apiClient.get<{ data: CruscottoData }>('/progetti/cruscotto').then(r => r.data.data),
+    refetchInterval: 120000,
+  });
+
+  const { data: tsData } = useQuery({
+    queryKey: queryKeys.timesheet.list({ stato: 'inviato' }),
+    queryFn: () => timesheetApi.list({ stato: 'inviato' }).then(r =>
+      (r.data as { data: unknown[] }).data ?? []
+    ),
+  });
+
+  if (isLoading) return <Spin size="large" style={{ display: 'block', margin: '80px auto' }} />;
+
+  if (progettoSelezionato) {
+    return <DashboardProgetto progetto={progettoSelezionato} onBack={() => setProgettoSelezionato(null)} />;
+  }
+
+  const d = data ?? { progetti_attivi: 0, timesheet_pendenti: 0, sal_in_scadenza: 0,
+    spese_totali: 0, budget_pianificato: 0, budget_rendicontato: 0, pct_rendicontato: 0, pct_speso: 0,
+    costo_totale_portfolio: 0, importo_finanziato_portfolio: 0, progetti: [] };
+
+  const tsPendenti = (tsData as unknown[] ?? []).length;
+  const salInScadenza = d.sal_in_scadenza;
+
+  return (
+    <div>
+      {/* Header */}
+      <div style={{ marginBottom: 24 }}>
+        <Title level={2} style={{ margin: 0 }}>Ciao, {user?.nome}</Title>
+        <Text type="secondary">I tuoi progetti di ricerca</Text>
+      </div>
+
+      {/* Alert globali */}
+      {(tsPendenti > 0 || salInScadenza > 0) && (
+        <Row gutter={12} style={{ marginBottom: 20 }}>
+          {tsPendenti > 0 && (
+            <Col span={salInScadenza > 0 ? 12 : 24}>
+              <Alert type="info" showIcon icon={<FileTextOutlined />}
+                message={`${tsPendenti} timesheet in attesa di approvazione`}
+                description="Revisiona e approva i timesheet del tuo team"
+                action={
+                  <Button size="small" type="primary" onClick={() => navigate('/timesheet')}>
+                    Approva ora →
+                  </Button>
+                }
+              />
+            </Col>
+          )}
+          {salInScadenza > 0 && (
+            <Col span={tsPendenti > 0 ? 12 : 24}>
+              <Alert type="warning" showIcon icon={<WarningOutlined />}
+                message={`${salInScadenza} SAL in scadenza entro 30 giorni`}
+                description="Verifica i SAL aperti e procedi alla chiusura"
+              />
+            </Col>
+          )}
+        </Row>
+      )}
+
+      {/* KPI box */}
+      <Row gutter={16} style={{ marginBottom: 24 }}>
+        <Col span={8}>
+          <KpiBox label="Progetti attivi" value={d.progetti_attivi} color="#185FA5" />
+        </Col>
+        <Col span={8}>
+          <KpiBox label="Timesheet da approvare" value={tsPendenti}
+            color={tsPendenti > 0 ? '#185FA5' : '#888'} />
+        </Col>
+        <Col span={8}>
+          <KpiBox label="SAL in scadenza" value={salInScadenza}
+            color={salInScadenza > 0 ? '#E24B4A' : '#888'} />
+        </Col>
+      </Row>
+
+      {/* Schede progetto */}
+      {d.progetti.length === 0 ? (
+        <Card bordered style={{ borderRadius: 12 }}>
+          <Empty description="Nessun progetto attivo trovato" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+        </Card>
+      ) : (
+        <Row gutter={[16, 16]}>
+          {d.progetti.map(p => {
+            const giorni = p.data_fine
+              ? Math.ceil((new Date(p.data_fine).getTime() - Date.now()) / 86400000)
+              : null;
+            return (
+              <Col span={12} key={p.id}>
+                <Card hoverable bordered onClick={() => setProgettoSelezionato(p)}
+                  style={{ borderRadius: 12, borderColor: '#e0e0e0', cursor: 'pointer' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+                    <div>
+                      <Space wrap>
+                        <Text strong style={{ fontSize: 16 }}>{p.acronimo}</Text>
+                        <Tag color="blue" style={{ borderRadius: 20 }}>{p.tipo}</Tag>
+                        {giorni !== null && giorni >= 0 && giorni <= 30 && <Tag color="orange">{giorni}gg</Tag>}
+                        {giorni !== null && giorni < 0 && <Tag color="red">Scaduto</Tag>}
+                      </Space>
+                      <Text type="secondary" style={{ display: 'block', fontSize: 13, marginTop: 2 }}>
+                        {p.titolo}
+                      </Text>
+                    </div>
+                    <ProjectOutlined style={{ fontSize: 20, color: '#185FA5' }} />
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', margin: '8px 0 4px' }}>
+                    <span style={{ fontSize: 12, color: '#888' }}>
+                      Costo: <strong style={{ color: '#333' }}>€ {((p.costo_totale || p.pianificato || 0) / 1000).toFixed(0)}k</strong>
+                    </span>
+                    <span style={{ fontSize: 12, color: '#888' }}>
+                      Finanziato: <strong style={{ color: '#185FA5' }}>€ {((p.importo_finanziato || 0) / 1000).toFixed(0)}k</strong>
+                    </span>
+                  </div>
+
+                  <Divider style={{ margin: '10px 0' }} />
+
+                  <Row gutter={12}>
+                    <Col span={12}>
+                      <Text style={{ fontSize: 11, color: '#888', display: 'block', marginBottom: 4 }}>
+                        Rendicontato / Pianificato
+                      </Text>
+                      <Text strong style={{ fontSize: 18, color: colore(p.pct_rendicontato) }}>
+                        {p.pct_rendicontato}%
+                      </Text>
+                      <div style={{ height: 4, background: '#f0f0f0', borderRadius: 2, marginTop: 6 }}>
+                        <div style={{ height: 4, width: `${Math.min(p.pct_rendicontato, 100)}%`,
+                          background: colore(p.pct_rendicontato), borderRadius: 2 }} />
+                      </div>
+                    </Col>
+                    <Col span={12}>
+                      <Text style={{ fontSize: 11, color: '#888', display: 'block', marginBottom: 4 }}>
+                        Tempo trascorso
+                      </Text>
+                      <Text strong style={{ fontSize: 18, color: p.percentuale_tempo > 85 ? '#faad14' : '#185FA5' }}>
+                        {p.percentuale_tempo}%
+                      </Text>
+                      <div style={{ height: 4, background: '#f0f0f0', borderRadius: 2, marginTop: 6 }}>
+                        <div style={{ height: 4, width: `${p.percentuale_tempo}%`,
+                          background: p.percentuale_tempo > 85 ? '#faad14' : '#185FA5', borderRadius: 2 }} />
+                      </div>
+                    </Col>
+                  </Row>
+                </Card>
+              </Col>
+            );
+          })}
+        </Row>
+      )}
+    </div>
+  );
+}
+
 // ── Dashboard Direttore Generale ─────────────────────────────────────────────
 function DashboardDG() {
   const navigate = useNavigate();
@@ -933,6 +1092,10 @@ export function DashboardPage() {
 
   if (user?.ruolo === 'direttore_generale') {
     return <DashboardDG />;
+  }
+
+  if (user?.ruolo === 'amministrativo') {
+    return <DashboardAmministrativo />;
   }
 
   if (user?.ruolo === 'ricercatore') {
