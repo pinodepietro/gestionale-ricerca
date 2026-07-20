@@ -50,9 +50,11 @@ class Spesa(Base):
     spesa_origine_id = Column(UUID(as_uuid=True), ForeignKey("spesa.id"), nullable=True)
     importo = Column(Numeric(14, 2), nullable=False)
     data = Column(Date, nullable=False)
+    data_documento = Column(Date, nullable=True)
     numero_documento = Column(String(50), nullable=True)
     descrizione = Column(Text, nullable=True)
     stato = Column(String(20), nullable=False, default="registrata")
+    rendicontata = Column(Boolean, nullable=False, default=False)
     allegato_path = Column(String(500), nullable=True)
 
     progetto = relationship("Progetto", back_populates="spese")

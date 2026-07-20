@@ -25,6 +25,7 @@ class Progetto(Base):
     budget_per_partner = Column(Boolean, nullable=False, default=False)
     gestione_per_wp = Column(Boolean, nullable=False, default=False)
     template_timesheet_id = Column(UUID(as_uuid=True), ForeignKey("template_timesheet.id"), nullable=True)
+    granularita_timesheet = Column(String(20), nullable=False, default="giornaliero")
     riferimento_bando = Column(Text, nullable=True)
     note = Column(Text, nullable=True)
     amministrativo_id = Column(UUID(as_uuid=True), ForeignKey('persona.id'), nullable=True)

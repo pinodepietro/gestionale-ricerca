@@ -1014,9 +1014,11 @@ def registra_spesa(
         spesa_origine_id=body.get("spesa_origine_id"),
         importo=body.get("importo", 0),
         data=body.get("data"),
+        data_documento=body.get("data_documento"),
         numero_documento=body.get("numero_documento"),
         descrizione=body.get("descrizione"),
         stato="registrata",
+        rendicontata=False,
     )
     db.add(spesa)
     # Recupera BudgetVoce per aggiornare l'impegno (se presente)
@@ -1097,9 +1099,11 @@ def _spesa_dict(s) -> dict:
         "spesa_origine_id": str(s.spesa_origine_id) if s.spesa_origine_id else None,
         "importo": float(s.importo),
         "data": str(s.data) if s.data else None,
+        "data_documento": str(s.data_documento) if s.data_documento else None,
         "numero_documento": s.numero_documento,
         "descrizione": s.descrizione,
         "stato": s.stato,
+        "rendicontata": s.rendicontata,
         "allegato_path": s.allegato_path,
     }
 
