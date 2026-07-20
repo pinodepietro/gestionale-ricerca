@@ -1,5 +1,5 @@
 // frontend/src/pages/progetti/tabs/TabPersonale.tsx
-import { Table, Tag, Typography, Space, Progress } from 'antd';
+import { Table, Tag, Typography, Space, Progress, Tooltip } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { progettiApi } from '../../../api/progetti';
@@ -94,7 +94,11 @@ export function TabPersonale({ progettoId }: Props) {
     ...(gestionePerWp ? [{
       title: 'WP', dataIndex: 'wp_id', width: 150,
       render: (id: string | null) => id
-        ? <Tag color="blue" style={{ fontSize: 11 }}>{wpNome(id)}</Tag>
+        ? <Tooltip title={wpNome(id)} overlayStyle={{ maxWidth: 400 }}>
+            <Tag color="blue" style={{ fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-block', maxWidth: '100%' }}>
+              {wpNome(id)}
+            </Tag>
+          </Tooltip>
         : <Text type="secondary">—</Text>,
     }] : []),
     {
@@ -102,10 +106,12 @@ export function TabPersonale({ progettoId }: Props) {
       render: (_: unknown, r: Allocazione) => (
         <Space direction="vertical" size={0}>
           <Space size={6}>
-            <Text strong style={{ cursor: 'pointer', color: '#185FA5' }}
-              onClick={() => navigate(`/personale/${r.persona_id}`)}>
-              {nomPersona(r)}
-            </Text>
+            <Tooltip title={nomPersona(r)} overlayStyle={{ maxWidth: 400 }}>
+              <Text strong style={{ cursor: 'pointer', color: '#185FA5', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-block', maxWidth: 120 }}
+                onClick={() => navigate(`/personale/${r.persona_id}`)}>
+                {nomPersona(r)}
+              </Text>
+            </Tooltip>
             {r.is_pi && <Tag color="blue" style={{ fontSize: 11, padding: '0 4px' }}>PI</Tag>}
             {r.is_ammin && <Tag color="orange" style={{ fontSize: 11, padding: '0 4px' }}>Ammin</Tag>}
           </Space>
