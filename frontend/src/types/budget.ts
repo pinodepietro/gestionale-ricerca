@@ -50,9 +50,11 @@ export interface Spesa {
   partner_id?: string;
   importo: number;
   data: string;
+  data_documento?: string;
   numero_documento?: string;
   descrizione?: string;
   stato: 'registrata';
+  rendicontata: boolean;
   allegato_path?: string;
   sal_id?: string;
   impegno_id?: string;
