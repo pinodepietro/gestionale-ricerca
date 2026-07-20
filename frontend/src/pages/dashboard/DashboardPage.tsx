@@ -664,6 +664,7 @@ function DashboardPI() {
 function DashboardDG() {
   const navigate = useNavigate();
   const user = useAuthStore(s => s.user);
+  const [progettoSelezionato, setProgettoSelezionato] = useState<ProgettoKPI | null>(null);
 
   const { data: approvazioni } = useQuery({
     queryKey: ['cruscotto-dg'],
@@ -671,7 +672,17 @@ function DashboardDG() {
     refetchInterval: 60000,
   });
 
-  if (!approvazioni) return <Spin size="large" style={{ display: 'block', margin: '80px auto' }} />;
+  const { data: progettiData } = useQuery({
+    queryKey: ['cruscotto-globale'],
+    queryFn: () => apiClient.get<{ data: CruscottoData }>('/progetti/cruscotto').then(r => r.data.data),
+    refetchInterval: 120000,
+  });
+
+  if (!approvazioni || !progettiData) return <Spin size="large" style={{ display: 'block', margin: '80px auto' }} />;
+
+  if (progettoSelezionato) {
+    return <DashboardProgetto progetto={progettoSelezionato} onBack={() => setProgettoSelezionato(null)} />;
+  }
 
   const totale = approvazioni.totale || 0;
 
@@ -831,6 +842,87 @@ function DashboardDG() {
           </Col>
         )}
       </Row>
+
+      {/* Divider */}
+      <Divider style={{ margin: '32px 0' }} />
+
+      {/* Progetti */}
+      <div>
+        <Title level={3} style={{ marginBottom: 16 }}>Progetti in gestione</Title>
+        {progettiData.progetti.length === 0 ? (
+          <Card bordered style={{ borderRadius: 12 }}>
+            <Text type="secondary">Nessun progetto attivo trovato.</Text>
+          </Card>
+        ) : (
+          <Row gutter={[16, 16]}>
+            {progettiData.progetti.map(p => {
+              const giorni = p.data_fine
+                ? Math.ceil((new Date(p.data_fine).getTime() - Date.now()) / 86400000)
+                : null;
+              return (
+                <Col span={12} key={p.id}>
+                  <Card hoverable bordered onClick={() => setProgettoSelezionato(p)}
+                    style={{ borderRadius: 12, borderColor: '#e0e0e0', cursor: 'pointer' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+                      <div>
+                        <Space wrap>
+                          <Text strong style={{ fontSize: 16 }}>{p.acronimo}</Text>
+                          <Tag color="blue" style={{ borderRadius: 20 }}>{p.tipo}</Tag>
+                          {giorni !== null && giorni >= 0 && giorni <= 30 && <Tag color="orange">{giorni}gg</Tag>}
+                          {giorni !== null && giorni < 0 && <Tag color="red">Scaduto</Tag>}
+                        </Space>
+                        <Text type="secondary" style={{ display: 'block', fontSize: 13, marginTop: 2 }}>
+                          {p.titolo}
+                        </Text>
+                        {p.pi_nome && (
+                          <Text style={{ display: 'block', fontSize: 12, marginTop: 4, color: '#185FA5' }}>
+                            PI: {p.pi_nome}
+                          </Text>
+                        )}
+                      </div>
+                      <ProjectOutlined style={{ fontSize: 20, color: '#185FA5' }} />
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', margin: '8px 0 4px' }}>
+                      <span style={{ fontSize: 12, color: '#888' }}>Costo progetto: <strong style={{ color: '#333' }}>€ {((p.costo_totale || p.pianificato || 0) / 1000).toFixed(0)}k</strong></span>
+                      <span style={{ fontSize: 12, color: '#888' }}>Finanziato: <strong style={{ color: '#185FA5' }}>€ {((p.importo_finanziato || 0) / 1000).toFixed(0)}k</strong></span>
+                    </div>
+
+                    <Divider style={{ margin: '10px 0' }} />
+
+                    <Row gutter={12}>
+                      <Col span={12}>
+                        <Text style={{ fontSize: 11, color: '#888', display: 'block', marginBottom: 4 }}>
+                          Rendicontato / Pianificato
+                        </Text>
+                        <Text strong style={{ fontSize: 18, color: colore(p.pct_rendicontato) }}>
+                          {p.pct_rendicontato}%
+                        </Text>
+                        <div style={{ height: 4, background: '#f0f0f0', borderRadius: 2, marginTop: 6 }}>
+                          <div style={{ height: 4, width: `${Math.min(p.pct_rendicontato, 100)}%`,
+                            background: colore(p.pct_rendicontato), borderRadius: 2 }} />
+                        </div>
+                      </Col>
+                      <Col span={12}>
+                        <Text style={{ fontSize: 11, color: '#888', display: 'block', marginBottom: 4 }}>
+                          Tempo trascorso
+                        </Text>
+                        <Text strong style={{ fontSize: 18, color: p.percentuale_tempo > 85 ? '#faad14' : '#185FA5' }}>
+                          {p.percentuale_tempo}%
+                        </Text>
+                        <div style={{ height: 4, background: '#f0f0f0', borderRadius: 2, marginTop: 6 }}>
+                          <div style={{ height: 4, width: `${p.percentuale_tempo}%`,
+                            background: p.percentuale_tempo > 85 ? '#faad14' : '#185FA5', borderRadius: 2 }} />
+                        </div>
+                      </Col>
+                    </Row>
+                  </Card>
+                </Col>
+              );
+            })}
+          </Row>
+        )}
+      </div>
     </div>
   );
 }
