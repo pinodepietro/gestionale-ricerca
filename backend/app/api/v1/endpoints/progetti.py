@@ -19,6 +19,7 @@ import math
 import io
 import urllib.request
 from app.api.v1.endpoints.personale import _trigger_sync_progetti
+from app.services.notifiche import crea_notifica
 
 
 def _notifica_sync_missioni():
@@ -1498,6 +1499,41 @@ def _deliverable_dict(d) -> dict:
             "codice": d.codice, "titolo": d.titolo, "tipo": d.tipo,
             "data_scadenza": str(d.data_scadenza) if d.data_scadenza else None,
             "data_consegna": str(d.data_consegna) if d.data_consegna else None, "stato": d.stato}
+
+
+# ─── Notifiche ai partecipanti ────────────────────────────────────────────────
+
+@router.post("/{id}/notifica-partecipanti")
+def invia_notifica_partecipanti(id: str, body: dict, db: Session = Depends(get_db), utente: Persona = Depends(solo_amministrativo)):
+    p = _get_or_404(id, db)
+
+    if str(p.amministrativo_id) != str(utente.id) and utente.ruolo != "superadmin":
+        raise HTTPException(status_code=403, detail={"error": {"code": "FORBIDDEN", "message": "Non sei amministrativo di questo progetto"}})
+
+    titolo = body.get("titolo", "Notifica del progetto")
+    messaggio = body.get("messaggio", "")
+
+    if not messaggio.strip():
+        raise HTTPException(status_code=400, detail={"error": {"code": "BAD_REQUEST", "message": "Messaggio non può essere vuoto"}})
+
+    allocazioni = db.query(Allocazione).filter(Allocazione.progetto_id == id).all()
+    persone_ids = set(str(a.persona_id) for a in allocazioni)
+    persone_ids.discard(str(utente.id))
+
+    notifiche_create = []
+    for persona_id in persone_ids:
+        n = crea_notifica(
+            db,
+            persona_id=persona_id,
+            tipo="messaggio_partecipanti",
+            titolo=titolo,
+            messaggio=messaggio,
+        )
+        db.flush()
+        notifiche_create.append(str(n.id))
+
+    db.commit()
+    return {"data": {"notifiche_create": len(notifiche_create)}}
 
 
 # ─── Helpers report ───────────────────────────────────────────────────────────

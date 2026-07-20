@@ -51,6 +51,7 @@ export function ModificaProgettoDrawer({ progettoId, aperto, onChiudi }: Props) 
     { key: 'budget', label: 'Budget e voci', children: <TabBudgetModifica progettoId={progettoId} /> },
     { key: 'wp', label: 'Work Package', children: <TabWpModifica progettoId={progettoId} /> },
     { key: 'personale', label: 'Allocazioni', children: <TabAllocazioniModifica progettoId={progettoId} /> },
+    { key: 'notifiche', label: 'Notifiche', children: <TabNotifiche progettoId={progettoId} /> },
     ...(gestionePerWp ? [
       {
         key: 'budget-wp', label: 'Budget WP',
@@ -736,6 +737,51 @@ function TabAllocazioniModifica({ progettoId }: { progettoId: string }) {
           <Form.Item name="note" label="Note"><Input.TextArea rows={2} /></Form.Item>
         </Form>
       </Modal>
+    </div>
+  );
+}
+
+// ── Tab Notifiche ────────────────────────────────────────────────────────────
+function TabNotifiche({ progettoId }: { progettoId: string }) {
+  const { notification } = App.useApp();
+  const [form] = Form.useForm();
+  const [isLoading, setIsLoading] = useState(false);
+
+  const inviaNotifica = async (values: Record<string, unknown>) => {
+    try {
+      setIsLoading(true);
+      await apiClient.post(`/progetti/${progettoId}/notifica-partecipanti`, {
+        titolo: values.titolo,
+        messaggio: values.messaggio,
+      });
+      notification.success({ message: 'Notifica inviata ai partecipanti' });
+      form.resetFields();
+    } catch (error) {
+      notification.error({ message: 'Errore nell\'invio della notifica' });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div>
+      <Alert
+        type="info"
+        showIcon
+        message="Invia un messaggio a tutti i partecipanti del progetto"
+        style={{ marginBottom: 16 }}
+      />
+      <Form form={form} layout="vertical" onFinish={inviaNotifica}>
+        <Form.Item name="titolo" label="Titolo" rules={[{ required: true, message: 'Titolo obbligatorio' }]}>
+          <Input placeholder="Es. Riunione progetto" />
+        </Form.Item>
+        <Form.Item name="messaggio" label="Messaggio" rules={[{ required: true, message: 'Messaggio obbligatorio' }]}>
+          <Input.TextArea rows={6} placeholder="Scrivi il messaggio per i partecipanti" />
+        </Form.Item>
+        <Button type="primary" htmlType="submit" loading={isLoading}>
+          Invia notifica
+        </Button>
+      </Form>
     </div>
   );
 }
