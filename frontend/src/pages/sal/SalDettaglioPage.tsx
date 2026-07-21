@@ -189,7 +189,7 @@ export function SalDettaglioPage() {
 
   const sal = dettaglio.sal;
   const voci = dettaglio.voci ?? [];
-  const spese = voci.filter(v => v.tipo === 'spesa');
+  const spese = voci.filter(v => v.tipo === 'spesa' && (sal.stato !== 'chiuso' || !v.rendicontata));
   const timesheet = voci.filter(v => v.tipo === 'timesheet');
   const isAperto = sal.stato === 'aperto';
   const isChiuso = sal.stato === 'chiuso';
