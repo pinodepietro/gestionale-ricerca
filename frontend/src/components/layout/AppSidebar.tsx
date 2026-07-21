@@ -61,6 +61,7 @@ export function AppSidebar() {
       <Menu theme="dark" mode="inline" selectedKeys={[selectedKey]}
         items={menuItems}
         onClick={({ key }) => navigate(key)}
+        style={{ paddingBottom: '60px' }}
       />
     </Sider>
   );
