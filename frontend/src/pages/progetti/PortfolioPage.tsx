@@ -144,12 +144,6 @@ export function PortfolioPage() {
       ),
     },
     {
-      title: <span style={{ fontSize: '9px' }}>PI</span>,
-      dataIndex: 'pi_nome',
-      width: 150,
-      render: (v: string | null) => <span style={{ fontSize: '9px' }}>{v ?? <Text type="secondary">—</Text>}</span>,
-    },
-    {
       title: <span style={{ fontSize: '9px' }}>Fine</span>,
       dataIndex: 'data_fine',
       width: 110,
