@@ -229,8 +229,9 @@ export function PortfolioPage() {
           loading={isLoading}
           expandable={{ expandedRowRender }}
           pagination={false}
-          size="middle"
+          size="small"
           locale={{ emptyText: error ? 'Errore nel caricamento' : 'Nessun progetto attivo' }}
+          style={{ fontSize: '12px' }}
         />
       </Card>
     </div>
