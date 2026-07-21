@@ -86,72 +86,76 @@ export function PortfolioPage() {
 
   const columns = [
     {
-      title: 'Codice',
+      title: <span style={{ fontSize: '11px' }}>Codice</span>,
       dataIndex: 'codice',
       width: 120,
       render: (codice: string, r: PortfolioProgetto) => (
-        <a onClick={() => navigate(`/progetti/${r.id}`)} style={{ fontWeight: 600 }}>{codice}</a>
+        <a onClick={() => navigate(`/progetti/${r.id}`)} style={{ fontWeight: 600, fontSize: '11px' }}>{codice}</a>
       ),
     },
     {
-      title: 'Acronimo / Titolo',
+      title: <span style={{ fontSize: '11px' }}>Acronimo / Titolo</span>,
       key: 'titolo',
       ellipsis: true,
       render: (_: unknown, r: PortfolioProgetto) => (
-        <div>
-          <div style={{ fontWeight: 500 }}>{r.acronimo}</div>
-          <Text type="secondary" style={{ fontSize: 12 }}>{r.titolo}</Text>
+        <div style={{ fontSize: '11px' }}>
+          <div style={{ fontWeight: 500, fontSize: '11px' }}>{r.acronimo}</div>
+          <Text type="secondary" style={{ fontSize: '10px' }}>{r.titolo}</Text>
         </div>
       ),
     },
     {
-      title: 'Tipo',
+      title: <span style={{ fontSize: '11px' }}>Tipo</span>,
       dataIndex: 'tipo',
       width: 130,
       ellipsis: true,
       render: (tipo: string) => tipo ? (
         <Tooltip title={tipo}>
-          <Tag style={{ maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>{tipo}</Tag>
+          <Tag style={{ maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block', fontSize: '11px' }}>{tipo}</Tag>
         </Tooltip>
       ) : '—',
     },
     {
-      title: 'Finanziato vs Speso',
+      title: <span style={{ fontSize: '11px' }}>Finanziato vs Speso</span>,
       key: 'speso',
       width: 200,
       render: (_: unknown, r: PortfolioProgetto) => (
-        <Barra
-          pct={r.pct_speso}
-          label={`${formatEuro(r.spese_documentate)} / ${formatEuro(r.importo_finanziato)}`}
-        />
+        <div style={{ fontSize: '11px' }}>
+          <Barra
+            pct={r.pct_speso}
+            label={`${formatEuro(r.spese_documentate)} / ${formatEuro(r.importo_finanziato)}`}
+          />
+        </div>
       ),
     },
     {
-      title: 'Pianificato vs Rendicontato',
+      title: <span style={{ fontSize: '11px' }}>Pianificato vs Rendicontato</span>,
       key: 'rendicontato',
       width: 220,
       render: (_: unknown, r: PortfolioProgetto) => (
-        <Barra
-          pct={r.pct_rendicontato}
-          label={`${formatEuro(r.rendicontato)} / ${formatEuro(r.pianificato)}`}
-        />
+        <div style={{ fontSize: '11px' }}>
+          <Barra
+            pct={r.pct_rendicontato}
+            label={`${formatEuro(r.rendicontato)} / ${formatEuro(r.pianificato)}`}
+          />
+        </div>
       ),
     },
     {
-      title: 'PI',
+      title: <span style={{ fontSize: '11px' }}>PI</span>,
       dataIndex: 'pi_nome',
       width: 150,
-      render: (v: string | null) => v ?? <Text type="secondary">—</Text>,
+      render: (v: string | null) => <span style={{ fontSize: '11px' }}>{v ?? <Text type="secondary">—</Text>}</span>,
     },
     {
-      title: 'Fine',
+      title: <span style={{ fontSize: '11px' }}>Fine</span>,
       dataIndex: 'data_fine',
       width: 110,
       render: (v: string | null) => {
-        if (!v) return '—';
+        if (!v) return <span style={{ fontSize: '11px' }}>—</span>;
         const giorni = Math.ceil((new Date(v).getTime() - Date.now()) / 86400000);
         const colore = giorni < 30 ? '#ff4d4f' : giorni < 90 ? '#faad14' : undefined;
-        return <span style={{ color: colore, fontWeight: colore ? 600 : undefined }}>{formatData(v)}</span>;
+        return <span style={{ color: colore, fontWeight: colore ? 600 : undefined, fontSize: '11px' }}>{formatData(v)}</span>;
       },
     },
   ];
