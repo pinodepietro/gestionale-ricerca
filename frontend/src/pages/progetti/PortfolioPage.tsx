@@ -88,7 +88,7 @@ export function PortfolioPage() {
     {
       title: <span style={{ fontSize: '9px' }}>Codice</span>,
       dataIndex: 'codice',
-      width: 120,
+      width: 80,
       render: (codice: string, r: PortfolioProgetto) => (
         <a onClick={() => navigate(`/progetti/${r.id}`)} style={{ fontWeight: 600, fontSize: '9px' }}>{codice}</a>
       ),
@@ -96,12 +96,14 @@ export function PortfolioPage() {
     {
       title: <span style={{ fontSize: '9px' }}>Acronimo / Titolo</span>,
       key: 'titolo',
-      ellipsis: true,
+      width: 280,
       render: (_: unknown, r: PortfolioProgetto) => (
-        <div style={{ fontSize: '9px' }}>
-          <div style={{ fontWeight: 500, fontSize: '9px' }}>{r.acronimo}</div>
-          <Text type="secondary" style={{ fontSize: '8px' }}>{r.titolo}</Text>
-        </div>
+        <Tooltip title={<div><div style={{ fontWeight: 500 }}>{r.acronimo}</div><div>{r.titolo}</div></div>}>
+          <div style={{ fontSize: '9px' }}>
+            <div style={{ fontWeight: 500, fontSize: '9px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.acronimo}</div>
+            <Text type="secondary" style={{ fontSize: '8px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>{r.titolo}</Text>
+          </div>
+        </Tooltip>
       ),
     },
     {
