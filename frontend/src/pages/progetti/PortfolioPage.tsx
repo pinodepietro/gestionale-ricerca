@@ -21,7 +21,7 @@ function Barra({ pct, label }: { pct: number; label?: string }) {
         strokeColor={color}
         format={() => `${pct}%`}
       />
-      {label && <Text type="secondary" style={{ fontSize: 11 }}>{label}</Text>}
+      {label && <Text type="secondary" style={{ fontSize: '8px' }}>{label}</Text>}
     </div>
   );
 }
@@ -86,41 +86,41 @@ export function PortfolioPage() {
 
   const columns = [
     {
-      title: <span style={{ fontSize: '11px' }}>Codice</span>,
+      title: <span style={{ fontSize: '9px' }}>Codice</span>,
       dataIndex: 'codice',
       width: 120,
       render: (codice: string, r: PortfolioProgetto) => (
-        <a onClick={() => navigate(`/progetti/${r.id}`)} style={{ fontWeight: 600, fontSize: '11px' }}>{codice}</a>
+        <a onClick={() => navigate(`/progetti/${r.id}`)} style={{ fontWeight: 600, fontSize: '9px' }}>{codice}</a>
       ),
     },
     {
-      title: <span style={{ fontSize: '11px' }}>Acronimo / Titolo</span>,
+      title: <span style={{ fontSize: '9px' }}>Acronimo / Titolo</span>,
       key: 'titolo',
       ellipsis: true,
       render: (_: unknown, r: PortfolioProgetto) => (
-        <div style={{ fontSize: '11px' }}>
-          <div style={{ fontWeight: 500, fontSize: '11px' }}>{r.acronimo}</div>
-          <Text type="secondary" style={{ fontSize: '10px' }}>{r.titolo}</Text>
+        <div style={{ fontSize: '9px' }}>
+          <div style={{ fontWeight: 500, fontSize: '9px' }}>{r.acronimo}</div>
+          <Text type="secondary" style={{ fontSize: '8px' }}>{r.titolo}</Text>
         </div>
       ),
     },
     {
-      title: <span style={{ fontSize: '11px' }}>Tipo</span>,
+      title: <span style={{ fontSize: '9px' }}>Tipo</span>,
       dataIndex: 'tipo',
       width: 130,
       ellipsis: true,
       render: (tipo: string) => tipo ? (
         <Tooltip title={tipo}>
-          <Tag style={{ maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block', fontSize: '11px' }}>{tipo}</Tag>
+          <Tag style={{ maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block', fontSize: '9px' }}>{tipo}</Tag>
         </Tooltip>
       ) : '—',
     },
     {
-      title: <span style={{ fontSize: '11px' }}>Finanziato vs Speso</span>,
+      title: <span style={{ fontSize: '9px' }}>Finanziato vs Speso</span>,
       key: 'speso',
       width: 200,
       render: (_: unknown, r: PortfolioProgetto) => (
-        <div style={{ fontSize: '11px' }}>
+        <div style={{ fontSize: '9px' }}>
           <Barra
             pct={r.pct_speso}
             label={`${formatEuro(r.spese_documentate)} / ${formatEuro(r.importo_finanziato)}`}
@@ -129,11 +129,11 @@ export function PortfolioPage() {
       ),
     },
     {
-      title: <span style={{ fontSize: '11px' }}>Pianificato vs Rendicontato</span>,
+      title: <span style={{ fontSize: '9px' }}>Pianificato vs Rendicontato</span>,
       key: 'rendicontato',
       width: 220,
       render: (_: unknown, r: PortfolioProgetto) => (
-        <div style={{ fontSize: '11px' }}>
+        <div style={{ fontSize: '9px' }}>
           <Barra
             pct={r.pct_rendicontato}
             label={`${formatEuro(r.rendicontato)} / ${formatEuro(r.pianificato)}`}
@@ -142,20 +142,20 @@ export function PortfolioPage() {
       ),
     },
     {
-      title: <span style={{ fontSize: '11px' }}>PI</span>,
+      title: <span style={{ fontSize: '9px' }}>PI</span>,
       dataIndex: 'pi_nome',
       width: 150,
-      render: (v: string | null) => <span style={{ fontSize: '11px' }}>{v ?? <Text type="secondary">—</Text>}</span>,
+      render: (v: string | null) => <span style={{ fontSize: '9px' }}>{v ?? <Text type="secondary">—</Text>}</span>,
     },
     {
-      title: <span style={{ fontSize: '11px' }}>Fine</span>,
+      title: <span style={{ fontSize: '9px' }}>Fine</span>,
       dataIndex: 'data_fine',
       width: 110,
       render: (v: string | null) => {
-        if (!v) return <span style={{ fontSize: '11px' }}>—</span>;
+        if (!v) return <span style={{ fontSize: '9px' }}>—</span>;
         const giorni = Math.ceil((new Date(v).getTime() - Date.now()) / 86400000);
         const colore = giorni < 30 ? '#ff4d4f' : giorni < 90 ? '#faad14' : undefined;
-        return <span style={{ color: colore, fontWeight: colore ? 600 : undefined, fontSize: '11px' }}>{formatData(v)}</span>;
+        return <span style={{ color: colore, fontWeight: colore ? 600 : undefined, fontSize: '9px' }}>{formatData(v)}</span>;
       },
     },
   ];
