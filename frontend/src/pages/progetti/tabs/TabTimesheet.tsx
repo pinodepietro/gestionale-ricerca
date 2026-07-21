@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { timesheetApi } from '../../../api/timesheet';
 import { queryKeys } from '../../../utils/queryKeys';
+import { useAuthStore } from '../../../store/useAuthStore';
 import type { TimesheetTestata } from '../../../types/timesheet';
 
 const { Text } = Typography;
@@ -20,6 +21,7 @@ interface Props { progettoId: string; stato?: string; }
 
 export function TabTimesheet({ progettoId, stato }: Props) {
   const navigate = useNavigate();
+  const user = useAuthStore(s => s.user);
 
   const { data, isLoading } = useQuery({
     queryKey: queryKeys.timesheet.list({ progetto_id: progettoId }),
@@ -82,7 +84,7 @@ export function TabTimesheet({ progettoId, stato }: Props) {
             <Tag color="blue">{inAttesa} in attesa di approvazione</Tag>
           )}
         </Space>
-        <Button icon={<PlusOutlined />} onClick={() => navigate(`/timesheet?progetto_id=${progettoId}`)}>
+        <Button icon={<PlusOutlined />} onClick={() => navigate(`/timesheet?progetto_id=${progettoId}`)} disabled={user?.ruolo === 'monitor'}>
           Nuovo timesheet
         </Button>
       </div>
