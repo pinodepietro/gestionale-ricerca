@@ -110,24 +110,34 @@ def lista_autorizzazioni(
     q = db.query(RichiestaAutorizzazioneSpesa)
     if stato:
         q = q.filter(RichiestaAutorizzazioneSpesa.stato == stato)
+
+    # Logica di visibilità basata su progetto_id
     if progetto_id:
-        q = q.filter(RichiestaAutorizzazioneSpesa.progetto_id == progetto_id)
-    if solo_mie:
-        q = q.filter(RichiestaAutorizzazioneSpesa.richiedente_id == utente.id)
-    elif utente.ruolo not in ("superadmin", "direttore_generale", "monitor"):
-        # Progetti dove l'utente è allocato (come richiedente)
-        alloc_ids = db.query(Allocazione.progetto_id).filter(Allocazione.persona_id == utente.id).subquery()
-        # Progetti dove l'utente è amministrativo (per approvazione)
-        ammin_proj_ids = db.query(Progetto.id).filter(Progetto.amministrativo_id == utente.id).subquery()
-        q = q.filter(
-            or_(
-                # Richieste che l'utente ha creato sui propri progetti
-                (RichiestaAutorizzazioneSpesa.richiedente_id == utente.id) &
-                RichiestaAutorizzazioneSpesa.progetto_id.in_(alloc_ids),
-                # Richieste sui progetti di cui è amministrativo
-                RichiestaAutorizzazioneSpesa.progetto_id.in_(ammin_proj_ids),
+        # Se un progetto è selezionato, controlla permessi
+        is_pi = db.query(Allocazione).filter(
+            Allocazione.persona_id == utente.id,
+            Allocazione.progetto_id == progetto_id,
+            Allocazione.is_pi == True
+        ).first()
+        is_ammin = db.query(Progetto).filter(
+            Progetto.id == progetto_id,
+            Progetto.amministrativo_id == utente.id
+        ).first()
+        is_dg_monitor = utente.ruolo in ("superadmin", "direttore_generale", "monitor")
+
+        if is_pi or is_ammin or is_dg_monitor:
+            # PI/Amministrativo/DG/Monitor: vedono tutto del progetto
+            q = q.filter(RichiestaAutorizzazioneSpesa.progetto_id == progetto_id)
+        else:
+            # Ricercatore: vede solo le sue autorizzazioni sul progetto
+            q = q.filter(
+                RichiestaAutorizzazioneSpesa.progetto_id == progetto_id,
+                RichiestaAutorizzazioneSpesa.richiedente_id == utente.id
             )
-        )
+    else:
+        # Nessun progetto selezionato: mostra solo le proprie autorizzazioni
+        if solo_mie or utente.ruolo not in ("superadmin", "direttore_generale", "monitor"):
+            q = q.filter(RichiestaAutorizzazioneSpesa.richiedente_id == utente.id)
     total = q.count()
     items = q.order_by(RichiestaAutorizzazioneSpesa.created_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
     return {

@@ -184,29 +184,40 @@ def lista_rimborsi(
     q = db.query(RichiestaRimborsoSpesa)
     if stato:
         q = q.filter(RichiestaRimborsoSpesa.stato == stato)
+
+    # Logica di visibilità basata su progetto_id
     if progetto_id:
-        aut_project = db.query(RichiestaAutorizzazioneSpesa.id).filter(
-            RichiestaAutorizzazioneSpesa.progetto_id == progetto_id
-        ).subquery()
-        q = q.filter(RichiestaRimborsoSpesa.richiesta_autorizzazione_spesa_id.in_(aut_project))
-    if solo_miei:
-        q = q.filter(RichiestaRimborsoSpesa.richiedente_id == utente.id)
-    elif utente.ruolo not in ("superadmin", "direttore_generale", "monitor"):
-        alloc_proj_ids = db.query(Allocazione.progetto_id).filter(Allocazione.persona_id == utente.id).subquery()
-        aut_in_projects = db.query(RichiestaAutorizzazioneSpesa.id).filter(
-            RichiestaAutorizzazioneSpesa.progetto_id.in_(alloc_proj_ids)
-        ).subquery()
-        ammin_proj_ids = db.query(Progetto.id).filter(Progetto.amministrativo_id == utente.id).subquery()
-        aut_ammin_projects = db.query(RichiestaAutorizzazioneSpesa.id).filter(
-            RichiestaAutorizzazioneSpesa.progetto_id.in_(ammin_proj_ids)
-        ).subquery()
-        q = q.filter(
-            or_(
-                (RichiestaRimborsoSpesa.richiedente_id == utente.id) &
-                RichiestaRimborsoSpesa.richiesta_autorizzazione_spesa_id.in_(aut_in_projects),
-                RichiestaRimborsoSpesa.richiesta_autorizzazione_spesa_id.in_(aut_ammin_projects),
+        # Se un progetto è selezionato, controlla permessi
+        is_pi = db.query(Allocazione).filter(
+            Allocazione.persona_id == utente.id,
+            Allocazione.progetto_id == progetto_id,
+            Allocazione.is_pi == True
+        ).first()
+        is_ammin = db.query(Progetto).filter(
+            Progetto.id == progetto_id,
+            Progetto.amministrativo_id == utente.id
+        ).first()
+        is_dg_monitor = utente.ruolo in ("superadmin", "direttore_generale", "monitor")
+
+        if is_pi or is_ammin or is_dg_monitor:
+            # PI/Amministrativo/DG/Monitor: vedono tutto del progetto
+            aut_project = db.query(RichiestaAutorizzazioneSpesa.id).filter(
+                RichiestaAutorizzazioneSpesa.progetto_id == progetto_id
+            ).subquery()
+            q = q.filter(RichiestaRimborsoSpesa.richiesta_autorizzazione_spesa_id.in_(aut_project))
+        else:
+            # Ricercatore: vede solo i suoi rimborsi sul progetto
+            aut_project = db.query(RichiestaAutorizzazioneSpesa.id).filter(
+                RichiestaAutorizzazioneSpesa.progetto_id == progetto_id
+            ).subquery()
+            q = q.filter(
+                RichiestaRimborsoSpesa.richiesta_autorizzazione_spesa_id.in_(aut_project),
+                RichiestaRimborsoSpesa.richiedente_id == utente.id
             )
-        )
+    else:
+        # Nessun progetto selezionato: mostra solo i propri rimborsi
+        if solo_miei or utente.ruolo not in ("superadmin", "direttore_generale", "monitor"):
+            q = q.filter(RichiestaRimborsoSpesa.richiedente_id == utente.id)
     total = q.count()
     items = q.order_by(RichiestaRimborsoSpesa.created_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
     return {

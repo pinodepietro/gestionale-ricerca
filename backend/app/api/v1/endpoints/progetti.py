@@ -366,7 +366,7 @@ def cruscotto_amministrativo(
 
     # Progetti dove l'utente è amministrativo
     progetti = db.query(Progetto).filter(Progetto.amministrativo_id == utente.id).all()
-    progetto_ids = [str(p.id) for p in progetti]
+    progetto_ids = [p.id for p in progetti]
 
     if not progetto_ids:
         return {"data": {
@@ -405,9 +405,9 @@ def cruscotto_amministrativo(
     rimborsi_missione_da_approvare = rm_query.count()
     rimborsi_missione_primo_id = str(rm_primo.id) if rm_primo else None
 
-    rs_query = db.query(RichiestaRimborsoSpesa).filter(
+    rs_query = db.query(RichiestaRimborsoSpesa).join(RichiestaAutorizzazioneSpesa).filter(
         RichiestaRimborsoSpesa.stato == "attesa_ammin",
-        RichiestaRimborsoSpesa.progetto_id.in_(progetto_ids)
+        RichiestaAutorizzazioneSpesa.progetto_id.in_(progetto_ids)
     )
     rs_primo = rs_query.first()
     rimborsi_spesa_da_approvare = rs_query.count()
@@ -464,7 +464,7 @@ def cruscotto_pi(
         Allocazione.persona_id == utente.id,
         Allocazione.is_pi == True
     ).all()
-    progetto_ids = [str(a.progetto_id) for a in allocazioni_pi]
+    progetto_ids = [a.progetto_id for a in allocazioni_pi]
 
     if not progetto_ids:
         return {"data": {
@@ -503,9 +503,9 @@ def cruscotto_pi(
     rimborsi_missione_da_approvare = rm_query.count()
     rimborsi_missione_primo_id = str(rm_primo.id) if rm_primo else None
 
-    rs_query = db.query(RichiestaRimborsoSpesa).filter(
+    rs_query = db.query(RichiestaRimborsoSpesa).join(RichiestaAutorizzazioneSpesa).filter(
         RichiestaRimborsoSpesa.stato == "attesa_pi",
-        RichiestaRimborsoSpesa.progetto_id.in_(progetto_ids)
+        RichiestaAutorizzazioneSpesa.progetto_id.in_(progetto_ids)
     )
     rs_primo = rs_query.first()
     rimborsi_spesa_da_approvare = rs_query.count()

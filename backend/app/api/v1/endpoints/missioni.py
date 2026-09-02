@@ -430,20 +430,36 @@ def lista_missioni(
     q = db.query(Missione)
     if stato:
         q = q.filter(Missione.stato == stato)
+
+    # Logica di visibilità basata su progetto_id
     if progetto_id:
-        q = q.filter(Missione.progetto_id == progetto_id)
-    if solo_mie:
-        q = q.filter(Missione.richiedente_id == utente.id)
-    elif utente.ruolo not in ("superadmin", "direttore_generale", "monitor"):
-        alloc_ids = db.query(Allocazione.progetto_id).filter(Allocazione.persona_id == utente.id).subquery()
-        ammin_proj_ids = db.query(Progetto.id).filter(Progetto.amministrativo_id == utente.id).subquery()
-        q = q.filter(
-            or_(
-                Missione.richiedente_id == utente.id,
-                Missione.progetto_id.in_(alloc_ids),
-                Missione.progetto_id.in_(ammin_proj_ids),
+        # Se un progetto è selezionato, controlla permessi
+        is_pi = db.query(Allocazione).filter(
+            Allocazione.persona_id == utente.id,
+            Allocazione.progetto_id == progetto_id,
+            Allocazione.is_pi == True
+        ).first()
+        is_ammin = db.query(Progetto).filter(
+            Progetto.id == progetto_id,
+            Progetto.amministrativo_id == utente.id
+        ).first()
+        is_dg_monitor = utente.ruolo in ("superadmin", "direttore_generale", "monitor")
+
+        if is_pi or is_ammin or is_dg_monitor:
+            # PI: vede tutto del personale allocato sul progetto
+            # Amministrativo: vede tutto del progetto
+            # DG/Monitor: vedono tutto
+            q = q.filter(Missione.progetto_id == progetto_id)
+        else:
+            # Ricercatore: vede solo le sue richieste sul progetto
+            q = q.filter(
+                Missione.progetto_id == progetto_id,
+                Missione.richiedente_id == utente.id
             )
-        )
+    else:
+        # Nessun progetto selezionato: mostra solo le proprie richieste
+        if solo_mie or utente.ruolo not in ("superadmin", "direttore_generale", "monitor"):
+            q = q.filter(Missione.richiedente_id == utente.id)
     total = q.count()
     items = q.order_by(Missione.created_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
     return {
@@ -823,29 +839,40 @@ def lista_rimborsi(
     q = db.query(RimborsoMissione)
     if stato:
         q = q.filter(RimborsoMissione.stato == stato)
+
+    # Logica di visibilità basata su progetto_id
     if progetto_id:
-        missioni_project = db.query(Missione.id).filter(
-            Missione.progetto_id == progetto_id
-        ).subquery()
-        q = q.filter(RimborsoMissione.missione_id.in_(missioni_project))
-    if solo_miei:
-        q = q.filter(RimborsoMissione.richiedente_id == utente.id)
-    elif utente.ruolo not in ("superadmin", "direttore_generale", "monitor"):
-        alloc_proj_ids = db.query(Allocazione.progetto_id).filter(Allocazione.persona_id == utente.id).subquery()
-        missioni_in_projects = db.query(Missione.id).filter(
-            Missione.progetto_id.in_(alloc_proj_ids)
-        ).subquery()
-        ammin_proj_ids = db.query(Progetto.id).filter(Progetto.amministrativo_id == utente.id).subquery()
-        missioni_ammin_projects = db.query(Missione.id).filter(
-            Missione.progetto_id.in_(ammin_proj_ids)
-        ).subquery()
-        q = q.filter(
-            or_(
-                RimborsoMissione.richiedente_id == utente.id,
-                RimborsoMissione.missione_id.in_(missioni_in_projects),
-                RimborsoMissione.missione_id.in_(missioni_ammin_projects),
+        # Se un progetto è selezionato, controlla permessi
+        is_pi = db.query(Allocazione).filter(
+            Allocazione.persona_id == utente.id,
+            Allocazione.progetto_id == progetto_id,
+            Allocazione.is_pi == True
+        ).first()
+        is_ammin = db.query(Progetto).filter(
+            Progetto.id == progetto_id,
+            Progetto.amministrativo_id == utente.id
+        ).first()
+        is_dg_monitor = utente.ruolo in ("superadmin", "direttore_generale", "monitor")
+
+        if is_pi or is_ammin or is_dg_monitor:
+            # PI/Amministrativo/DG/Monitor: vedono tutto del progetto
+            missioni_project = db.query(Missione.id).filter(
+                Missione.progetto_id == progetto_id
+            ).subquery()
+            q = q.filter(RimborsoMissione.missione_id.in_(missioni_project))
+        else:
+            # Ricercatore: vede solo i suoi rimborsi sul progetto
+            missioni_project = db.query(Missione.id).filter(
+                Missione.progetto_id == progetto_id
+            ).subquery()
+            q = q.filter(
+                RimborsoMissione.missione_id.in_(missioni_project),
+                RimborsoMissione.richiedente_id == utente.id
             )
-        )
+    else:
+        # Nessun progetto selezionato: mostra solo i propri rimborsi
+        if solo_miei or utente.ruolo not in ("superadmin", "direttore_generale", "monitor"):
+            q = q.filter(RimborsoMissione.richiedente_id == utente.id)
     total = q.count()
     items = q.order_by(RimborsoMissione.created_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
     return {
