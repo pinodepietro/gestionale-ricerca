@@ -101,22 +101,53 @@ def lista_timesheet(
     db: Session = Depends(get_db),
     utente: Persona = Depends(tutti_i_ruoli),
 ):
+    from sqlalchemy import or_
     q = db.query(TimesheetTestata)
-    if utente.ruolo == "ricercatore":
-        # Ricercatore vede i propri + tutti i timesheet dei progetti in cui è PI
-        progetti_pi_sq = db.query(Allocazione.progetto_id).filter(
+
+    # Logica di visibilità basata su progetto_id
+    if progetto_id:
+        # Se un progetto è selezionato, controlla permessi
+        is_pi = db.query(Allocazione).filter(
             Allocazione.persona_id == utente.id,
-            Allocazione.is_pi == True,
-        ).subquery()
-        from sqlalchemy import or_
-        q = q.filter(or_(
-            TimesheetTestata.persona_id == utente.id,
-            TimesheetTestata.progetto_id.in_(progetti_pi_sq),
-        ))
+            Allocazione.progetto_id == progetto_id,
+            Allocazione.is_pi == True
+        ).first()
+        is_ammin = db.query(Progetto).filter(
+            Progetto.id == progetto_id,
+            Progetto.amministrativo_id == utente.id
+        ).first()
+        is_dg_monitor = utente.ruolo in ("superadmin", "direttore_generale", "monitor")
+
+        if is_pi or is_ammin or is_dg_monitor:
+            # PI/Amministrativo/DG/Monitor: vedono tutto del progetto
+            q = q.filter(TimesheetTestata.progetto_id == progetto_id)
+        else:
+            # Ricercatore: vede solo i suoi timesheet sul progetto
+            q = q.filter(
+                TimesheetTestata.progetto_id == progetto_id,
+                TimesheetTestata.persona_id == utente.id
+            )
+    else:
+        # Nessun progetto selezionato: logica per ogni ruolo
+        if utente.ruolo == "ricercatore":
+            # Ricercatore vede i propri + tutti i timesheet dei progetti in cui è PI
+            progetti_pi_sq = db.query(Allocazione.progetto_id).filter(
+                Allocazione.persona_id == utente.id,
+                Allocazione.is_pi == True,
+            ).subquery()
+            q = q.filter(or_(
+                TimesheetTestata.persona_id == utente.id,
+                TimesheetTestata.progetto_id.in_(progetti_pi_sq),
+            ))
+        elif utente.ruolo not in ("superadmin", "direttore_generale", "monitor"):
+            # Amministrativo: vede tutti i timesheet dei suoi progetti
+            progetti_ammin = db.query(Progetto.id).filter(
+                Progetto.amministrativo_id == utente.id
+            ).subquery()
+            q = q.filter(TimesheetTestata.progetto_id.in_(progetti_ammin))
+
     if persona_id:
         q = q.filter(TimesheetTestata.persona_id == persona_id)
-    if progetto_id:
-        q = q.filter(TimesheetTestata.progetto_id == progetto_id)
     if anno:
         q = q.filter(TimesheetTestata.anno == anno)
     if mese:
