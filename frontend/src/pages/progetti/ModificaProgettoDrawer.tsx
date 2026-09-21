@@ -1,8 +1,9 @@
 // frontend/src/pages/progetti/ModificaProgettoDrawer.tsx
 import { useEffect, useRef, useState } from 'react';
 import { Drawer, Tabs, Form, Input, InputNumber, DatePicker, Button, Select,
-         Table, Space, Modal, App, Divider, Row, Col, Switch, Tag, Typography, Alert } from 'antd';
+         Table, Space, Modal, App, Divider, Row, Col, Switch, Tag, Typography, Alert, Spin } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import { useAuthStore } from '../../store/useAuthStore';
 import { Step6BudgetWP } from '../configurazione/WizardProgetto/Step6BudgetWP';
 import { Step7PersonaleWP } from '../configurazione/WizardProgetto/Step7PersonaleWP';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -83,6 +84,9 @@ export function ModificaProgettoDrawer({ progettoId, aperto, onChiudi }: Props) 
 function TabAnagrafica({ progettoId, onSalvato }: { progettoId: string; onSalvato: () => void }) {
   const [form] = Form.useForm();
   const queryClient = useQueryClient();
+  const { notification } = App.useApp();
+  const user = useAuthStore(s => s.user);
+  const [cambioAmminPending, setCambioAmminPending] = useState(false);
 
   const { data: progetto } = useQuery({
     queryKey: queryKeys.progetti.detail(progettoId),
@@ -97,6 +101,11 @@ function TabAnagrafica({ progettoId, onSalvato }: { progettoId: string; onSalvat
   const { data: dipartimenti } = useQuery({
     queryKey: ['dipartimenti'],
     queryFn: () => dipartimentiApi.list().then(r => r.data.data),
+  });
+
+  const { data: amministrativi } = useQuery({
+    queryKey: ['persone', { ruolo: 'amministrativo', attivo: true }],
+    queryFn: () => personaleApi.list({ ruolo: 'amministrativo', attivo: true }).then(r => r.data.data),
   });
 
   useEffect(() => {
@@ -127,6 +136,21 @@ function TabAnagrafica({ progettoId, onSalvato }: { progettoId: string; onSalvat
       onSalvato();
     },
   });
+
+  const handleCambiaAmministrativo = async (nuovoAmminId: string) => {
+    try {
+      setCambioAmminPending(true);
+      await apiClient.put(`/api/v1/progetti/${progettoId}/amministrativo`, {
+        persona_id: nuovoAmminId,
+      });
+      queryClient.invalidateQueries({ queryKey: queryKeys.progetti.detail(progettoId) });
+      notification.success({ message: 'Amministrativo aggiornato con successo' });
+    } catch (error) {
+      notification.error({ message: 'Errore durante l\'aggiornamento dell\'amministrativo' });
+    } finally {
+      setCambioAmminPending(false);
+    }
+  };
 
   return (
     <Form form={form} layout="vertical" onFinish={salva}>
@@ -205,6 +229,24 @@ function TabAnagrafica({ progettoId, onSalvato }: { progettoId: string; onSalvat
             ?.map(d => ({ value: d.id, label: d.nome })) ?? []}
         />
       </Form.Item>
+      {user?.ruolo === 'superadmin' && (
+        <Form.Item label="Amministratore di progetto">
+          <Select
+            placeholder="Seleziona nuovo amministratore"
+            loading={cambioAmminPending}
+            options={(amministrativi as { id: string; nome: string; cognome: string }[] | undefined)
+              ?.map(p => ({ value: p.id, label: `${p.nome} ${p.cognome}` })) ?? []}
+            value={progetto?.amministrativo_id || undefined}
+            onChange={handleCambiaAmministrativo}
+            showSearch
+            filterOption={(input, option) =>
+              (option?.label as string)?.toLowerCase().includes(input.toLowerCase())}
+          />
+          <div style={{ fontSize: 12, color: '#999', marginTop: 6 }}>
+            Solo Superadmin può cambiare l'amministratore del progetto
+          </div>
+        </Form.Item>
+      )}
       <Form.Item name="riferimento_bando" label="Riferimento bando">
         <Input.TextArea rows={2} placeholder="Estremi del bando di finanziamento, decreto, convenzione..." />
       </Form.Item>
