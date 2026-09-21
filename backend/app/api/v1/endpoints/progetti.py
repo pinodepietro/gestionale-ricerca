@@ -587,6 +587,91 @@ def aggiorna_progetto(id: str, body: dict, background_tasks: BackgroundTasks, db
     return {"data": progetto_dict(p)}
 
 
+@router.put("/{id}/amministrativo")
+def cambia_amministrativo(
+    id: str,
+    body: dict,
+    db: Session = Depends(get_db),
+    utente: Persona = Depends(solo_superadmin),
+):
+    """
+    Cambia l'amministrativo del progetto.
+    Solo Superadmin può farlo.
+    Se il nuovo amministrativo non è allocato, viene allocato automaticamente.
+    """
+    from app.models.audit import AuditLog
+    from datetime import date
+
+    p = _get_or_404(id, db)
+    nuovo_amministrativo_id = body.get("persona_id")
+
+    if not nuovo_amministrativo_id:
+        raise HTTPException(status_code=400, detail={"error": {"message": "persona_id è obbligatorio"}})
+
+    # Validare che la persona esista
+    nuova_persona = db.query(Persona).filter(Persona.id == nuovo_amministrativo_id).first()
+    if not nuova_persona:
+        raise HTTPException(status_code=404, detail={"error": {"message": "Persona non trovata"}})
+
+    # Vecchio amministrativo (per audit log)
+    vecchio_amministrativo_id = p.amministrativo_id
+    vecchio_amministrativo_nome = None
+    if vecchio_amministrativo_id:
+        vecchio_admin = db.query(Persona).filter(Persona.id == vecchio_amministrativo_id).first()
+        vecchio_amministrativo_nome = f"{vecchio_admin.nome} {vecchio_admin.cognome}" if vecchio_admin else str(vecchio_amministrativo_id)
+
+    nuovo_amministrativo_nome = f"{nuova_persona.nome} {nuova_persona.cognome}"
+
+    # Se il nuovo amministrativo non è già allocato, allocarlo automaticamente
+    allocazione_nuova = db.query(Allocazione).filter(
+        Allocazione.progetto_id == id,
+        Allocazione.persona_id == nuovo_amministrativo_id,
+    ).first()
+
+    if not allocazione_nuova:
+        # Allocare automaticamente con ore 0 e date del progetto
+        allocazione_nuova = Allocazione(
+            persona_id=nuovo_amministrativo_id,
+            progetto_id=id,
+            ore_assegnate=0,
+            data_inizio=p.data_inizio,
+            data_fine=p.data_fine,
+            is_ammin=True,
+        )
+        db.add(allocazione_nuova)
+    else:
+        allocazione_nuova.is_ammin = True
+
+    # Rimuovere is_ammin da vecchio amministrativo (se esiste)
+    if vecchio_amministrativo_id and vecchio_amministrativo_id != nuovo_amministrativo_id:
+        allocazione_vecchia = db.query(Allocazione).filter(
+            Allocazione.progetto_id == id,
+            Allocazione.persona_id == vecchio_amministrativo_id,
+        ).first()
+        if allocazione_vecchia:
+            allocazione_vecchia.is_ammin = False
+
+    # Aggiornare Progetto.amministrativo_id
+    p.amministrativo_id = nuovo_amministrativo_id
+
+    # Creare audit log
+    audit = AuditLog(
+        entita="progetto",
+        entita_id=id,
+        azione="cambio_amministrativo",
+        cambio_da=vecchio_amministrativo_nome,
+        cambio_a=nuovo_amministrativo_nome,
+        cambiato_da=utente.id,
+        dettagli=f"Precedente: {vecchio_amministrativo_id}, Nuovo: {nuovo_amministrativo_id}",
+    )
+    db.add(audit)
+
+    db.commit()
+    db.refresh(p)
+
+    return {"data": progetto_dict(p), "audit_id": str(audit.id)}
+
+
 @router.post("/{id}/attiva")
 def attiva(id: str, background_tasks: BackgroundTasks, db: Session = Depends(get_db), utente: Persona = Depends(solo_amministrativo)):
     p = _get_or_404(id, db)
