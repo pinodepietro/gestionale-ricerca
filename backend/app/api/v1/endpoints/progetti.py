@@ -65,6 +65,7 @@ def progetto_dict(p: Progetto) -> dict:
         "percentuale_finanziamento": round(float(p.importo_finanziato or 0) / float(p.costo_totale or 1) * 100, 2),
         "cup": p.cup, "budget_per_partner": p.budget_per_partner,
         "gestione_per_wp": bool(p.gestione_per_wp),
+        "granularita_timesheet": p.granularita_timesheet,
         "template_timesheet_id": str(p.template_timesheet_id) if p.template_timesheet_id else None,
         "riferimento_bando": p.riferimento_bando,
         "note": p.note,
