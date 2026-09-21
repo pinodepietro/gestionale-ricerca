@@ -1,7 +1,7 @@
 // frontend/src/pages/progetti/ModificaProgettoDrawer.tsx
 import { useEffect, useRef, useState } from 'react';
 import { Drawer, Tabs, Form, Input, InputNumber, DatePicker, Button, Select,
-         Table, Space, Modal, App, Divider, Row, Col, Switch, Tag, Typography, Alert, Spin } from 'antd';
+         Table, Space, Modal, App, Divider, Row, Col, Switch, Tag, Typography, Alert } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useAuthStore } from '../../store/useAuthStore';
 import { Step6BudgetWP } from '../configurazione/WizardProgetto/Step6BudgetWP';
@@ -140,7 +140,7 @@ function TabAnagrafica({ progettoId, onSalvato }: { progettoId: string; onSalvat
   const handleCambiaAmministrativo = async (nuovoAmminId: string) => {
     try {
       setCambioAmminPending(true);
-      await apiClient.put(`/api/v1/progetti/${progettoId}/amministrativo`, {
+      await apiClient.put(`/progetti/${progettoId}/amministrativo`, {
         persona_id: nuovoAmminId,
       });
       queryClient.invalidateQueries({ queryKey: queryKeys.progetti.detail(progettoId) });
