@@ -1,9 +1,7 @@
 import { Row, Col, Statistic, Typography, Divider, Alert } from 'antd';
 import { useQuery } from '@tanstack/react-query';
-import { erogazioniApi } from '../../../api/erogazioni';
-import { budgetApi } from '../../../api/budget';
+import { progettiApi } from '../../../api/progetti';
 import { queryKeys } from '../../../utils/queryKeys';
-import type { Impegno, Spesa } from '../../../types/budget';
 
 const { Title, Text } = Typography;
 
@@ -16,37 +14,16 @@ const fmtEuro = (v: number): string => {
 interface Props { progettoId: string; }
 
 export function TabDisponibilita({ progettoId }: Props) {
-  const { data: erogazioniData } = useQuery({
-    queryKey: ['erogazioni', progettoId],
-    queryFn: () => erogazioniApi.list(progettoId).then(r => r.data),
+  const { data: disponibilitaData } = useQuery({
+    queryKey: queryKeys.progetti.disponibilita(progettoId),
+    queryFn: () => progettiApi.getDisponibilita(progettoId).then(r => r.data.data),
     enabled: !!progettoId,
   });
 
-  const { data: speseData } = useQuery({
-    queryKey: queryKeys.progetti.spese(progettoId),
-    queryFn: () => budgetApi.spese.list(progettoId, { page: 1 }).then(r => r.data),
-    enabled: !!progettoId,
-  });
-
-  const { data: impegniData } = useQuery({
-    queryKey: queryKeys.progetti.impegni(progettoId),
-    queryFn: () => budgetApi.impegni.list(progettoId).then(r => r.data.data),
-    enabled: !!progettoId,
-  });
-
-  const totaleErogato = erogazioniData?.totali.totale_erogato ?? 0;
-
-  // Somma spese registrate
-  const totaleSpeso = (speseData?.data as Spesa[] | undefined)
-    ?.filter(s => s.stato === 'registrata')
-    .reduce((sum, s) => sum + Number(s.importo), 0) ?? 0;
-
-  // Somma impegni attivi (non stabilizzati)
-  const totaleImpegnato = (impegniData as Impegno[] | undefined)
-    ?.filter(i => !i.stabilizzato)
-    .reduce((sum, i) => sum + i.importo, 0) ?? 0;
-
-  const disponibilita = totaleErogato - totaleSpeso - totaleImpegnato;
+  const totaleErogato = disponibilitaData?.totale_erogato ?? 0;
+  const totaleSpeso = disponibilitaData?.totale_speso ?? 0;
+  const totaleImpegnato = disponibilitaData?.totale_impegnato ?? 0;
+  const disponibilita = disponibilitaData?.disponibilita ?? 0;
 
   return (
     <div>

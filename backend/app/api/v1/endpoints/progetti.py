@@ -8,7 +8,7 @@ from app.core.deps import tutti_i_ruoli, solo_amministrativo, solo_superadmin
 from app.models.progetto import Progetto
 from app.models.partner import Partner, ProgettoPartner, TipoFinanziamento, Finanziamento
 from app.models.struttura import WorkPackage, Milestone, Deliverable
-from app.models.budget import VoceDiCosto, BudgetVoce, Spesa, Sal, Impegno
+from app.models.budget import VoceDiCosto, BudgetVoce, Spesa, Sal, Impegno, Erogazione
 from app.models.personale import Allocazione, MonteOreAnnuale
 from app.models.timesheet import TimesheetTestata
 from app.models.persona import Persona
@@ -1525,6 +1525,43 @@ def elimina_impegno(impegno_id: str, db: Session = Depends(get_db), utente: Pers
     db.delete(impegno)
     db.commit()
     return {"data": {"deleted": True}}
+
+
+@router.get("/{id}/disponibilita")
+def disponibilita(
+    id: str,
+    db: Session = Depends(get_db),
+    utente: Persona = Depends(tutti_i_ruoli),
+):
+    _get_or_404(id, db)
+
+    # Totale erogato (da tabella erogazione)
+    totale_erogato = float(db.query(func.sum(Erogazione.importo)).filter(
+        Erogazione.progetto_id == id
+    ).scalar() or 0)
+
+    # Totale spese registrate (TUTTE, non paginate)
+    totale_speso = float(db.query(func.sum(Spesa.importo)).filter(
+        Spesa.progetto_id == id, Spesa.stato == "registrata"
+    ).scalar() or 0)
+
+    # Totale impegni attivi (non stabilizzati = non collegati a spesa)
+    stabilizzati = _impegni_stabilizzati_ids(id, db)
+    totale_impegnato = float(db.query(func.sum(Impegno.importo)).filter(
+        ~Impegno.id.in_([s for s in stabilizzati]),
+        Impegno.progetto_id == id
+    ).scalar() or 0)
+
+    disponibilita = totale_erogato - totale_speso - totale_impegnato
+
+    return {
+        "data": {
+            "totale_erogato": totale_erogato,
+            "totale_speso": totale_speso,
+            "totale_impegnato": totale_impegnato,
+            "disponibilita": disponibilita,
+        }
+    }
 
 
 # ─── Documenti ────────────────────────────────────────────────────────────────
