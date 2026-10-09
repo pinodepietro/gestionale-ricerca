@@ -161,7 +161,11 @@ def cruscotto_globale(
             "progetti": [],
         }}
 
-    progetti = db.query(Progetto).filter(
+    # Eager load progetti con allocazioni e persona (PI)
+    from sqlalchemy.orm import joinedload
+    progetti = db.query(Progetto).options(
+        joinedload(Progetto.allocazioni).joinedload(Allocazione.persona)
+    ).filter(
         Progetto.id.in_(progetti_ids),
         Progetto.stato == "attivo",
     ).all()
@@ -184,11 +188,56 @@ def cruscotto_globale(
         Spesa.stato == "registrata",
     ).scalar() or 0
 
+    # Pre-aggregazione: BudgetVoce per progetto
+    bv_agg = db.query(
+        BudgetVoce.progetto_id,
+        func.sum(BudgetVoce.importo_previsto).label("prev"),
+        func.sum(BudgetVoce.importo_rendicontato).label("rend"),
+    ).filter(
+        BudgetVoce.progetto_id.in_(progetti_ids)
+    ).group_by(BudgetVoce.progetto_id).all()
+    bv_map = {str(row.progetto_id): {"prev": float(row.prev or 0), "rend": float(row.rend or 0)} for row in bv_agg}
+
+    # Pre-aggregazione: Spesa registrata per progetto
+    spesa_agg = db.query(
+        Spesa.progetto_id,
+        func.sum(Spesa.importo).label("total"),
+    ).filter(
+        Spesa.progetto_id.in_(progetti_ids),
+        Spesa.stato == "registrata",
+    ).group_by(Spesa.progetto_id).all()
+    spesa_map = {str(row.progetto_id): float(row.total or 0) for row in spesa_agg}
+
     # Spese per progetto (escluso personale — quello viene dai timesheet)
     from app.models.budget import VoceDiCosto as VDC
     voci_personale_ids = [
         str(v.id) for v in db.query(VDC).filter(VDC.categoria.in_(["personale", "overhead"])).all()
     ]
+
+    # Pre-aggregazione: Spese ammissibili per progetto
+    spesa_ammissibili = db.query(
+        Spesa.progetto_id,
+        func.sum(Spesa.importo).label("total"),
+    ).join(
+        VoceDiCosto, Spesa.voce_id == VoceDiCosto.id
+    ).filter(
+        Spesa.progetto_id.in_(progetti_ids),
+        Spesa.stato == "registrata",
+        Spesa.voce_id.notin_(voci_personale_ids) if voci_personale_ids else True,
+    ).group_by(Spesa.progetto_id).all()
+    spesa_ammissibili_map = {str(row.progetto_id): float(row.total or 0) for row in spesa_ammissibili}
+
+    # Pre-aggregazione: Budget spese ammissibili per progetto
+    budget_ammissibili = db.query(
+        BudgetVoce.progetto_id,
+        func.sum(BudgetVoce.importo_previsto).label("total"),
+    ).join(
+        VoceDiCosto, BudgetVoce.voce_id == VoceDiCosto.id
+    ).filter(
+        BudgetVoce.progetto_id.in_(progetti_ids),
+        VoceDiCosto.categoria.notin_(["personale", "overhead"]),
+    ).group_by(BudgetVoce.progetto_id).all()
+    budget_ammissibili_map = {str(row.progetto_id): float(row.total or 0) for row in budget_ammissibili}
 
     timesheet_pendenti = db.query(TimesheetTestata).filter(
         TimesheetTestata.progetto_id.in_(progetti_ids),
@@ -205,12 +254,13 @@ def cruscotto_globale(
         Sal.data_scadenza_rendiconto >= oggi,
     ).count()
 
-    # Dettaglio per progetto
+    # Dettaglio per progetto (accede ai dati pre-aggregati — NO query nel loop!)
     progetti_detail = []
     for p in progetti:
-        bv_rows = db.query(BudgetVoce).filter(BudgetVoce.progetto_id == p.id).all()
-        prev = sum(float(b.importo_previsto or 0) for b in bv_rows)
-        rend = sum(float(b.importo_rendicontato or 0) for b in bv_rows)
+        p_id = str(p.id)
+        bv_data = bv_map.get(p_id, {"prev": 0, "rend": 0})
+        prev = bv_data["prev"]
+        rend = bv_data["rend"]
 
         # Percentuale tempo trascorso
         if p.data_inizio and p.data_fine:
@@ -220,14 +270,15 @@ def cruscotto_globale(
         else:
             pct_tempo = 0
 
-        pi_alloc = db.query(Allocazione).filter(
-            Allocazione.progetto_id == p.id,
-            Allocazione.is_pi == True,
-        ).first()
+        # PI nome (dalla eager load)
         pi_nome = None
-        if pi_alloc:
-            pi_p = db.query(Persona).filter(Persona.id == pi_alloc.persona_id).first()
-            pi_nome = f"{pi_p.nome} {pi_p.cognome}" if pi_p else None
+        pi_alloc = next((a for a in p.allocazioni if a.is_pi), None)
+        if pi_alloc and pi_alloc.persona:
+            pi_nome = f"{pi_alloc.persona.nome} {pi_alloc.persona.cognome}"
+
+        spese_progetto = spesa_map.get(p_id, 0)
+        spese_doc = spesa_ammissibili_map.get(p_id, 0)
+        budget_doc = budget_ammissibili_map.get(p_id, 0)
 
         progetti_detail.append({
             "id": str(p.id),
@@ -240,34 +291,13 @@ def cruscotto_globale(
             "pianificato": prev,
             "rendicontato": rend,
             "pct_rendicontato": round(rend / prev * 100, 1) if prev > 0 else 0,
-            "pct_speso": round(
-                float(db.query(func.sum(Spesa.importo)).filter(
-                    Spesa.progetto_id == p.id, Spesa.stato == "registrata"
-                ).scalar() or 0) / float(p.importo_finanziato) * 100, 1
-            ) if p.importo_finanziato else 0,
+            "pct_speso": round(spese_progetto / float(p.importo_finanziato) * 100, 1) if p.importo_finanziato else 0,
             "percentuale_tempo": pct_tempo,
             "importo_finanziato": float(p.importo_finanziato) if p.importo_finanziato else 0,
             "costo_totale": float(p.costo_totale) if p.costo_totale else 0,
-            "budget_allocato_voci": float(
-                db.query(func.sum(BudgetVoce.importo_previsto)).filter(
-                    BudgetVoce.progetto_id == p.id
-                ).scalar() or 0
-            ),
-            "spese_documentate": float(
-                db.query(func.sum(Spesa.importo)).filter(
-                    Spesa.progetto_id == p.id,
-                    Spesa.stato == "registrata",
-                    Spesa.voce_id.notin_(voci_personale_ids) if voci_personale_ids else True,
-                ).scalar() or 0
-            ),
-            "budget_spese_ammissibili": float(
-                db.query(func.sum(BudgetVoce.importo_previsto)).join(
-                    VoceDiCosto, BudgetVoce.voce_id == VoceDiCosto.id
-                ).filter(
-                    BudgetVoce.progetto_id == p.id,
-                    VoceDiCosto.categoria.notin_(["personale", "overhead"]),
-                ).scalar() or 0
-            ),
+            "budget_allocato_voci": prev,
+            "spese_documentate": spese_doc,
+            "budget_spese_ammissibili": budget_doc,
             "pi_nome": pi_nome,
         })
 
