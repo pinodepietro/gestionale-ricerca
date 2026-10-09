@@ -1010,20 +1010,20 @@ async def upload_documento_riga(
     db: Session = Depends(get_db),
     utente: Persona = Depends(tutti_i_ruoli),
 ):
+    from app.services.file_upload import validate_and_save_upload
+    from app.services.storage import progetto_dir
+
     riga = _get_riga(riga_id, db)
     r = riga.rimborso
     if r.stato != "bozza":
         raise HTTPException(status_code=409, detail={"error": {"code": "STATO_NON_MODIFICABILE", "message": "Documenti caricabili solo in stato bozza"}})
-    from app.services.storage import progetto_dir, upload_filename
+
     _codice_rig = r.missione.progetto.codice if (r.missione and r.missione.progetto) else None
     upload_dir = progetto_dir(_codice_rig, "missioni", _missione_folder(r.missione), "rimborso", "giustificativi")
-    os.makedirs(upload_dir, exist_ok=True)
-    ext = os.path.splitext(file.filename)[1] if file.filename else ""
-    path = os.path.join(upload_dir, upload_filename(file.filename or f"doc{ext}", riga_id))
-    content = await file.read()
-    with open(path, "wb") as f:
-        f.write(content)
-    riga.documento_path = path
+
+    upload_result = await validate_and_save_upload(file, upload_dir)
+
+    riga.documento_path = upload_result["path"]
     riga.documento_nome_originale = file.filename
     db.commit()
     db.refresh(r)
@@ -1046,18 +1046,19 @@ async def upload_scheda_finanziaria(
     db: Session = Depends(get_db),
     utente: Persona = Depends(tutti_i_ruoli),
 ):
+    from app.services.file_upload import validate_and_save_upload
+    from app.services.storage import progetto_dir
+
     r = _get_rimborso(id, db)
     if r.stato != "bozza":
         raise HTTPException(status_code=409, detail={"error": {"code": "STATO_NON_MODIFICABILE", "message": "Caricabile solo in stato bozza"}})
-    from app.services.storage import progetto_dir
+
     _codice_sf = r.missione.progetto.codice if (r.missione and r.missione.progetto) else None
     upload_dir = progetto_dir(_codice_sf, "missioni", _missione_folder(r.missione), "rimborso")
-    os.makedirs(upload_dir, exist_ok=True)
-    path = os.path.join(upload_dir, f"scheda_finanziaria{os.path.splitext(file.filename or '')[1]}")
-    content = await file.read()
-    with open(path, "wb") as f:
-        f.write(content)
-    r.scheda_finanziaria_path = path
+
+    upload_result = await validate_and_save_upload(file, upload_dir)
+
+    r.scheda_finanziaria_path = upload_result["path"]
     db.commit()
     db.refresh(r)
     return {"data": _rimborso_dict(r, db)}
@@ -1089,19 +1090,17 @@ async def upload_allegato_rimborso(
     db: Session = Depends(get_db),
     utente: Persona = Depends(tutti_i_ruoli),
 ):
+    from app.services.file_upload import validate_and_save_upload
+    from app.services.storage import progetto_dir
+
     r = _get_rimborso(id, db)
-    from app.services.storage import progetto_dir, upload_filename
     _codice_all = r.missione.progetto.codice if (r.missione and r.missione.progetto) else None
     upload_dir = progetto_dir(_codice_all, "missioni", _missione_folder(r.missione), "rimborso", "allegati")
-    os.makedirs(upload_dir, exist_ok=True)
-    import uuid
-    ext = os.path.splitext(file.filename)[1] if file.filename else ""
-    path = os.path.join(upload_dir, upload_filename(file.filename or f"allegato{ext}", str(uuid.uuid4())))
-    content = await file.read()
-    with open(path, "wb") as f:
-        f.write(content)
+
+    upload_result = await validate_and_save_upload(file, upload_dir)
+
     allegato = AllegatoMissione(
-        tipo=tipo, file_path=path, file_nome_originale=file.filename,
+        tipo=tipo, file_path=upload_result["path"], file_nome_originale=file.filename,
         rimborso_missione_id=r.id, caricato_da=utente.id,
     )
     db.add(allegato)
