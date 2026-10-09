@@ -19,6 +19,21 @@ RUOLI_VALIDI = ["amministrativo", "ricercatore", "management", "superadmin", "mo
 
 @router.get("/utenti")
 def lista_utenti(db: Session = Depends(get_db), utente: Persona = Depends(solo_superadmin)):
+    """
+    List all users (persons).
+
+    Only superadmin can access. Returns all active and inactive users ordered by cognome/nome.
+
+    Args:
+        db: Database session
+        utente: Current user (must be superadmin)
+
+    Returns:
+        JSON with array of user objects: {id, nome, cognome, email, ruolo, ruolo_ente, livello_contratto, attivo}
+
+    Raises:
+        HTTPException 403: Not superadmin
+    """
     persone = db.query(Persona).order_by(Persona.cognome, Persona.nome).all()
     return {"data": [_persona_dict(p) for p in persone]}
 
