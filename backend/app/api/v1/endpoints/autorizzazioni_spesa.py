@@ -409,7 +409,9 @@ def approva_ammin(
     if not budget_voce_id:
         raise HTTPException(status_code=422, detail={"error": {"code": "CAMPO_MANCANTE", "message": "Selezionare la voce di budget da impegnare"}})
 
-    bv = db.query(BudgetVoce).filter(
+    # PESSIMISTIC LOCKING: with_for_update() blocca la riga finché transazione non termina
+    # Previene race condition dove due richieste approvano contemporaneamente
+    bv = db.query(BudgetVoce).with_for_update().filter(
         BudgetVoce.id == budget_voce_id,
         BudgetVoce.progetto_id == r.progetto_id,
     ).first()
@@ -507,7 +509,9 @@ def approva_dg(
 
     # Crea Impegno se il tipo è progetto
     if r.tipo == "progetto" and r.budget_voce_id:
-        bv = db.query(BudgetVoce).filter(BudgetVoce.id == r.budget_voce_id).first()
+        # PESSIMISTIC LOCKING: with_for_update() blocca la riga
+        # Previene race condition dove due DG approvano concorrentemente
+        bv = db.query(BudgetVoce).with_for_update().filter(BudgetVoce.id == r.budget_voce_id).first()
         if bv:
             impegno = Impegno(
                 progetto_id=r.progetto_id,
