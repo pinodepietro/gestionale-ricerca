@@ -803,12 +803,14 @@ def rimuovi_partner(id: str, pp_id: str, db: Session = Depends(get_db), utente: 
 @router.get("/{id}/budget")
 def lista_budget(id: str, db: Session = Depends(get_db), utente: Persona = Depends(tutti_i_ruoli)):
     from sqlalchemy import func as sqlfunc
+    from uuid import UUID
     _get_or_404(id, db)
-    voci = db.query(BudgetVoce).filter(BudgetVoce.progetto_id == id).all()
+    progetto_id_uuid = UUID(id)
+    voci = db.query(BudgetVoce).filter(BudgetVoce.progetto_id == progetto_id_uuid).all()
     # speso per voce (da tabella spesa)
     spese_per_voce = dict(
         db.query(Spesa.voce_id, sqlfunc.sum(Spesa.importo))
-        .filter(Spesa.progetto_id == id, Spesa.stato == "registrata")
+        .filter(Spesa.progetto_id == progetto_id_uuid, Spesa.stato == "registrata")
         .group_by(Spesa.voce_id)
         .all()
     )
@@ -1590,23 +1592,25 @@ def disponibilita(
     db: Session = Depends(get_db),
     utente: Persona = Depends(tutti_i_ruoli),
 ):
+    from uuid import UUID
     _get_or_404(id, db)
+    progetto_id_uuid = UUID(id)
 
     # Totale erogato (da tabella erogazione)
     totale_erogato = float(db.query(func.sum(Erogazione.importo)).filter(
-        Erogazione.progetto_id == id
+        Erogazione.progetto_id == progetto_id_uuid
     ).scalar() or 0)
 
     # Totale spese registrate (TUTTE, non paginate)
     totale_speso = float(db.query(func.sum(Spesa.importo)).filter(
-        Spesa.progetto_id == id, Spesa.stato == "registrata"
+        Spesa.progetto_id == progetto_id_uuid, Spesa.stato == "registrata"
     ).scalar() or 0)
 
     # Totale impegni attivi (non stabilizzati = non collegati a spesa)
-    stabilizzati = _impegni_stabilizzati_ids(id, db)
+    stabilizzati = _impegni_stabilizzati_ids(progetto_id_uuid, db)
     totale_impegnato = float(db.query(func.sum(Impegno.importo)).filter(
         ~Impegno.id.in_([s for s in stabilizzati]),
-        Impegno.progetto_id == id
+        Impegno.progetto_id == progetto_id_uuid
     ).scalar() or 0)
 
     disponibilita = totale_erogato - totale_speso - totale_impegnato

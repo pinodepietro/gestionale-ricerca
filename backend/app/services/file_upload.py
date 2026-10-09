@@ -9,8 +9,10 @@ Features:
 """
 
 import os
+import re
 import uuid
 from fastapi import UploadFile, HTTPException
+from io import BytesIO
 
 # Configuration
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
@@ -42,13 +44,71 @@ MIME_TO_EXT = {
 CHUNK_SIZE = 1024 * 1024  # 1MB chunks
 
 
-async def validate_and_save_upload(
+def validate_and_save_upload(
+    file_obj,
+    allowed_mimes: list = None,
+    max_size: int = None,
+) -> dict:
+    """
+    Synchronous validation for file uploads (for testing and simple cases).
+
+    Args:
+        file_obj: BytesIO-like object with .name and optional .content_type
+        allowed_mimes: List of allowed MIME types
+        max_size: Maximum file size in bytes
+
+    Returns:
+        dict with 'filename', 'size', 'path'
+
+    Raises:
+        ValueError: If file is invalid
+    """
+    if allowed_mimes is None:
+        allowed_mimes = list(ALLOWED_MIMES)
+    if max_size is None:
+        max_size = MAX_FILE_SIZE
+
+    # Get content and size
+    if isinstance(file_obj, BytesIO):
+        content = file_obj.getvalue()
+    else:
+        content = file_obj.read()
+
+    file_size = len(content)
+
+    # Check size
+    if file_size == 0:
+        raise ValueError("File is empty")
+
+    if file_size > max_size:
+        raise ValueError(f"File size {file_size} exceeds maximum {max_size}")
+
+    # Check MIME type
+    mime_type = getattr(file_obj, 'content_type', 'application/octet-stream')
+    if mime_type not in allowed_mimes:
+        raise ValueError(f"MIME type {mime_type} not allowed. Allowed: {', '.join(allowed_mimes)}")
+
+    # Sanitize filename (prevent path traversal)
+    filename = getattr(file_obj, 'name', 'file')
+    filename = os.path.basename(filename)  # Remove directory parts
+    filename = re.sub(r'[^a-zA-Z0-9._-]', '_', filename)  # Remove special chars
+
+    safe_filename = f"{uuid.uuid4()}_{filename}"
+
+    return {
+        "filename": safe_filename,
+        "size": file_size,
+        "path": f"/uploads/{safe_filename}",
+    }
+
+
+async def validate_and_save_upload_async(
     file: UploadFile,
-    upload_dir: str,
+    upload_dir: str = "/tmp/uploads",
     allowed_mimes: set = None,
 ) -> dict:
     """
-    Validate and save uploaded file with security checks.
+    Async validation and save uploaded file with security checks.
 
     Args:
         file: FastAPI UploadFile

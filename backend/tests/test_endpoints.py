@@ -81,7 +81,6 @@ class TestAuth:
         assert response.status_code == 403
 
 
-@pytest.mark.skip('complex admin fixture setup')
 class TestAdmin:
     """Test admin endpoints."""
 
@@ -104,6 +103,7 @@ class TestAdmin:
             nome="Test",
             cognome="User",
             email="test@test.com",
+            username="testuser123",
             password_hash=hash_password("pass"),
             ruolo=RuoloEnum.RICERCATORE.value,
             attivo=True,

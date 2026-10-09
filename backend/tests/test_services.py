@@ -28,7 +28,6 @@ def test_user(db):
     return persona
 
 
-@pytest.mark.skip('file upload service requires mocking')
 class TestFileUpload:
     """File upload service tests."""
 
@@ -67,19 +66,16 @@ class TestFileUpload:
         content = b"This is a valid PDF content"
         file_obj = BytesIO(content)
         file_obj.name = "document.pdf"
+        file_obj.content_type = "application/pdf"
 
         # Should accept PDF (typically allowed in uploads)
-        # Note: This test assumes the service is imported and available
-        try:
-            result = validate_and_save_upload(
-                file_obj,
-                allowed_mimes=["application/pdf"],
-                max_size=50 * 1024 * 1024,
-            )
-            assert result is not None
-            assert "path" in result or "filename" in result
-        except ImportError:
-            pytest.skip("File upload service not fully implemented yet")
+        result = validate_and_save_upload(
+            file_obj,
+            allowed_mimes=["application/pdf"],
+            max_size=50 * 1024 * 1024,
+        )
+        assert result is not None
+        assert "path" in result or "filename" in result
 
     def test_validate_file_empty(self):
         """Empty file should be rejected or handled."""
@@ -107,19 +103,17 @@ class TestFileUpload:
         for malicious_name in malicious_names:
             file_obj = BytesIO(content)
             file_obj.name = malicious_name
+            file_obj.content_type = "text/plain"
 
-            try:
-                result = validate_and_save_upload(
-                    file_obj,
-                    allowed_mimes=["text/plain"],
-                    max_size=50 * 1024 * 1024,
-                )
-                # If it succeeds, filename should be sanitized (no ../ or /etc/)
-                if "path" in result:
-                    assert "../" not in result["path"]
-                    assert "/etc/" not in result["path"]
-            except ImportError:
-                pytest.skip("File upload service not fully implemented")
+            result = validate_and_save_upload(
+                file_obj,
+                allowed_mimes=["text/plain"],
+                max_size=50 * 1024 * 1024,
+            )
+            # If it succeeds, filename should be sanitized (no ../ or /etc/)
+            if "path" in result:
+                assert "../" not in result["path"]
+                assert "/etc/" not in result["path"]
 
 
 class TestNotifications:
@@ -213,29 +207,26 @@ class TestNotifications:
         assert other_notifs[0].titolo == "User 2 Notif"
 
 
-@pytest.mark.skip('audit service not implemented')
 class TestAuditLog:
     """Audit logging tests."""
 
     def test_audit_log_tracks_operations(self, db, test_user):
         """Operations should be logged to audit trail."""
-        # This would require AuditLog implementation
-        # For now, verify the model exists
-        try:
-            from app.models.audit import AuditLog
-            # Verify model can be instantiated
-            audit = AuditLog(
-                id=uuid4(),
-                entita="Persona",
-                entita_id=test_user.id,
-                azione="CREATE",
-            )
-            db.add(audit)
-            db.commit()
+        from app.models.audit import AuditLog
 
-            # Verify it was logged
-            logged = db.query(AuditLog).filter(AuditLog.entita_id == test_user.id).first()
-            assert logged is not None
-            assert logged.azione == "CREATE"
-        except ImportError:
-            pytest.skip("AuditLog model not fully implemented")
+        # Create audit log entry
+        audit = AuditLog(
+            id=uuid4(),
+            entita="Persona",
+            entita_id=test_user.id,
+            azione="CREATE",
+            cambiato_da=test_user.id,  # Who made the change
+        )
+        db.add(audit)
+        db.commit()
+
+        # Verify it was logged
+        logged = db.query(AuditLog).filter(AuditLog.entita_id == test_user.id).first()
+        assert logged is not None
+        assert logged.azione == "CREATE"
+        assert logged.entita == "Persona"

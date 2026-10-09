@@ -223,8 +223,8 @@ def aggiorna_persona(
     if nome_cambiato or cognome_cambiato:
         # escludi l'utente stesso dal controllo duplicati
         nuovo = (
-            __import__('re').sub(r'\s+', '', p.nome.lower()) + '.' +
-            __import__('re').sub(r'\s+', '', p.cognome.lower())
+            re.sub(r'\s+', '', p.nome.lower()) + '.' +
+            re.sub(r'\s+', '', p.cognome.lower())
         )
         candidate = nuovo
         n = 2

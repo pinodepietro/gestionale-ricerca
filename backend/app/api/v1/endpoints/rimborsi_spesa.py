@@ -442,18 +442,34 @@ async def upload_documento_riga(
 @router.get("/rimborsi-spesa/righe/{riga_id}/documento")
 def scarica_documento_riga(riga_id: str, db: Session = Depends(get_db), utente: Persona = Depends(tutti_i_ruoli)):
     riga = _get_riga_or_404(riga_id, db)
+    from pathlib import Path
     if not riga.documento_path or not os.path.exists(riga.documento_path):
         raise HTTPException(status_code=404, detail={"error": {"code": "NOT_FOUND", "message": "Documento non trovato"}})
+
+    # Validate path to prevent path traversal
+    allowed_dir = Path("/tmp/uploads").resolve()
+    requested_path = Path(riga.documento_path).resolve()
+    if not str(requested_path).startswith(str(allowed_dir)):
+        raise HTTPException(status_code=403, detail={"error": {"code": "FORBIDDEN", "message": "Accesso al file non consentito"}})
+
     nome = riga.documento_nome_originale or os.path.basename(riga.documento_path)
-    return FileResponse(riga.documento_path, filename=nome)
+    return FileResponse(requested_path, filename=nome)
 
 
 @router.get("/rimborsi-spesa/{id}/pdf")
 def scarica_pdf(id: str, db: Session = Depends(get_db), utente: Persona = Depends(tutti_i_ruoli)):
+    from pathlib import Path
     r = _get_or_404(id, db)
     if not r.pdf_path or not os.path.exists(r.pdf_path):
         raise HTTPException(status_code=404, detail={"error": {"code": "NOT_FOUND", "message": "PDF non ancora generato"}})
-    return FileResponse(r.pdf_path, filename=os.path.basename(r.pdf_path))
+
+    # Validate path to prevent path traversal
+    allowed_dir = Path("/tmp/uploads").resolve()
+    requested_path = Path(r.pdf_path).resolve()
+    if not str(requested_path).startswith(str(allowed_dir)):
+        raise HTTPException(status_code=403, detail={"error": {"code": "FORBIDDEN", "message": "Accesso al file non consentito"}})
+
+    return FileResponse(requested_path, filename=os.path.basename(r.pdf_path))
 
 
 # ── Workflow — transizioni ────────────────────────────────────────────────────

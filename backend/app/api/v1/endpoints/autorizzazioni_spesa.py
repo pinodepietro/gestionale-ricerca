@@ -76,7 +76,13 @@ def _ras_dict(r: RichiestaAutorizzazioneSpesa, db: Session) -> dict:
 
 
 def _get_or_404(id: str, db: Session) -> RichiestaAutorizzazioneSpesa:
-    r = db.query(RichiestaAutorizzazioneSpesa).filter(RichiestaAutorizzazioneSpesa.id == id).first()
+    from uuid import UUID
+    try:
+        id_uuid = UUID(id)
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=400, detail={"error": {"code": "INVALID_ID", "message": "ID non valido"}})
+
+    r = db.query(RichiestaAutorizzazioneSpesa).filter(RichiestaAutorizzazioneSpesa.id == id_uuid).first()
     if not r:
         raise HTTPException(status_code=404, detail={"error": {"code": "NOT_FOUND", "message": "Richiesta non trovata"}})
     return r
@@ -103,29 +109,37 @@ def lista_autorizzazioni(
     import math
     q = db.query(RichiestaAutorizzazioneSpesa)
     if stato:
+        if stato not in STATI_VALIDI:
+            raise HTTPException(status_code=422, detail={"error": {"code": "INVALID_STATE", "message": f"Stato non valido. Valori: {', '.join(STATI_VALIDI)}"}})
         q = q.filter(RichiestaAutorizzazioneSpesa.stato == stato)
 
     # Logica di visibilità basata su progetto_id
     if progetto_id:
+        from uuid import UUID
+        try:
+            progetto_id_uuid = UUID(progetto_id)
+        except (ValueError, AttributeError):
+            raise HTTPException(status_code=400, detail={"error": {"code": "INVALID_ID", "message": "ID progetto non valido"}})
+
         # Se un progetto è selezionato, controlla permessi
         is_pi = db.query(Allocazione).filter(
             Allocazione.persona_id == utente.id,
-            Allocazione.progetto_id == progetto_id,
+            Allocazione.progetto_id == progetto_id_uuid,
             Allocazione.is_pi == True
         ).first()
         is_ammin = db.query(Progetto).filter(
-            Progetto.id == progetto_id,
+            Progetto.id == progetto_id_uuid,
             Progetto.amministrativo_id == utente.id
         ).first()
         is_dg_monitor = utente.ruolo in ("superadmin", "direttore_generale", "monitor")
 
         if is_pi or is_ammin or is_dg_monitor:
             # PI/Amministrativo/DG/Monitor: vedono tutto del progetto
-            q = q.filter(RichiestaAutorizzazioneSpesa.progetto_id == progetto_id)
+            q = q.filter(RichiestaAutorizzazioneSpesa.progetto_id == progetto_id_uuid)
         else:
             # Ricercatore: vede solo le sue autorizzazioni sul progetto
             q = q.filter(
-                RichiestaAutorizzazioneSpesa.progetto_id == progetto_id,
+                RichiestaAutorizzazioneSpesa.progetto_id == progetto_id_uuid,
                 RichiestaAutorizzazioneSpesa.richiedente_id == utente.id
             )
     else:
@@ -300,10 +314,18 @@ async def upload_allegato_preventivo(
 
 @router.get("/autorizzazioni-spesa/{id}/pdf")
 def scarica_pdf(id: str, db: Session = Depends(get_db), utente: Persona = Depends(tutti_i_ruoli)):
+    from pathlib import Path
     r = _get_or_404(id, db)
     if not r.pdf_path or not os.path.exists(r.pdf_path):
         raise HTTPException(status_code=404, detail={"error": {"code": "NOT_FOUND", "message": "PDF non ancora generato"}})
-    return FileResponse(r.pdf_path, filename=os.path.basename(r.pdf_path))
+
+    # Validate path to prevent path traversal
+    allowed_dir = Path("/tmp/uploads").resolve()
+    requested_path = Path(r.pdf_path).resolve()
+    if not str(requested_path).startswith(str(allowed_dir)):
+        raise HTTPException(status_code=403, detail={"error": {"code": "FORBIDDEN", "message": "Accesso al file non consentito"}})
+
+    return FileResponse(requested_path, filename=os.path.basename(r.pdf_path))
 
 
 # ── Helper notifiche ─────────────────────────────────────────────────────────

@@ -151,7 +151,6 @@ class TestCreateProject:
         assert data["codice"] == "NEW-001"
         assert data["titolo"] == "New Project"
 
-    @pytest.mark.skip("duplicate detection requires fixture isolation")
     def test_create_project_duplicate_code(self, client, admin_token, test_project):
         """Cannot create project with duplicate code."""
         response = client.post(
@@ -161,6 +160,10 @@ class TestCreateProject:
                 "codice": test_project.codice,  # duplicate
                 "titolo": "Different Title",
                 "tipo": "Ricerca",
+                "data_inizio": "2026-01-01",
+                "data_fine": "2026-12-31",
+                "costo_totale": 50000.0,
+                "importo_finanziato": 40000.0,
             },
         )
         assert response.status_code == 409
@@ -199,7 +202,6 @@ class TestUpdateProject:
         assert response.status_code == 404
 
 
-@pytest.mark.skip('requires allocazione/budget fixtures')
 class TestProjectBudget:
     """GET /api/v1/progetti/{id}/budget tests."""
 
@@ -208,21 +210,24 @@ class TestProjectBudget:
         response = client.get(f"/api/v1/progetti/{test_project.id}/budget")
         assert response.status_code == 403
 
-    def test_get_budget_success(self, client, admin_token, test_project):
+    def test_get_budget_success(self, client, admin_token, test_project_full):
         """Get project budget."""
+        project = test_project_full["project"]
         response = client.get(
-            f"/api/v1/progetti/{test_project.id}/budget",
+            f"/api/v1/progetti/{project.id}/budget",
             headers={"Authorization": f"Bearer {admin_token}"},
         )
         assert response.status_code == 200
         resp = response.json()
         data = resp.get("data", resp)
-        assert data["costo_totale"] == 10000.0
-        assert data["importo_finanziato"] == 8000.0
-        assert data["importo_cofinanziato"] == 2000.0
+        assert isinstance(data, list)
+        assert len(data) >= 1
+        voce = data[0]
+        assert "id" in voce
+        assert "importo_previsto" in voce
+        assert voce["importo_previsto"] > 0
 
 
-@pytest.mark.skip('requires budget fixtures')
 class TestProjectDisponibilita:
     """GET /api/v1/progetti/{id}/disponibilita tests."""
 
@@ -231,14 +236,16 @@ class TestProjectDisponibilita:
         response = client.get(f"/api/v1/progetti/{test_project.id}/disponibilita")
         assert response.status_code == 403
 
-    def test_get_disponibilita_success(self, client, admin_token, test_project):
-        """Get budget availability (no spese yet, should equal budget)."""
+    def test_get_disponibilita_success(self, client, admin_token, test_project_full):
+        """Get budget availability with spese."""
+        project = test_project_full["project"]
         response = client.get(
-            f"/api/v1/progetti/{test_project.id}/disponibilita",
+            f"/api/v1/progetti/{project.id}/disponibilita",
             headers={"Authorization": f"Bearer {admin_token}"},
         )
         assert response.status_code == 200
         resp = response.json()
         data = resp.get("data", resp)
-        assert isinstance(data.get("spese_registrate"), (int, float))
+        assert isinstance(data.get("totale_speso"), (int, float))
         assert isinstance(data.get("disponibilita"), (int, float))
+        assert isinstance(data.get("totale_erogato"), (int, float))

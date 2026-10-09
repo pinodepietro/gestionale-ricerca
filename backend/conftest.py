@@ -118,7 +118,7 @@ def test_admin(db, test_user_dict):
     admin_data = test_user_dict.copy()
     admin_data.update({
         "ruolo": RuoloEnum.AMMINISTRATIVO.value,
-        "username": "admin",
+        "username": f"admin-{uuid4().hex[:4]}",
     })
 
     admin = Persona(
@@ -148,7 +148,7 @@ def test_superadmin(db, test_user_dict):
     admin_data = test_user_dict.copy()
     admin_data.update({
         "ruolo": RuoloEnum.SUPERADMIN.value,
-        "username": "superadmin",
+        "username": f"superadmin-{uuid4().hex[:4]}",
     })
 
     admin = Persona(
@@ -172,3 +172,106 @@ def admin_token(test_superadmin):
     """Generate token for superadmin."""
     from app.core.security import crea_access_token
     return crea_access_token({"sub": str(test_superadmin.id)})
+
+
+@pytest.fixture
+def test_project_full(db, test_admin):
+    """Create complete project with budget, allocations, and expenses."""
+    from uuid import uuid4
+    from datetime import date
+    from app.models.progetto import Progetto
+    from app.models.budget import VoceDiCosto, BudgetVoce, Spesa
+    from app.models.personale import Allocazione
+
+    # Create project
+    project = Progetto(
+        id=uuid4(),
+        codice=f"PROJ-{uuid4().hex[:6].upper()}",
+        titolo="Complete Test Project",
+        tipo="Ricerca",
+        data_inizio=date(2026, 1, 1),
+        data_fine=date(2026, 12, 31),
+        stato="attivo",
+        costo_totale=50000.0,
+        importo_finanziato=40000.0,
+        budget_per_partner=False,
+        amministrativo_id=test_admin.id,
+    )
+    db.add(project)
+    db.flush()
+
+    # Create cost voices
+    voce_personale = VoceDiCosto(
+        id=uuid4(),
+        codice="PERS",
+        descrizione="Costi Personale",
+        categoria="Personale",
+    )
+    voce_attrezzature = VoceDiCosto(
+        id=uuid4(),
+        codice="ATTR",
+        descrizione="Attrezzature",
+        categoria="Attrezzature",
+    )
+    db.add(voce_personale)
+    db.add(voce_attrezzature)
+    db.flush()
+
+    # Create budget allocations
+    budget_personale = BudgetVoce(
+        id=uuid4(),
+        progetto_id=project.id,
+        voce_id=voce_personale.id,
+        importo_previsto=30000.0,
+        importo_erogato=30000.0,
+        importo_rendicontato=8000.0,
+        importo_impegnato=5000.0,
+    )
+    budget_attrezzature = BudgetVoce(
+        id=uuid4(),
+        progetto_id=project.id,
+        voce_id=voce_attrezzature.id,
+        importo_previsto=20000.0,
+        importo_erogato=20000.0,
+        importo_rendicontato=5000.0,
+        importo_impegnato=2000.0,
+    )
+    db.add(budget_personale)
+    db.add(budget_attrezzature)
+    db.flush()
+
+    # Create allocations
+    allocazione = Allocazione(
+        id=uuid4(),
+        progetto_id=project.id,
+        persona_id=test_admin.id,
+        ore_assegnate=200.0,
+        data_inizio=date(2026, 1, 1),
+        data_fine=date(2026, 12, 31),
+        is_pi=True,
+    )
+    db.add(allocazione)
+    db.flush()
+
+    # Create expenses
+    spesa = Spesa(
+        id=uuid4(),
+        progetto_id=project.id,
+        importo=1500.0,
+        voce_id=voce_personale.id,
+        data=date(2026, 6, 15),
+        stato="registrata",
+    )
+    db.add(spesa)
+    db.commit()
+    db.refresh(project)
+
+    return {
+        "project": project,
+        "voce_personale": voce_personale,
+        "voce_attrezzature": voce_attrezzature,
+        "budget_personale": budget_personale,
+        "budget_attrezzature": budget_attrezzature,
+        "allocazione": allocazione,
+        "spesa": spesa,
+    }

@@ -143,12 +143,21 @@ def lista_tabelle(utente: Persona = Depends(solo_superadmin)):
 @router.get("/tabelle/{nome}")
 def dati_tabella(nome: str, limit: int = 100, offset: int = 0,
                  db: Session = Depends(get_db), utente: Persona = Depends(solo_superadmin)):
+    from sqlalchemy import MetaData, Table, select, func
+
     if nome not in TABELLE_CONSENTITE:
         raise HTTPException(status_code=403, detail={"error": {"code": "TABELLA_NON_CONSENTITA", "message": "Tabella non accessibile"}})
-    result = db.execute(text(f"SELECT * FROM {nome} LIMIT :limit OFFSET :offset"), {"limit": limit, "offset": offset})
+
+    # Use SQLAlchemy reflection to safely access table
+    metadata = MetaData()
+    table = Table(nome, metadata, autoload_with=db.get_bind())
+
+    # Execute parameterized queries (safe from SQL injection)
+    result = db.execute(select(table).limit(limit).offset(offset))
     rows = [dict(row._mapping) for row in result]
-    count = db.execute(text(f"SELECT COUNT(*) FROM {nome}")).scalar()
-    # Converti UUID e date in stringhe
+    count = db.execute(select(func.count()).select_from(table)).scalar()
+
+    # Convert UUID and dates to strings
     import json
     rows_str = json.loads(json.dumps(rows, default=str))
     return {"data": rows_str, "meta": {"total": count, "limit": limit, "offset": offset}}
@@ -168,15 +177,33 @@ def crea_backup(db: Session = Depends(get_db), utente: Persona = Depends(solo_su
         # Usa pg_dump tramite connessione diretta con psycopg2
         import psycopg2
 
+        # SECURITY: Require all database credentials to be explicitly set
+        # No default credentials allowed
+        postgres_host = os.getenv("POSTGRES_HOST")
+        postgres_user = os.getenv("POSTGRES_USER")
+        postgres_password = os.getenv("POSTGRES_PASSWORD")
+        postgres_db = os.getenv("POSTGRES_DB")
+
+        if not all([postgres_host, postgres_user, postgres_password, postgres_db]):
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "error": {
+                        "code": "CONFIG_ERROR",
+                        "message": "Database credentials not configured. Set POSTGRES_HOST, POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB environment variables."
+                    }
+                }
+            )
+
         # Usa context manager per garantire cleanup anche se exception
         with psycopg2.connect(
-            host=os.getenv("POSTGRES_HOST", "db"),
-            user=os.getenv("POSTGRES_USER", "dev"),
-            password=os.getenv("POSTGRES_PASSWORD", "dev"),
-            dbname=os.getenv("POSTGRES_DB", "gestionale_ricerca"),
+            host=postgres_host,
+            user=postgres_user,
+            password=postgres_password,
+            dbname=postgres_db,
         ) as conn:
             with conn.cursor() as cursor:
-                # Genera SQL per tutte le tabelle
+                # Get list of tables using parameterized query
                 cursor.execute("""
                     SELECT table_name FROM information_schema.tables
                     WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
@@ -187,24 +214,49 @@ def crea_backup(db: Session = Depends(get_db), utente: Persona = Depends(solo_su
                 with open(filepath, 'w') as f:
                     f.write(f"-- Backup gestionale_ricerca {timestamp}\n\n")
                     for tabella in tabelle:
-                        cursor.execute(f"SELECT * FROM {tabella}")
+                        # Validate table name against whitelist
+                        if tabella not in TABELLE_CONSENTITE:
+                            continue
+
+                        # Use identifier quoting to safely escape table name
+                        from psycopg2 import sql
+                        query = sql.SQL("SELECT * FROM {}").format(sql.Identifier(tabella))
+                        cursor.execute(query)
                         rows = cursor.fetchall()
                         cols = [desc[0] for desc in cursor.description]
                         f.write(f"-- Tabella: {tabella} ({len(rows)} righe)\n")
                         if rows:
-                            cols_str = ", ".join(cols)
+                            cols_str = ", ".join(sql.Identifier(col).as_string(cursor) for col in cols)
                             for row in rows:
+                                # Safely escape values for SQL
                                 vals = ", ".join(
-                                    "NULL" if v is None else f"'{str(v).replace(chr(39), chr(39)+chr(39))}'"
+                                    "NULL" if v is None else sql.Literal(v).as_string(cursor)
                                     for v in row
                                 )
-                                f.write(f"INSERT INTO {tabella} ({cols_str}) VALUES ({vals});\n")
+                                # Use sql.SQL to safely build INSERT statement
+                                insert_query = sql.SQL("INSERT INTO {} ({}) VALUES ({});").format(
+                                    sql.Identifier(tabella),
+                                    sql.SQL(", ").join(sql.Identifier(col) for col in cols),
+                                    sql.SQL(", ").join(sql.Literal(v) if v is not None else sql.SQL("NULL") for v in row)
+                                )
+                                f.write(insert_query.as_string(cursor) + "\n")
                         f.write("\n")
 
         size = os.path.getsize(filepath)
         return {"data": {"filename": filename, "size": size, "path": filepath}}
     except Exception as e:
-        raise HTTPException(status_code=500, detail={"error": {"code": "BACKUP_FAILED", "message": str(e)}})
+        # SECURITY: Don't expose exception details
+        import logging
+        logging.error(f"Backup creation failed for user {utente.username}: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": {
+                    "code": "BACKUP_FAILED",
+                    "message": "Backup creation failed. Contatta l'amministratore."
+                }
+            }
+        )
 
 
 @router.get("/backup")

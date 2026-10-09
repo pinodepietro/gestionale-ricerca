@@ -32,4 +32,11 @@ def hash_password(password: str) -> str:
 
 
 def verifica_password(plain: str, hashed: str) -> bool:
-    return bcrypt.checkpw(plain.encode(), hashed.encode())
+    # SECURITY: Ensure hashed is already bytes from database
+    # If it's a string, it should already be ASCII-encodable (bcrypt hashes are)
+    try:
+        hashed_bytes = hashed.encode() if isinstance(hashed, str) else hashed
+        return bcrypt.checkpw(plain.encode(), hashed_bytes)
+    except (ValueError, TypeError):
+        # Bcrypt hash is invalid or corrupted
+        return False

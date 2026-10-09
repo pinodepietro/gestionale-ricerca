@@ -164,7 +164,7 @@ class TestDatabaseConstraints:
             db.commit()
 
 
-@pytest.mark.skip('sqlite transaction isolation not testable')
+@pytest.mark.skip('SQLite in-memory cannot properly test transaction isolation')
 class TestTransactionIsolation:
     """Test transaction isolation levels."""
 
@@ -176,16 +176,11 @@ class TestTransactionIsolation:
         # Modify in transaction (don't commit)
         budget_voce.importo_impegnato = 500.0
 
-        # Create new session (simulating other transaction)
-        from sqlalchemy import create_engine
-        from sqlalchemy.orm import sessionmaker
-
-        # In test, we use same DB but transaction should isolate
-        # This is hard to test with in-memory SQLite
-        # But the pattern shows what should be tested
-
         # Rollback
         db.rollback()
+
+        # Refresh to simulate reading from DB after rollback
+        db.refresh(budget_voce)
 
         # Verify original value is preserved
         assert budget_voce.importo_impegnato == original_value

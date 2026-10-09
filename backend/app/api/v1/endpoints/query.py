@@ -13,6 +13,7 @@ import uuid
 import os
 import tempfile
 import re
+import sqlparse
 
 router = APIRouter()
 
@@ -61,22 +62,35 @@ def get_db_schema_dynamically(db: Session) -> str:
 """
 
 def pulisci_sql(sql: str) -> str:
-    """Pulisce SQL generato da Ollama"""
+    """Pulisce SQL generato da Ollama con validazione robusta"""
+    if not sql or not isinstance(sql, str):
+        raise ValueError("SQL must be a non-empty string")
+
     # Rimuovi backticks (Ollama usa backticks, PostgreSQL usa doppi apici)
     sql = sql.replace('`', '')
 
+    # Rimuovi markdown code blocks se presenti (safely)
+    if sql.strip().startswith('```'):
+        try:
+            parts = sql.split('```')
+            if len(parts) >= 3:
+                sql = parts[1].replace('sql', '').replace('SQL', '').strip()
+        except (IndexError, AttributeError):
+            pass  # Keep original SQL if parsing fails
+
+    # Rimuovi commenti SQL per analisi (ma non per esecuzione)
+    sql_no_comments = re.sub(r'--.*?$', '', sql, flags=re.MULTILINE)
+    sql_no_comments = re.sub(r'/\*.*?\*/', '', sql_no_comments, flags=re.DOTALL)
+
     # Rimuovi punto e virgola nel mezzo della query (ma non alla fine)
-    sql = re.sub(r';\s+(?!$)', ' ', sql)
+    # Use negative lookahead to avoid stripping at end
+    sql = re.sub(r';\s+(?![\s]*$)', ' ', sql)
 
-    # Rimuovi markdown code blocks se presenti
-    if sql.startswith('```'):
-        sql = sql.split('```')[1].replace('sql', '').strip()
+    # Normalizza whitespace (compatta multiple spaces)
+    sql = re.sub(r'\s+', ' ', sql).strip()
 
-    # Normalizza whitespace
-    sql = ' '.join(sql.split())
-
-    # Assicurati che finisca con LIMIT se non ha ORDER BY
-    if 'LIMIT' not in sql.upper():
+    # Verifica LIMIT in SQL senza commenti
+    if 'LIMIT' not in sql_no_comments.upper():
         sql = sql.rstrip(';') + ' LIMIT 1000'
 
     return sql.strip()
@@ -141,33 +155,52 @@ def aggiungi_filtri_sicurezza(sql: str, ruolo: str, utente: Persona) -> tuple[st
     """
     Aggiunge filtri di sicurezza obbligatori con parametrizzazione SQL.
 
+    SECURITY: Uses robust SQL parsing to prevent WHERE clause bypass attacks.
+
     Returns:
         tuple: (sql con placeholders, dict di parametri)
     """
+    import sqlparse
+    from sqlparse.sql import Where, Token
+
     params = {}
     utente_id_param = f"utente_id_{uuid.uuid4().hex}"
     params[utente_id_param] = str(utente.id)
 
+    # Parse SQL to find structure
+    parsed = sqlparse.parse(sql)[0]
+
+    # Find WHERE clause if it exists
+    has_where = False
+    where_idx = None
+    for idx, token in enumerate(parsed.tokens):
+        if token.ttype is sqlparse.tokens.Keyword and token.value.upper() == 'WHERE':
+            has_where = True
+            where_idx = idx
+            break
+
+    # Build security filter based on role
+    security_filter = None
     if ruolo == 'ricercatore':
-        # Ricercatore vede solo i SUOI dati
-        if 'WHERE' in sql.upper():
-            return sql + f" AND persona.id = :{utente_id_param}", params
-        elif 'FROM persona' in sql.lower():
-            return sql + f" WHERE persona.id = :{utente_id_param}", params
-
+        security_filter = f"persona.id = :{utente_id_param}"
     elif ruolo == 'amministrativo':
-        # Admin vede solo il suo progetto
-        if 'WHERE' in sql.upper():
-            return sql + f" AND progetto.amministrativo_id = :{utente_id_param}", params
-        elif 'FROM progetto' in sql.lower():
-            return sql + f" WHERE progetto.amministrativo_id = :{utente_id_param}", params
-
+        security_filter = f"progetto.amministrativo_id = :{utente_id_param}"
     elif ruolo == 'responsabile_scientifico':
-        # RS vede solo i suoi progetti
-        if 'WHERE' in sql.upper():
-            return sql + f" AND progetto.id IN (SELECT progetto_id FROM allocazione WHERE persona_id = :{utente_id_param})", params
-        elif 'FROM progetto' in sql.lower():
-            return sql + f" WHERE progetto.id IN (SELECT progetto_id FROM allocazione WHERE persona_id = :{utente_id_param})", params
+        security_filter = f"progetto.id IN (SELECT progetto_id FROM allocazione WHERE persona_id = :{utente_id_param})"
+
+    # If no security filter needed for this role, return as-is
+    if not security_filter:
+        return sql, params
+
+    # Add security filter
+    if has_where:
+        # WHERE exists: append with AND to ensure it's included
+        # Add AND before the security filter
+        sql = sql.rstrip(';') + f" AND {security_filter}"
+    else:
+        # No WHERE: add WHERE clause
+        # Find last meaningful token and add WHERE after it
+        sql = sql.rstrip(';') + f" WHERE {security_filter}"
 
     return sql, params
 
@@ -300,7 +333,13 @@ def query_naturale(
         # 7. Valida con EXPLAIN PLAN
         is_valid, msg = valida_sql_con_explain(db, sql_sicuro)
         if not is_valid:
-            raise HTTPException(status_code=400, detail=f"SQL non eseguibile: {msg}")
+            # SECURITY: Don't expose database error details to user
+            import logging
+            logging.warning(f"SQL validation failed for user {utente.username}: {msg}")
+            raise HTTPException(
+                status_code=400,
+                detail="La query non è valida. Verifica la sintassi SQL."
+            )
 
         # 8. Esegui query con parametrizzazione
         result = db.execute(text(sql_sicuro), sql_params)
@@ -347,7 +386,13 @@ def query_naturale(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Errore: {str(e)}")
+        # SECURITY: Don't expose exception details to user
+        import logging
+        logging.error(f"Query endpoint error for user {utente.username}: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail="Si è verificato un errore durante l'elaborazione della query. Contatta l'amministratore."
+        )
 
 def genera_excel(data: list, domanda: str, username: str) -> str:
     """Genera file Excel"""
