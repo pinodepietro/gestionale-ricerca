@@ -14,33 +14,28 @@ if [ ! -f ".env.prod" ]; then
   exit 1
 fi
 
-if [ ! -d "../missioni-app" ]; then
-  echo "ERRORE: directory ../missioni-app non trovata."
-  echo "Clona il repository missioni-app nella stessa cartella padre."
-  exit 1
-fi
-
 echo "==> Build e avvio dei servizi..."
 $COMPOSE up -d --build
 
-echo "==> Attesa avvio missioni..."
+echo "==> Attesa database ready..."
 sleep 10
 
-echo "==> Migrazioni gestionale (già gestite dall'entrypoint FastAPI)"
-echo "==> Verifica migrazioni missioni..."
-$COMPOSE exec missioni python manage.py migrate --noinput
+echo "==> Esecuzione migrazioni Alembic (opzionale)..."
+$COMPOSE exec -T backend sh -c 'cd /app && alembic upgrade head' || echo "⚠️  Migrazioni non disponibili (schema creato via startup)"
 
-echo "==> File statici missioni..."
-$COMPOSE exec missioni python manage.py collectstatic --noinput
+echo "==> Verifica health services..."
+$COMPOSE ps
 
 echo ""
 echo "✓ Deploy completato."
 echo ""
-echo "  Gestionale:  http://$(grep ALLOWED_ORIGINS .env.prod | cut -d= -f2 | sed 's|http://||')/"
-echo "  Missioni:    http://$(grep ALLOWED_HOSTS .env.prod | cut -d= -f2 | head -1):8001/"
-echo ""
-echo "Per creare il superadmin Django (solo primo avvio):"
-echo "  $COMPOSE exec missioni python manage.py createsuperuser"
+echo "Accesso applicazione:"
+echo "  HTTP:  http://localhost"
+echo "  HTTPS: https://your-domain.com (configurare TLS)"
 echo ""
 echo "Per vedere i log:"
 echo "  $COMPOSE logs -f"
+echo ""
+echo "Per creare superadmin (se necessario):"
+echo "  $COMPOSE exec backend python -c 'from app.models.persona import Persona; ...'"
+echo ""

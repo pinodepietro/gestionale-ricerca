@@ -2,6 +2,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
+from app.core.database import Base, engine
 from app.api.v1.router import api_router
 
 app = FastAPI(
@@ -20,6 +21,12 @@ app.add_middleware(
 )
 
 app.include_router(api_router, prefix="/api/v1")
+
+
+@app.on_event("startup")
+def init_db():
+    """Inizializza schema database al startup se non esiste."""
+    Base.metadata.create_all(bind=engine)
 
 
 @app.get("/api/health")
