@@ -51,6 +51,19 @@ class LoginResponse(BaseModel):
 
 @router.post("/login", response_model=dict)
 def login(payload: LoginRequest, db: Session = Depends(get_db)):
+    """
+    Authenticate user and return JWT access token.
+
+    Args:
+        payload: LoginRequest with username and password
+        db: Database session
+
+    Returns:
+        JSON with access_token, token_type, and user details
+
+    Raises:
+        HTTPException 401: Invalid credentials or user inactive
+    """
     persona = db.query(Persona).filter(
         Persona.username == payload.username.strip().lower(),
         Persona.attivo == True,
