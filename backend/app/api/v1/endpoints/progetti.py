@@ -597,15 +597,34 @@ def get_progetto(id: str, db: Session = Depends(get_db), utente: Persona = Depen
 @router.post("")
 def crea_progetto(body: dict, db: Session = Depends(get_db), utente: Persona = Depends(solo_amministrativo)):
     from uuid import uuid4
+    from datetime import datetime as dt
+
     campi = {k: v for k, v in body.items() if hasattr(Progetto, k)}
     if "id" not in campi:
         campi["id"] = uuid4()
     if "amministrativo_id" not in campi:
         campi["amministrativo_id"] = utente.id
+
+    # Convert date strings to date objects
+    for date_field in ["data_inizio", "data_fine", "data_fine_rendicontazione"]:
+        if date_field in campi and isinstance(campi[date_field], str):
+            campi[date_field] = dt.strptime(campi[date_field], "%Y-%m-%d").date()
+
+    # Convert numeric strings to float
+    for numeric_field in ["costo_totale", "importo_finanziato"]:
+        if numeric_field in campi and isinstance(campi[numeric_field], str):
+            campi[numeric_field] = float(campi[numeric_field])
+
     p = Progetto(**campi)
     p.stato = "bozza"
     db.add(p)
-    db.commit()
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        if "unique" in str(e).lower() or "duplicate" in str(e).lower():
+            raise HTTPException(status_code=409, detail={"error": {"code": "DUPLICATE_CODE", "message": "Un progetto con questo codice esiste già"}})
+        raise
     db.refresh(p)
     return {"data": progetto_dict(p)}
 

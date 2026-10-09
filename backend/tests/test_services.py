@@ -28,7 +28,7 @@ def test_user(db):
     return persona
 
 
-@pytest.mark.skip('file service not testable')
+@pytest.mark.skip('file upload service requires mocking')
 class TestFileUpload:
     """File upload service tests."""
 
@@ -213,7 +213,7 @@ class TestNotifications:
         assert other_notifs[0].titolo == "User 2 Notif"
 
 
-@pytest.mark.skip('audit service not testable')
+@pytest.mark.skip('audit service not implemented')
 class TestAuditLog:
     """Audit logging tests."""
 

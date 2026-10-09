@@ -164,7 +164,7 @@ class TestDatabaseConstraints:
             db.commit()
 
 
-@pytest.mark.skip('sqlite isolation not reliable')
+@pytest.mark.skip('sqlite transaction isolation not testable')
 class TestTransactionIsolation:
     """Test transaction isolation levels."""
 
