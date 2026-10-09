@@ -189,9 +189,22 @@ def lista_backup(utente: Persona = Depends(solo_superadmin)):
 @router.get("/backup/{filename}/download")
 def scarica_backup(filename: str, utente: Persona = Depends(solo_superadmin)):
     from fastapi.responses import FileResponse
-    filepath = f"/app/uploads/backup/{filename}"
-    if not os.path.exists(filepath) or not filename.endswith(".sql"):
+    from pathlib import Path
+    import re
+
+    backup_dir = Path("/app/uploads/backup").resolve()
+
+    if not re.match(r"^[a-zA-Z0-9_.-]+\.sql$", filename):
+        raise HTTPException(status_code=400, detail={"error": {"code": "INVALID_FILENAME", "message": "Formato filename non valido"}})
+
+    filepath = (backup_dir / filename).resolve()
+
+    if not str(filepath).startswith(str(backup_dir)):
+        raise HTTPException(status_code=403, detail={"error": {"code": "ACCESS_DENIED", "message": "Accesso negato"}})
+
+    if not filepath.exists():
         raise HTTPException(status_code=404, detail={"error": {"code": "NOT_FOUND", "message": "Backup non trovato"}})
+
     return FileResponse(filepath, filename=filename, media_type="application/octet-stream")
 
 
