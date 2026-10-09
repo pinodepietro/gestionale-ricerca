@@ -3,14 +3,12 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    DATABASE_URL: str = "postgresql://dev:dev@db:5432/gestionale_ricerca"
-    JWT_SECRET: str = "dev-secret-change-in-prod"
+    DATABASE_URL: str
+    JWT_SECRET: str
     JWT_EXPIRE_MINUTES: int = 480
-    # Stringa semplice — evita problemi di parsing JSON con pydantic-settings.
-    # Per più origini separate da virgola: http://localhost:5173,https://gestionale.ateneo.it
     ALLOWED_ORIGINS: str = "http://localhost:5173,http://localhost:5174,http://localhost:5175,http://localhost:5180"
     UPLOAD_DIR: str = "/app/uploads"
-    SYNC_API_KEY: str = "gestionale-missioni-sync-key-dev"
+    SYNC_API_KEY: str
     MISSIONI_URL: str = "http://missioni:8001"
 
     # LDAP — opzionali, vuoti in sviluppo
