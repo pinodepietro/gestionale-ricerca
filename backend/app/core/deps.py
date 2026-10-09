@@ -5,10 +5,12 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.security import verifica_token
 from app.models.persona import Persona
+from app.models.ruolo import RuoloEnum
 
 bearer_scheme = HTTPBearer()
 
-RUOLI = {"amministrativo", "ricercatore", "management", "superadmin", "monitor", "direttore_generale"}
+# Usa RuoloEnum per accesso centralizzato ai ruoli validi
+RUOLI = RuoloEnum.values()
 
 
 def get_utente_corrente(
@@ -28,6 +30,18 @@ def get_utente_corrente(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={"error": {"code": "AUTH_TOKEN_EXPIRED", "message": "Utente non trovato o disattivato"}},
         )
+
+    # Valida che il ruolo dell'utente sia in RuoloEnum
+    if not RuoloEnum.is_valid(persona.ruolo):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"error": {
+                "code": "INVALID_USER_ROLE",
+                "message": f"Ruolo utente '{persona.ruolo}' non valido",
+                "detail": {"ruolo": persona.ruolo, "ruoli_validi": list(RuoloEnum.values())},
+            }},
+        )
+
     return persona
 
 
