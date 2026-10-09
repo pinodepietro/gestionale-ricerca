@@ -43,6 +43,7 @@ def segna_lette_per_link(db: Session, persona_id, link: str) -> None:
         Notifica.persona_id == persona_id,
         Notifica.link == link,
     ).update({"letta": True, "richiede_azione": False})
+    db.commit()
 
 
 def invia_email(destinatario: str, titolo: str, messaggio: str) -> None:
