@@ -138,31 +138,39 @@ def valida_tabelle_per_ruolo(sql: str, ruolo: str) -> bool:
 
     return True
 
-def aggiungi_filtri_sicurezza(sql: str, ruolo: str, utente: Persona) -> str:
-    """Aggiunge filtri di sicurezza obbligatori"""
+def aggiungi_filtri_sicurezza(sql: str, ruolo: str, utente: Persona) -> tuple[str, dict]:
+    """
+    Aggiunge filtri di sicurezza obbligatori con parametrizzazione SQL.
+
+    Returns:
+        tuple: (sql con placeholders, dict di parametri)
+    """
+    params = {}
+    utente_id_param = f"utente_id_{uuid.uuid4().hex}"
+    params[utente_id_param] = str(utente.id)
 
     if ruolo == 'ricercatore':
         # Ricercatore vede solo i SUOI dati
         if 'WHERE' in sql.upper():
-            return sql + f" AND persona.id = '{utente.id}'"
+            return sql + f" AND persona.id = :{utente_id_param}", params
         elif 'FROM persona' in sql.lower():
-            return sql + f" WHERE persona.id = '{utente.id}'"
+            return sql + f" WHERE persona.id = :{utente_id_param}", params
 
     elif ruolo == 'amministrativo':
         # Admin vede solo il suo progetto
         if 'WHERE' in sql.upper():
-            return sql + f" AND progetto.amministrativo_id = '{utente.id}'"
+            return sql + f" AND progetto.amministrativo_id = :{utente_id_param}", params
         elif 'FROM progetto' in sql.lower():
-            return sql + f" WHERE progetto.amministrativo_id = '{utente.id}'"
+            return sql + f" WHERE progetto.amministrativo_id = :{utente_id_param}", params
 
     elif ruolo == 'responsabile_scientifico':
         # RS vede solo i suoi progetti
         if 'WHERE' in sql.upper():
-            return sql + f" AND progetto.id IN (SELECT progetto_id FROM allocazione WHERE persona_id = '{utente.id}')"
+            return sql + f" AND progetto.id IN (SELECT progetto_id FROM allocazione WHERE persona_id = :{utente_id_param})", params
         elif 'FROM progetto' in sql.lower():
-            return sql + f" WHERE progetto.id IN (SELECT progetto_id FROM allocazione WHERE persona_id = '{utente.id}')"
+            return sql + f" WHERE progetto.id IN (SELECT progetto_id FROM allocazione WHERE persona_id = :{utente_id_param})", params
 
-    return sql
+    return sql, params
 
 def converti_risultati_json(column_names: list, data: list) -> list:
     """Converte risultati in formato JSON-serializzabile"""
@@ -287,16 +295,16 @@ def query_naturale(
         if not valida_tabelle_per_ruolo(sql_pulito, utente.ruolo):
             raise HTTPException(status_code=403, detail="Non hai accesso a queste tabelle")
 
-        # 6. Aggiungi filtri di sicurezza
-        sql_sicuro = aggiungi_filtri_sicurezza(sql_pulito, utente.ruolo, utente)
+        # 6. Aggiungi filtri di sicurezza (con parametrizzazione)
+        sql_sicuro, sql_params = aggiungi_filtri_sicurezza(sql_pulito, utente.ruolo, utente)
 
         # 7. Valida con EXPLAIN PLAN
         is_valid, msg = valida_sql_con_explain(db, sql_sicuro)
         if not is_valid:
             raise HTTPException(status_code=400, detail=f"SQL non eseguibile: {msg}")
 
-        # 8. Esegui query
-        result = db.execute(text(sql_sicuro))
+        # 8. Esegui query con parametrizzazione
+        result = db.execute(text(sql_sicuro), sql_params)
         rows = result.fetchall()
 
         # 9. Formatta dati
