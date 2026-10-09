@@ -71,7 +71,7 @@ class TestAuth:
         """Login with invalid credentials should fail."""
         response = client.post(
             "/api/v1/auth/login",
-            json={"email": "invalid@test.com", "password": "wrong"},
+            json={"username": "invalid", "password": "wrong"},
         )
         assert response.status_code == 401
 

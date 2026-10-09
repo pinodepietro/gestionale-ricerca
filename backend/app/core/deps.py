@@ -17,6 +17,7 @@ def get_utente_corrente(
     credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
     db: Session = Depends(get_db),
 ) -> Persona:
+    from uuid import UUID
     payload = verifica_token(credentials.credentials)
     persona_id: str = payload.get("sub")
     if not persona_id:
@@ -24,7 +25,14 @@ def get_utente_corrente(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={"error": {"code": "AUTH_TOKEN_EXPIRED", "message": "Token non valido"}},
         )
-    persona = db.query(Persona).filter(Persona.id == persona_id, Persona.attivo == True).first()
+    try:
+        persona_id_uuid = UUID(persona_id)
+    except (ValueError, TypeError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"error": {"code": "AUTH_TOKEN_INVALID", "message": "Token non valido"}},
+        )
+    persona = db.query(Persona).filter(Persona.id == persona_id_uuid, Persona.attivo == True).first()
     if not persona:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

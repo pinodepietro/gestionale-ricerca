@@ -40,13 +40,20 @@ def lista_utenti(db: Session = Depends(get_db), utente: Persona = Depends(solo_s
 
 @router.post("/utenti")
 def crea_utente(body: dict, db: Session = Depends(get_db), utente: Persona = Depends(solo_superadmin)):
-    if db.query(Persona).filter(Persona.email == body.get("email")).first():
+    email = body.get("email")
+    if db.query(Persona).filter(Persona.email == email).first():
         raise HTTPException(status_code=409, detail={"error": {"code": "EMAIL_DUPLICATA", "message": "Email già in uso"}})
+
+    username = body.get("username") or email.split("@")[0] if email else None
+    if not username:
+        raise HTTPException(status_code=422, detail={"error": {"code": "INVALID_INPUT", "message": "username o email richiesti"}})
+
     p = Persona(
         id=uuid.uuid4(),
         nome=body.get("nome"),
         cognome=body.get("cognome"),
-        email=body.get("email"),
+        email=email,
+        username=username,
         password_hash=hash_password(body.get("password", "changeme")),
         ruolo=body.get("ruolo", "ricercatore"),
         ruolo_ente=body.get("ruolo_ente"),
@@ -60,7 +67,12 @@ def crea_utente(body: dict, db: Session = Depends(get_db), utente: Persona = Dep
 
 @router.patch("/utenti/{id}")
 def aggiorna_utente(id: str, body: dict, db: Session = Depends(get_db), utente: Persona = Depends(solo_superadmin)):
-    p = db.query(Persona).filter(Persona.id == id).first()
+    from uuid import UUID
+    try:
+        persona_id_uuid = UUID(id)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=404, detail={"error": {"code": "NOT_FOUND", "message": "Utente non trovato"}})
+    p = db.query(Persona).filter(Persona.id == persona_id_uuid).first()
     if not p:
         raise HTTPException(status_code=404, detail={"error": {"code": "NOT_FOUND", "message": "Utente non trovato"}})
     for k in ("nome", "cognome", "email", "ruolo", "ruolo_ente", "livello_contratto", "attivo"):
@@ -74,7 +86,12 @@ def aggiorna_utente(id: str, body: dict, db: Session = Depends(get_db), utente: 
 
 @router.post("/utenti/{id}/reset-password")
 def reset_password_utente(id: str, body: dict, db: Session = Depends(get_db), utente: Persona = Depends(solo_superadmin)):
-    p = db.query(Persona).filter(Persona.id == id).first()
+    from uuid import UUID
+    try:
+        persona_id_uuid = UUID(id)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=404, detail={"error": {"code": "NOT_FOUND", "message": "Utente non trovato"}})
+    p = db.query(Persona).filter(Persona.id == persona_id_uuid).first()
     if not p:
         raise HTTPException(status_code=404, detail={"error": {"code": "NOT_FOUND", "message": "Utente non trovato"}})
     nuova = body.get("password", "")
@@ -88,7 +105,12 @@ def reset_password_utente(id: str, body: dict, db: Session = Depends(get_db), ut
 
 @router.delete("/utenti/{id}")
 def elimina_utente(id: str, db: Session = Depends(get_db), utente: Persona = Depends(solo_superadmin)):
-    p = db.query(Persona).filter(Persona.id == id).first()
+    from uuid import UUID
+    try:
+        persona_id_uuid = UUID(id)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=404, detail={"error": {"code": "NOT_FOUND", "message": "Utente non trovato"}})
+    p = db.query(Persona).filter(Persona.id == persona_id_uuid).first()
     if not p:
         raise HTTPException(status_code=404, detail={"error": {"code": "NOT_FOUND", "message": "Utente non trovato"}})
     if str(p.id) == str(utente.id):

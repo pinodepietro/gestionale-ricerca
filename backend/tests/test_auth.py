@@ -41,9 +41,11 @@ class TestLogin:
             json={"username": "testuser", "password": "TestPass123!"},
         )
         assert response.status_code == 200
-        data = response.json()
+        resp_data = response.json()
+        assert "data" in resp_data
+        data = resp_data["data"]
         assert "access_token" in data
-        assert data["token_type"] == "bearer"
+        assert data.get("token_type") == "bearer"
         assert "user" in data
         assert data["user"]["email"] == "test@example.com"
 
