@@ -595,8 +595,13 @@ def get_progetto(id: str, db: Session = Depends(get_db), utente: Persona = Depen
 
 
 @router.post("")
-def crea_progetto(body: dict, db: Session = Depends(get_db), utente: Persona = Depends(solo_superadmin)):
+def crea_progetto(body: dict, db: Session = Depends(get_db), utente: Persona = Depends(solo_amministrativo)):
+    from uuid import uuid4
     campi = {k: v for k, v in body.items() if hasattr(Progetto, k)}
+    if "id" not in campi:
+        campi["id"] = uuid4()
+    if "amministrativo_id" not in campi:
+        campi["amministrativo_id"] = utente.id
     p = Progetto(**campi)
     p.stato = "bozza"
     db.add(p)
@@ -1219,7 +1224,12 @@ def salva_allocazioni_wp(id: str, body: dict, db: Session = Depends(get_db), ute
 # ─── Helper ───────────────────────────────────────────────────────────────────
 
 def _get_or_404(id: str, db: Session) -> Progetto:
-    p = db.query(Progetto).filter(Progetto.id == id).first()
+    from uuid import UUID
+    try:
+        project_id = UUID(id)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=404, detail={"error": {"code": "NOT_FOUND", "message": "Progetto non trovato"}})
+    p = db.query(Progetto).filter(Progetto.id == project_id).first()
     if not p:
         raise HTTPException(status_code=404, detail={"error": {"code": "NOT_FOUND", "message": "Progetto non trovato"}})
     return p
