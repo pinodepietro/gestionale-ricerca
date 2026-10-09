@@ -86,12 +86,9 @@ def _get_or_404(id: str, db: Session) -> RichiestaAutorizzazioneSpesa:
 
 
 def _calcola_disponibile(bv: BudgetVoce, db: Session) -> float:
-    speso = float(db.query(func.coalesce(func.sum(Spesa.importo), 0)).filter(
-        Spesa.progetto_id == bv.progetto_id,
-        Spesa.voce_id == bv.voce_id,
-        Spesa.stato == "registrata",
-    ).scalar())
-    return round(float(bv.importo_erogato or 0) - float(bv.importo_impegnato) - speso, 2)
+    # Usa funzione centralizzata in utils/common.py
+    from app.api.v1.utils.common import calcola_disponibile
+    return calcola_disponibile(db, bv.id)
 
 
 # ── CRUD ──────────────────────────────────────────────────────────────────────
