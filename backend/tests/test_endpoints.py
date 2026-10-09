@@ -18,6 +18,7 @@ def superadmin_token(client, db):
         nome="Super",
         cognome="Admin",
         email="super@test.com",
+        username="superadmin",
         password_hash=hash_password("testpass123"),
         ruolo=RuoloEnum.SUPERADMIN.value,
         attivo=True,
@@ -26,8 +27,8 @@ def superadmin_token(client, db):
     db.add(persona)
     db.commit()
 
-    from app.core.security import crea_token
-    token = crea_token(str(persona.id))
+    from app.core.security import crea_access_token
+    token = crea_access_token({"sub": str(persona.id)})
     return token, persona
 
 
@@ -39,6 +40,7 @@ def admin_token(client, db):
         nome="Admin",
         cognome="Test",
         email="admin@test.com",
+        username="admin",
         password_hash=hash_password("testpass123"),
         ruolo=RuoloEnum.AMMINISTRATIVO.value,
         attivo=True,
@@ -47,8 +49,8 @@ def admin_token(client, db):
     db.add(persona)
     db.commit()
 
-    from app.core.security import crea_token
-    token = crea_token(str(persona.id))
+    from app.core.security import crea_access_token
+    token = crea_access_token({"sub": str(persona.id)})
     return token, persona
 
 
