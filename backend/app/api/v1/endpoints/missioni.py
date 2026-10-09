@@ -386,21 +386,22 @@ async def upload_firma_olografa(
     db: Session = Depends(get_db),
     utente: Persona = Depends(tutti_i_ruoli),
 ):
+    from app.services.file_upload import validate_and_save_upload
+
     if str(utente.id) != persona_id and utente.ruolo != "superadmin":
         raise HTTPException(status_code=403, detail={"error": {"code": "FORBIDDEN", "message": "Puoi caricare solo la tua firma"}})
     persona = db.query(Persona).filter(Persona.id == persona_id).first()
     if not persona:
         raise HTTPException(status_code=404)
+
     upload_dir = os.path.join(settings.UPLOAD_DIR, "firme")
-    os.makedirs(upload_dir, exist_ok=True)
-    ext = os.path.splitext(file.filename)[1] if file.filename else ".png"
-    path = os.path.join(upload_dir, f"{persona_id}{ext}")
-    content = await file.read()
-    with open(path, "wb") as f:
-        f.write(content)
-    persona.firma_olografa = path
+    allowed_mimes = {"image/png", "image/jpeg", "image/jpg"}
+
+    upload_result = await validate_and_save_upload(file, upload_dir, allowed_mimes)
+
+    persona.firma_olografa = upload_result["path"]
     db.commit()
-    return {"data": {"firma_olografa": path}}
+    return {"data": {"firma_olografa": upload_result["path"], "file_id": upload_result["file_id"]}}
 
 
 @router.get("/personale/{persona_id}/firma-olografa")
@@ -574,19 +575,17 @@ async def upload_allegato_missione(
     db: Session = Depends(get_db),
     utente: Persona = Depends(tutti_i_ruoli),
 ):
+    from app.services.file_upload import validate_and_save_upload
+    from app.services.storage import progetto_dir
+
     m = _get_missione(id, db)
-    from app.services.storage import progetto_dir, upload_filename
     _codice_m = m.progetto.codice if m.progetto else None
     upload_dir = progetto_dir(_codice_m, "missioni", str(m.id), "allegati")
-    os.makedirs(upload_dir, exist_ok=True)
-    import uuid
-    ext = os.path.splitext(file.filename)[1] if file.filename else ""
-    path = os.path.join(upload_dir, upload_filename(file.filename or f"allegato{ext}", str(uuid.uuid4())))
-    content = await file.read()
-    with open(path, "wb") as f:
-        f.write(content)
+
+    upload_result = await validate_and_save_upload(file, upload_dir)
+
     allegato = AllegatoMissione(
-        tipo=tipo, file_path=path, file_nome_originale=file.filename,
+        tipo=tipo, file_path=upload_result["path"], file_nome_originale=file.filename,
         missione_id=m.id, caricato_da=utente.id,
     )
     db.add(allegato)

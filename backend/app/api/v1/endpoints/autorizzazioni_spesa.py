@@ -266,22 +266,21 @@ async def upload_allegato_g(
     db: Session = Depends(get_db),
     utente: Persona = Depends(tutti_i_ruoli),
 ):
+    from app.services.file_upload import validate_and_save_upload
+    from app.services.storage import progetto_dir
+
     r = _get_or_404(id, db)
     if r.stato != "bozza":
         raise HTTPException(status_code=409, detail={"error": {"code": "NON_MODIFICABILE", "message": "Allegato modificabile solo in stato bozza"}})
-    from app.services.storage import progetto_dir, upload_filename
+
     _codice = r.progetto.codice if r.progetto else None
     upload_dir = progetto_dir(_codice, "autorizzazioni-spesa", _aut_spesa_folder(r), "allegati")
-    os.makedirs(upload_dir, exist_ok=True)
-    import uuid as _uuid_mod
-    ext = os.path.splitext(file.filename)[1] if file.filename else ""
-    path = os.path.join(upload_dir, upload_filename(file.filename or f"allegato_g{ext}", str(_uuid_mod.uuid4())))
-    content = await file.read()
-    with open(path, "wb") as f:
-        f.write(content)
-    r.allegato_voce_g = path
+
+    upload_result = await validate_and_save_upload(file, upload_dir)
+
+    r.allegato_voce_g = upload_result["path"]
     db.commit()
-    return {"data": {"allegato_g": path}}
+    return {"data": {"allegato_g": upload_result["path"], "file_id": upload_result["file_id"]}}
 
 
 @router.post("/autorizzazioni-spesa/{id}/allegato-preventivo")
@@ -291,20 +290,18 @@ async def upload_allegato_preventivo(
     db: Session = Depends(get_db),
     utente: Persona = Depends(tutti_i_ruoli),
 ):
+    from app.services.file_upload import validate_and_save_upload
+    from app.services.storage import progetto_dir
+
     r = _get_or_404(id, db)
-    from app.services.storage import progetto_dir, upload_filename
     _codice = r.progetto.codice if r.progetto else None
     upload_dir = progetto_dir(_codice, "autorizzazioni-spesa", _aut_spesa_folder(r), "allegati")
-    os.makedirs(upload_dir, exist_ok=True)
-    import uuid as _uuid_mod
-    ext = os.path.splitext(file.filename)[1] if file.filename else ""
-    path = os.path.join(upload_dir, upload_filename(file.filename or f"preventivo{ext}", str(_uuid_mod.uuid4())))
-    content = await file.read()
-    with open(path, "wb") as f:
-        f.write(content)
-    r.allegato_preventivo = path
+
+    upload_result = await validate_and_save_upload(file, upload_dir)
+
+    r.allegato_preventivo = upload_result["path"]
     db.commit()
-    return {"data": {"allegato_preventivo": path}}
+    return {"data": {"allegato_preventivo": upload_result["path"], "file_id": upload_result["file_id"]}}
 
 
 @router.get("/autorizzazioni-spesa/{id}/pdf")

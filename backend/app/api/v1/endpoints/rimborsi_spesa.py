@@ -419,6 +419,9 @@ async def upload_documento_riga(
     db: Session = Depends(get_db),
     utente: Persona = Depends(tutti_i_ruoli),
 ):
+    from app.services.file_upload import validate_and_save_upload
+    from app.services.storage import progetto_dir
+
     riga = _get_riga_or_404(riga_id, db)
     r = riga.richiesta
     if r.stato != "bozza":
@@ -426,20 +429,16 @@ async def upload_documento_riga(
     if str(r.richiedente_id) != str(utente.id) and utente.ruolo not in ("superadmin", "amministrativo"):
         raise HTTPException(status_code=403, detail={"error": {"code": "FORBIDDEN", "message": "Non puoi modificare questa richiesta"}})
 
-    from app.services.storage import progetto_dir, upload_filename
     _ras = r.richiesta_autorizzazione
     _codice = _ras.progetto.codice if (_ras and _ras.progetto) else None
     upload_dir = progetto_dir(_codice, "autorizzazioni-spesa", _aut_spesa_folder(_ras) if _ras else "senza_aut", "rimborso", "giustificativi")
-    os.makedirs(upload_dir, exist_ok=True)
-    ext = os.path.splitext(file.filename)[1] if file.filename else ""
-    path = os.path.join(upload_dir, upload_filename(file.filename or f"doc{ext}", riga_id))
-    content = await file.read()
-    with open(path, "wb") as f:
-        f.write(content)
-    riga.documento_path = path
+
+    upload_result = await validate_and_save_upload(file, upload_dir)
+
+    riga.documento_path = upload_result["path"]
     riga.documento_nome_originale = file.filename
     db.commit()
-    return {"data": {"documento_path": path}}
+    return {"data": {"documento_path": upload_result["path"], "file_id": upload_result["file_id"]}}
 
 
 @router.get("/rimborsi-spesa/righe/{riga_id}/documento")
