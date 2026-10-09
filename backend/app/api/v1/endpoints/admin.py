@@ -6,7 +6,9 @@ from app.core.database import get_db
 from app.core.deps import solo_superadmin
 from app.models.persona import Persona
 from app.core.security import hash_password
-import uuid, subprocess, os, datetime
+import uuid
+import os
+import datetime
 
 router = APIRouter()
 
@@ -271,7 +273,6 @@ def lista_log(
 ):
     from app.models.timesheet import ApprovazioneTimesheet
     from app.models.progetto import Progetto
-    import datetime
 
     log_entries = []
 
@@ -406,7 +407,6 @@ def elimina_progetto_superadmin(
     from app.models.documento import DocumentoProgetto
     from app.models.struttura import WorkPackage, Milestone, Deliverable
     from app.models.timesheet import TimesheetTestata, ApprovazioneTimesheet
-    from app.models.notifica import Notifica
     import os
 
     p = db.query(Progetto).filter(Progetto.id == id).first()

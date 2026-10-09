@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git commit -m ' *)",
+      "Bash(git commit -m 'Fix: Aggiungi db.commit\\(\\) in segna_lette_per_link *)",
+      "Bash(git commit -m 'Fix: Aggiungi MIME validation a 3 endpoint di upload rimborso missione *)",
+      "Bash(git commit -m 'Fix: Parametrizza SQL injection in aggiungi_filtri_sicurezza *)",
+      "Bash(git commit -m 'Fix: Centralizza RBAC roles in RuoloEnum *)",
+      "Bash(git commit -m 'Fix: Aggiungi pessimistic locking per budget race condition *)",
+      "Bash(npm run *)",
+      "Bash(git commit -m 'Fix: Centralizza funzioni duplicate in utils/common.py *)",
+      "Bash(curl -s http://localhost:8000/api/health)"
+    ]
+  }
+}

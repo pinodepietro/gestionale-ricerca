@@ -1,7 +1,6 @@
 # backend/app/api/v1/endpoints/proposte.py
 import math
-import uuid
-from datetime import date, timedelta
+from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import or_

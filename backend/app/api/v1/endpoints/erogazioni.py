@@ -9,7 +9,6 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.core.database import get_db
 from app.core.deps import tutti_i_ruoli, solo_amministrativo
-from app.core.config import settings
 from app.models.budget import Erogazione, ErogazioneVoce, BudgetVoce
 from app.models.progetto import Progetto
 from app.models.persona import Persona

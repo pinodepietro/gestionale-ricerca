@@ -1,6 +1,6 @@
 # Endpoint di sincronizzazione per missioni-app.
 # Restituisce i progetti attivi/chiusi/rendicontati nel formato atteso da missioni-app.
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.core.database import get_db

@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
 from app.core.database import get_db
-from app.core.deps import tutti_i_ruoli, richiedi_ruolo
+from app.core.deps import tutti_i_ruoli
 from app.models.persona import Persona
 from app.models.timesheet import (
     TimesheetTestata, TimesheetRiga, TimesheetCella,

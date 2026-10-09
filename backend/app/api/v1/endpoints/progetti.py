@@ -1,13 +1,13 @@
 # backend/app/api/v1/endpoints/progetti.py
-from fastapi import APIRouter, Depends, HTTPException, Query, status, UploadFile, File, Body
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Body
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, func
 from app.core.database import get_db
 from app.core.deps import tutti_i_ruoli, solo_amministrativo, solo_superadmin
 from app.models.progetto import Progetto
-from app.models.partner import Partner, ProgettoPartner, TipoFinanziamento, Finanziamento
-from app.models.struttura import WorkPackage, Milestone, Deliverable
+from app.models.partner import Partner, ProgettoPartner
+from app.models.struttura import WorkPackage
 from app.models.budget import VoceDiCosto, BudgetVoce, Spesa, Sal, Impegno, Erogazione
 from app.models.personale import Allocazione, MonteOreAnnuale
 from app.models.timesheet import TimesheetTestata
@@ -631,7 +631,6 @@ def cambia_amministrativo(
     Se il nuovo amministrativo non è allocato, viene allocato automaticamente.
     """
     from app.models.audit import AuditLog
-    from datetime import date
 
     p = _get_or_404(id, db)
     nuovo_amministrativo_id = body.get("persona_id")
@@ -1275,7 +1274,7 @@ def lista_spese(
     db: Session = Depends(get_db),
     utente: Persona = Depends(tutti_i_ruoli),
 ):
-    from app.models.budget import Spesa, VoceDiCosto
+    from app.models.budget import Spesa
     _get_or_404(id, db)
     q = db.query(Spesa).filter(Spesa.progetto_id == id)
     if voce_id:
@@ -1399,7 +1398,6 @@ def upload_allegato(
 
 
 def _spesa_dict(s) -> dict:
-    from app.models.budget import VoceDiCosto
     return {
         "id": str(s.id),
         "progetto_id": str(s.progetto_id),
@@ -2152,7 +2150,7 @@ def riepilogo_dashboard_xlsx(id: str, db: Session = Depends(get_db), utente: Per
 @router.get("/{id}/report/xlsx")
 def report_progetto_xlsx(id: str, db: Session = Depends(get_db), utente: Persona = Depends(tutti_i_ruoli)):
     import openpyxl
-    from openpyxl.styles import Font, PatternFill, Alignment, numbers
+    from openpyxl.styles import Font, PatternFill, Alignment
     from openpyxl.utils import get_column_letter
 
     p, pi, amm, budget_voci, voci_map, spese, timesheet, persone_map, sal_list, partner_rows, partner_map = \

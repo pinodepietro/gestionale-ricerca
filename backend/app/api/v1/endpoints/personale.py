@@ -1,5 +1,5 @@
 # backend/app/api/v1/endpoints/personale.py
-from fastapi import APIRouter, Depends, HTTPException, Query, status, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from app.core.database import get_db

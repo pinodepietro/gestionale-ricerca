@@ -11,7 +11,6 @@ Features:
 import os
 import uuid
 from fastapi import UploadFile, HTTPException
-from pathlib import Path
 
 # Configuration
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB

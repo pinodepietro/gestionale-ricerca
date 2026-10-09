@@ -7,7 +7,6 @@ from app.core.database import get_db
 from app.core.deps import tutti_i_ruoli
 from app.models.persona import Persona
 import requests
-import json
 from datetime import datetime, date
 from decimal import Decimal
 import uuid
@@ -353,7 +352,7 @@ def query_naturale(
 def genera_excel(data: list, domanda: str, username: str) -> str:
     """Genera file Excel"""
     from openpyxl import Workbook
-    from openpyxl.styles import Font, PatternFill, Alignment
+    from openpyxl.styles import Font, PatternFill
 
     file_id = str(uuid.uuid4())
     file_path = os.path.join(tempfile.gettempdir(), f"query_{file_id}.xlsx")
@@ -398,7 +397,7 @@ def genera_pdf(data: list, domanda: str, username: str) -> str:
     """Genera file PDF"""
     from reportlab.lib.pagesizes import A4
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.styles import getSampleStyleSheet
     from reportlab.lib.units import inch
     from reportlab.lib import colors
 

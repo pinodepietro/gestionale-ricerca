@@ -1,6 +1,6 @@
 # backend/app/models/notifica.py
 import uuid
-from sqlalchemy import String, Text, Boolean, Integer, ForeignKey, Column, DateTime
+from sqlalchemy import String, Text, Boolean, ForeignKey, Column, DateTime
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 from app.core.database import Base

@@ -1,20 +1,17 @@
 # backend/app/api/v1/endpoints/autorizzazioni_spesa.py
-import uuid as _uuid
 from datetime import date, datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
-from sqlalchemy import func, or_
 import os
 
 from app.core.database import get_db
-from app.core.deps import tutti_i_ruoli, solo_amministrativo, solo_direttore_generale
-from app.core.config import settings
+from app.core.deps import tutti_i_ruoli, solo_direttore_generale
 from app.models.autorizzazione_spesa import RichiestaAutorizzazioneSpesa, Dipartimento
 from app.models.progetto import Progetto
 from app.models.personale import Allocazione
 from app.services.notifiche import crea_notifica, invia_email, segna_lette_per_link
-from app.models.budget import BudgetVoce, Spesa, VoceDiCosto, Impegno
+from app.models.budget import BudgetVoce, Impegno
 from app.models.persona import Persona
 
 router = APIRouter()

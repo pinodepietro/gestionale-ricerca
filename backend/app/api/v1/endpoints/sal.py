@@ -187,7 +187,7 @@ def rendiconta_sal(
     utente: Persona = Depends(solo_amministrativo),
 ):
     from app.models.budget import Spesa, BudgetVoce, VoceDiCosto
-    from app.models.timesheet import TimesheetTestata, TimesheetCella, TimesheetRiga
+    from app.models.timesheet import TimesheetTestata
     from datetime import date as _date
     import uuid as _uuid
 
@@ -281,10 +281,8 @@ def dettaglio_sal(
     db: Session = Depends(get_db),
     utente: Persona = Depends(tutti_i_ruoli),
 ):
-    from app.models.budget import Spesa, BudgetVoce, VoceDiCosto
-    from app.models.timesheet import TimesheetTestata, TimesheetRiga, TimesheetCella
-    from app.models.personale import CostoOrarioPersona
-    from app.models.struttura import WorkPackage
+    from app.models.budget import Spesa, VoceDiCosto
+    from app.models.timesheet import TimesheetTestata
     from sqlalchemy import and_
     from datetime import date
 
@@ -487,13 +485,12 @@ def export_sal_xlsx(
     from fastapi.responses import StreamingResponse
     from openpyxl import Workbook
     from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
-    from openpyxl.utils import get_column_letter
     from app.models.budget import Spesa, VoceDiCosto
     from app.models.timesheet import TimesheetTestata
     from app.models.persona import Persona as PersonaModel
     from app.models.progetto import Progetto
     from sqlalchemy import and_
-    import io, calendar
+    import io
 
     progetto = db.query(Progetto).filter(Progetto.id == s.progetto_id).first()
 
@@ -693,10 +690,9 @@ def export_sal_pdf(
     from reportlab.lib import colors
     from reportlab.lib.units import cm
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-    from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
+    from reportlab.lib.enums import TA_CENTER
     from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer, Table,
                                      TableStyle, HRFlowable)
-    from reportlab.platypus.doctemplate import PageTemplate, BaseDocTemplate
     from app.models.budget import Spesa, VoceDiCosto
     from app.models.timesheet import TimesheetTestata
     from app.models.persona import Persona as PersonaModel

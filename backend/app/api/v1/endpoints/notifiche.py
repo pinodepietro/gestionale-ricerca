@@ -1,7 +1,7 @@
 # backend/app/api/v1/endpoints/notifiche.py
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_
+from sqlalchemy import or_
 from datetime import date, timedelta
 from app.core.database import get_db
 from app.core.deps import tutti_i_ruoli
@@ -9,9 +9,7 @@ from app.models.persona import Persona
 from app.models.notifica import Notifica
 from app.models.budget import Sal
 from app.models.progetto import Progetto
-from app.models.personale import Allocazione
 from app.services.notifiche import crea_notifica
-import uuid
 
 router = APIRouter()
 

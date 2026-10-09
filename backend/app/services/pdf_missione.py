@@ -9,7 +9,7 @@ from reportlab.lib.units import mm
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable, Image
-from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+from reportlab.lib.enums import TA_CENTER
 
 from app.services.pdf_autorizzazione import LOGO_PATH
 
@@ -113,7 +113,6 @@ def genera_pdf_missione(missione, db: Session, output_dir: str) -> str:
 
     from app.models.personale import Allocazione
     from app.models.persona import Persona
-    from app.models.progetto import Progetto
     from app.models.autorizzazione_spesa import Dipartimento
 
     alloc_pi = db.query(Allocazione).filter(

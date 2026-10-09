@@ -10,7 +10,7 @@ from app.models.progetto import Progetto
 from app.models.personale import Allocazione, CostoOrarioPersona
 from app.models.persona import Persona
 from app.models.budget import BudgetVoce, VoceDiCosto
-from app.models.timesheet import TimesheetTestata, TimesheetRiga, TimesheetCella
+from app.models.timesheet import TimesheetTestata
 from app.models.budget import Sal
 
 router = APIRouter()

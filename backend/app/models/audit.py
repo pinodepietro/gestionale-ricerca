@@ -1,6 +1,6 @@
 # backend/app/models/audit.py
 import uuid
-from sqlalchemy import String, Text, UUID as UUIDType, ForeignKey, Column, DateTime, func
+from sqlalchemy import String, Text, ForeignKey, Column, DateTime, func
 from sqlalchemy.dialects.postgresql import UUID
 from app.core.database import Base
 
