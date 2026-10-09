@@ -128,41 +128,39 @@ def crea_backup(db: Session = Depends(get_db), utente: Persona = Depends(solo_su
     try:
         # Usa pg_dump tramite connessione diretta con psycopg2
         import psycopg2
-        conn = psycopg2.connect(
+
+        # Usa context manager per garantire cleanup anche se exception
+        with psycopg2.connect(
             host=os.getenv("POSTGRES_HOST", "db"),
             user=os.getenv("POSTGRES_USER", "dev"),
             password=os.getenv("POSTGRES_PASSWORD", "dev"),
             dbname=os.getenv("POSTGRES_DB", "gestionale_ricerca"),
-        )
-        cursor = conn.cursor()
+        ) as conn:
+            with conn.cursor() as cursor:
+                # Genera SQL per tutte le tabelle
+                cursor.execute("""
+                    SELECT table_name FROM information_schema.tables
+                    WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+                    ORDER BY table_name
+                """)
+                tabelle = [r[0] for r in cursor.fetchall()]
 
-        # Genera SQL per tutte le tabelle
-        cursor.execute("""
-            SELECT table_name FROM information_schema.tables
-            WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
-            ORDER BY table_name
-        """)
-        tabelle = [r[0] for r in cursor.fetchall()]
-
-        with open(filepath, 'w') as f:
-            f.write(f"-- Backup gestionale_ricerca {timestamp}\n\n")
-            for tabella in tabelle:
-                cursor.execute(f"SELECT * FROM {tabella}")
-                rows = cursor.fetchall()
-                cols = [desc[0] for desc in cursor.description]
-                f.write(f"-- Tabella: {tabella} ({len(rows)} righe)\n")
-                if rows:
-                    cols_str = ", ".join(cols)
-                    for row in rows:
-                        vals = ", ".join(
-                            "NULL" if v is None else f"'{str(v).replace(chr(39), chr(39)+chr(39))}'"
-                            for v in row
-                        )
-                        f.write(f"INSERT INTO {tabella} ({cols_str}) VALUES ({vals});\n")
-                f.write("\n")
-
-        cursor.close()
-        conn.close()
+                with open(filepath, 'w') as f:
+                    f.write(f"-- Backup gestionale_ricerca {timestamp}\n\n")
+                    for tabella in tabelle:
+                        cursor.execute(f"SELECT * FROM {tabella}")
+                        rows = cursor.fetchall()
+                        cols = [desc[0] for desc in cursor.description]
+                        f.write(f"-- Tabella: {tabella} ({len(rows)} righe)\n")
+                        if rows:
+                            cols_str = ", ".join(cols)
+                            for row in rows:
+                                vals = ", ".join(
+                                    "NULL" if v is None else f"'{str(v).replace(chr(39), chr(39)+chr(39))}'"
+                                    for v in row
+                                )
+                                f.write(f"INSERT INTO {tabella} ({cols_str}) VALUES ({vals});\n")
+                        f.write("\n")
 
         size = os.path.getsize(filepath)
         return {"data": {"filename": filename, "size": size, "path": filepath}}
