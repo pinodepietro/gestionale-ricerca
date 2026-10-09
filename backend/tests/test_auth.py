@@ -138,7 +138,7 @@ class TestProfile:
         db.add(user)
         db.commit()
 
-        token = crea_token(str(user.id))
+        token = crea_access_token({"sub": str(user.id)})
         response = client.get(
             "/api/v1/auth/profile",
             headers={"Authorization": f"Bearer {token}"},

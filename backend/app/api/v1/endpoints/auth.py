@@ -99,6 +99,21 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
     }
 
 
+@router.get("/profile")
+def get_profile(utente: Persona = Depends(get_utente_corrente)):
+    """Get current user profile."""
+    return {
+        "id": str(utente.id),
+        "nome": utente.nome,
+        "cognome": utente.cognome,
+        "email": utente.email,
+        "ruolo": utente.ruolo,
+        "ruolo_ente": utente.ruolo_ente,
+        "attivo": utente.attivo,
+        "deve_cambiare_password": bool(getattr(utente, 'deve_cambiare_password', False)),
+    }
+
+
 @router.post("/cambia-password")
 def cambia_password(
     payload: dict,
@@ -122,6 +137,35 @@ def cambia_password(
         }})
 
     utente.password_hash = hash_password(nuova)
+    utente.deve_cambiare_password = False
+    db.commit()
+    return {"data": {"message": "Password cambiata con successo"}}
+
+
+@router.patch("/password")
+def change_password_api(
+    payload: dict,
+    db: Session = Depends(get_db),
+    utente: Persona = Depends(get_utente_corrente),
+):
+    """Change password (alternative endpoint with different param names)."""
+    old_password = payload.get("old_password", "")
+    new_password = payload.get("new_password", "")
+
+    errore = _valida_password(new_password)
+    if errore:
+        raise HTTPException(status_code=422, detail={"error": {
+            "code": "PASSWORD_NON_VALIDA",
+            "message": errore,
+        }})
+
+    if not verifica_password(old_password, utente.password_hash):
+        raise HTTPException(status_code=401, detail={"error": {
+            "code": "PASSWORD_ERRATA",
+            "message": "La password attuale non è corretta",
+        }})
+
+    utente.password_hash = hash_password(new_password)
     utente.deve_cambiare_password = False
     db.commit()
     return {"data": {"message": "Password cambiata con successo"}}
